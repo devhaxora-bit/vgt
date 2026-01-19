@@ -1,0 +1,278 @@
+[
+    {
+        "cn_no": "K3000731229",
+        "entry_date": "2026-01-17",
+        "booking_branch": "VERNA GOA",
+        "bkg_date": "17/01/2026",
+        "dest_branch": "PTLG - PATALGANGA",
+        "exceptional_booking": "0 - NORMAL",
+        "del_loc_landmark": "NEAR INDUSTRIAL AREA",
+        "delivery_type": "DDLY-WITH CC",
+        "delivery_drop_location": "FACTORY GATE 2",
+        "distance_km": 450,
+        "owner_risk": true,
+        "door_collection": false,
+        "bkg_basis": "TO BE BILLED",
+        "no_of_pkg": 13,
+        "actual_weight": 260,
+        "charged_weight": 260,
+        "package_method": "BOX",
+        "consignor": {
+            "name": "SIEMENS LTD",
+            "code": "C001",
+            "unit": "UNIT-1",
+            "gst": "30AAAAA0000A1Z5",
+            "address": "VERNA INDUSTRIAL ESTATE, GOA",
+            "mobile": "+91 9876543210",
+            "email": "logistics@siemens.com",
+            "legal_name": "SIEMENS LIMITED",
+            "trade_name": "SIEMENS"
+        },
+        "consignee": {
+            "name": "RELIANCE INDUSTRIES LTD",
+            "code": "R005",
+            "unit": "PLANT-A",
+            "gst": "27BBBBB1111B1Z2",
+            "address": "PATALGANGA, MAHARASHTRA",
+            "mobile": "+91 9876543211",
+            "email": "inward@reliance.com",
+            "legal_name": "RELIANCE INDUSTRIES LIMITED",
+            "trade_name": "RIL"
+        },
+        "billing_details": {
+            "billing_party": "SIEMENS LTD",
+            "party_code_unit": "C001 / UNIT-1",
+            "billing_party_gst": "30AAAAA0000A1Z5",
+            "address": "VERNA INDUSTRIAL ESTATE, GOA",
+            "sector_dcc": "WEST-1",
+            "bill_for_station": "VERNA",
+            "cnee_type": "D - DIRECT"
+        },
+        "freight_details": {
+            "freight_pending": false,
+            "rate_kg": 8.50,
+            "derived_freight": 2210.00,
+            "basic_freight": 2000.00,
+            "aoc_charges": 0.00,
+            "fov_charges": 0.00,
+            "cover_charges": 0.00,
+            "mhc_charges": 0.00,
+            "door_collection_charges": 0.00,
+            "door_delivery_charges": 150.00,
+            "with_pass_charges": 0.00,
+            "enroute_charges": 135.00,
+            "statistical_charges": 60.00,
+            "misc_charges": 40.00,
+            "cod_charges": 0.00,
+            "toll_charges": 0.00,
+            "green_tax": 0.00,
+            "eway_bill_charges": 20.00,
+            "other_charges": 0.00,
+            "total_freight": 2405.00,
+            "advance": 0.00,
+            "balance": 2405.00,
+            "amount_in_words": "Rs. Two Thousand Four Hundred Five Only"
+        },
+        "package_details": {
+            "loose_pkg": false,
+            "packages": [
+                {
+                    "sr_no": 1,
+                    "method": "BOX",
+                    "qty": 10
+                },
+                {
+                    "sr_no": 2,
+                    "method": "BAG",
+                    "qty": 3
+                }
+            ],
+            "total_pkg": 13,
+            "total_qty": 13
+        },
+        "goods_details": {
+            "goods_class": "General Goods",
+            "value_of_goods": 50000,
+            "goods_desc": "ELECTRICAL PARTS",
+            "hsn_desc": "8536 - ELECTRICAL APPARATUS",
+            "cod_amount": 0,
+            "load_type": "PTL",
+            "unit_type": "KG",
+            "dimensions": {
+                "l": 12,
+                "w": 12,
+                "h": 12
+            },
+            "volume": 1728,
+            "odd_package": 0,
+            "single_piece": 0,
+            "unloading_by_cnee": false
+        },
+        "insurance_details": {
+            "insurance_comp": "BAJAJ ALLIANZ",
+            "policy_no": "P-12345678",
+            "policy_valid_date": "31/12/2026",
+            "policy_amount": 100000,
+            "po_no": "PO-998877",
+            "po_date": "10/01/2026",
+            "stf_no": "",
+            "stf_date": "",
+            "stf_valid_upto": ""
+        },
+        "invoice_details": {
+            "invoices": [
+                {
+                    "invoice_no": "INV-001",
+                    "date": "15/01/2026",
+                    "amount": 25000,
+                    "eway_bill": "123456789012"
+                },
+                {
+                    "invoice_no": "INV-002",
+                    "date": "15/01/2026",
+                    "amount": 25000,
+                    "eway_bill": "123456789013"
+                }
+            ],
+            "indent_no": "IND-555",
+            "indent_date": "12/01/2026",
+            "eway_from_date": "17/01/2026",
+            "eway_to_date": "20/01/2026"
+        },
+        "other_details": {
+            "type_of_business": "REGULAR",
+            "transport_mode": "BY ROAD",
+            "doc_prepared_by": "AMIT PANDEY [A8644]"
+        },
+        "tracking_history": [
+            {
+                "date": "2026-01-17 10:30 AM",
+                "location": "VERNA GOA",
+                "status": "BOOKED",
+                "description": "Consignment booked at origin branch"
+            },
+            {
+                "date": "2026-01-17 02:15 PM",
+                "location": "VERNA GOA",
+                "status": "LOADED",
+                "description": "Loaded into vehicle MH04XX9999"
+            },
+            {
+                "date": "2026-01-17 08:45 PM",
+                "location": "KOLHAPUR",
+                "status": "IN TRANSIT",
+                "description": "Vehicle crossed Kolhapur checkpost"
+            }
+        ],
+        "remarks": "Handle with care, keep dry.",
+        "private_marks": "SIDE A UP"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "K3000731230",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "PTLG - PATALGANGA",
+        "bkg_basis": "TO BE BILLED",
+        "no_of_pkg": 1,
+        "actual_weight": 60,
+        "delivery_type": "DDLY-WITH CC",
+        "total_freight": 1264,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "K3000731248",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "NSK - NASHIK",
+        "bkg_basis": "TOPAY",
+        "no_of_pkg": 5,
+        "actual_weight": 354,
+        "delivery_type": "DDLY-WITH CC",
+        "total_freight": 4164,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "K3000731247",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "JGN - JALGAON",
+        "bkg_basis": "TOPAY",
+        "no_of_pkg": 1,
+        "actual_weight": 120,
+        "delivery_type": "DDLY-WITH CC",
+        "total_freight": 2085,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "S3000801908",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "BDVT - BHADRAVATI",
+        "bkg_basis": "TOPAY",
+        "no_of_pkg": 15,
+        "actual_weight": 945,
+        "delivery_type": "DDLY-WITH CC",
+        "total_freight": 4954,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "S3000801907",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "BDVT - BHADRAVATI",
+        "bkg_basis": "TOPAY",
+        "no_of_pkg": 13,
+        "actual_weight": 676,
+        "delivery_type": "DDLY-WITH CC",
+        "total_freight": 3570,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "S3000801909",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "TPR - TIRUPUR",
+        "bkg_basis": "TOPAY",
+        "no_of_pkg": 27,
+        "actual_weight": 1404,
+        "delivery_type": "GDN DLY WITH CC",
+        "total_freight": 7566,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "S3000801191",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "TPR - TIRUPUR",
+        "bkg_basis": "TOPAY",
+        "no_of_pkg": 115,
+        "actual_weight": 7245,
+        "delivery_type": "GDN DLY WITH CC",
+        "total_freight": 38816,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "K3000731246",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "WDN - WAIDHAN",
+        "bkg_basis": "TOPAY",
+        "no_of_pkg": 1,
+        "actual_weight": 75,
+        "delivery_type": "GDN DLY WITH CC",
+        "total_freight": 0,
+        "entry_date": "2026-01-17"
+    },
+    {
+        "bkg_branch": "VERNA GOA",
+        "cn_no": "K3000731207",
+        "bkg_date": "2026-01-17",
+        "dest_branch": "EKMD - ERNAKULAM DLY GODOWN",
+        "bkg_basis": "TO BE BILLED",
+        "no_of_pkg": 3,
+        "actual_weight": 1118,
+        "delivery_type": "DDLY-WITH CC",
+        "total_freight": 0,
+        "entry_date": "2026-01-17"
+    }
+]
