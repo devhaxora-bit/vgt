@@ -368,8 +368,8 @@ export default function ConsignmentsPage() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right font-black text-xs">
-                                                {item.total_freight > 0 ? (
-                                                    <span className="bg-primary/5 px-2 py-1 rounded text-primary">₹{item.total_freight.toLocaleString()}</span>
+                                                {(item.total_freight || 0) > 0 ? (
+                                                    <span className="bg-primary/5 px-2 py-1 rounded text-primary">₹{(item.total_freight || 0).toLocaleString()}</span>
                                                 ) : (
                                                     <span className="text-muted-foreground/30">---</span>
                                                 )}
