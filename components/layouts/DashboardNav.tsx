@@ -164,7 +164,8 @@ export default function DashboardNav() {
                 {
                     title: 'System',
                     items: [
-                        { title: 'User Management', href: '#' },
+                        { title: 'User Management', href: '/dashboard/admin/users' },
+                        { title: 'Branch Management', href: '/dashboard/admin/branches' },
                         { title: 'Role Configuration', href: '#' },
                         { title: 'Audit Logs', href: '#' },
                     ]
@@ -205,7 +206,12 @@ export default function DashboardNav() {
                 {/* Desktop Navigation */}
                 <NavigationMenu className="hidden md:flex">
                     <NavigationMenuList className="gap-1">
-                        {navItems.map((item) => (
+                        {navItems.filter(item => {
+                            if (item.title === 'Admin') {
+                                return user?.role === 'admin';
+                            }
+                            return true;
+                        }).map((item) => (
                             <NavigationMenuItem key={item.title}>
                                 <NavigationMenuTrigger className="bg-transparent hover:bg-muted data-[state=open]:bg-muted text-muted-foreground hover:text-foreground">
                                     {item.title}
@@ -222,12 +228,12 @@ export default function DashboardNav() {
                                                     {section.items.map((subItem) => (
                                                         <li key={subItem.title}>
                                                             <NavigationMenuLink asChild>
-                                                                <a
+                                                                <Link
                                                                     href={subItem.href}
                                                                     className="block select-none space-y-1 rounded-md p-2 leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground text-sm text-muted-foreground hover:translate-x-1 duration-200"
                                                                 >
                                                                     {subItem.title}
-                                                                </a>
+                                                                </Link>
                                                             </NavigationMenuLink>
                                                         </li>
                                                     ))}

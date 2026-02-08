@@ -38,8 +38,83 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 
+import { PartyAutocomplete } from "@/components/PartyAutocomplete";
+import { Party } from "@/lib/types/party.types";
+
+interface PackageItem {
+    id: string;
+    method: string;
+    qty: number;
+}
+
 export default function NewConsignmentPage() {
     const [isOwnersRisk, setIsOwnersRisk] = useState(true);
+    const [isCancelCn, setIsCancelCn] = useState(false);
+    const [consignor, setConsignor] = useState<Party | null>(null);
+    const [consignee, setConsignee] = useState<Party | null>(null);
+    const [billingParty, setBillingParty] = useState<Party | null>(null);
+    const [billingBranch, setBillingBranch] = useState("mrg");
+
+    // Package State
+    const [isLoose, setIsLoose] = useState(false);
+    const [packages, setPackages] = useState<PackageItem[]>([]);
+    const [currentPackageMethod, setCurrentPackageMethod] = useState("box");
+    const [currentPackageQty, setCurrentPackageQty] = useState("");
+
+    // Freight State
+    const [isFreightPending, setIsFreightPending] = useState(false);
+    const [freightRate, setFreightRate] = useState("");
+    const [chargedWeight, setChargedWeight] = useState("");
+
+    // Freight Charges
+    const [charges, setCharges] = useState({
+        unload: "",
+        retention: "",
+        extraKm: "",
+        mhc: "",
+        doorColl: "",
+        doorDel: "",
+        other: ""
+    });
+
+    const handleAddPackage = () => {
+        if (isLoose) {
+            const newPackage: PackageItem = {
+                id: Math.random().toString(36).substr(2, 9),
+                method: "LOOSE",
+                qty: 0
+            };
+            setPackages([...packages, newPackage]);
+            return;
+        }
+
+        if (!currentPackageQty) return;
+        const newPackage: PackageItem = {
+            id: Math.random().toString(36).substr(2, 9),
+            method: currentPackageMethod,
+            qty: parseInt(currentPackageQty) || 0
+        };
+        setPackages([...packages, newPackage]);
+        setCurrentPackageQty("");
+    };
+
+    const totalPackages = packages.length; // Or sum of qtys? Requirement says "Add more means we can multiplr package method it will dispalyed in the table then it will be shown in the toral packages"
+    // Usually total packages is sum of Quantity.
+    const totalQty = packages.reduce((sum, p) => sum + p.qty, 0);
+
+    // If loose is selected, package count might be different? "If losse is selected no need of qty" -> implies Qty=0 or 1?
+    // "Loose (Zero Package)" label suggests it counts as 0 packages?
+
+    const calculateFreight = () => {
+        if (isFreightPending) return 0;
+        const rate = parseFloat(freightRate) || 0;
+        const weight = parseFloat(chargedWeight) || 0;
+        const basic = rate * weight;
+
+        const extra = Object.values(charges).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+        return basic + extra;
+    };
+
 
     return (
         <div className="flex flex-col min-h-screen bg-[#f8f9fa] animate-fadeIn">
@@ -87,7 +162,7 @@ export default function NewConsignmentPage() {
                                 <Label htmlFor="door-collection" className="text-sm font-bold cursor-pointer">Door Collection</Label>
                             </div>
                             <div className="flex items-center space-x-2">
-                                <Checkbox id="cancel-flag" />
+                                <Checkbox id="cancel-flag" checked={isCancelCn} onCheckedChange={(c) => setIsCancelCn(!!c)} />
                                 <Label htmlFor="cancel-flag" className="text-sm font-bold text-destructive cursor-pointer">Cancel CN</Label>
                             </div>
                             <Separator orientation="vertical" className="h-6" />
@@ -148,44 +223,11 @@ export default function NewConsignmentPage() {
                                     </div>
 
                                     <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Destination Branch</Label>
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery / Distance</Label>
                                         <div className="flex gap-2">
-                                            <Input placeholder="PIN" className="w-24 h-9" />
-                                            <Select>
-                                                <SelectTrigger className="flex-1 h-9 bg-slate-50">
-                                                    <SelectValue placeholder="Select Branch" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="verna">VERNA GOA</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery / Drop Location</Label>
-                                        <div className="flex gap-2">
-                                            <Input placeholder="Distance (KM)" className="w-28 h-9 bg-yellow-50/50" />
+                                            <Input placeholder="Distance" className="w-28 h-9 bg-yellow-50/50" />
                                             <Input placeholder="Drop Location Name" className="flex-1 h-9 bg-yellow-50/50" />
                                         </div>
-                                    </div>
-
-                                    <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Exceptional Booking</Label>
-                                        <Select defaultValue="0">
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="0">0 - NORMAL</SelectItem>
-                                                <SelectItem value="1">1 - URGENT</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Del Loc Landmark</Label>
-                                        <Input placeholder="Landmark for delivery" className="h-9" />
                                     </div>
                                 </div>
                             </CardContent>
@@ -195,102 +237,92 @@ export default function NewConsignmentPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Consignor Card */}
                             <Card className="border-none shadow-md bg-white">
-                                <CardHeader className="bg-indigo-50/50 py-3 px-6 border-b">
+                                <CardHeader className="bg-indigo-50/50 py-3 px-6 border-b flex flex-row justify-between items-center">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-700">
                                         <User className="h-4 w-4" /> Consignor Details
                                     </CardTitle>
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox id="save-consignor" />
+                                        <Label htmlFor="save-consignor" className="text-[10px] font-bold cursor-pointer uppercase text-indigo-700">Save</Label>
+                                    </div>
                                 </CardHeader>
                                 <CardContent className="p-6 space-y-4">
                                     <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignor Name/Code</Label>
-                                        <Input placeholder="AUTO EXTENDER CONSIGNOR" className="h-9 bg-muted/20" />
+                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignor Name</Label>
+                                        <PartyAutocomplete
+                                            type="consignor"
+                                            onSelect={setConsignor}
+                                            value={consignor?.name}
+                                            placeholder="Select Consignor"
+                                        />
                                     </div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <div className="space-y-1">
-                                            <Label className="text-[10px] font-bold text-muted-foreground">Code</Label>
-                                            <Input className="h-8 text-xs" />
-                                        </div>
-                                        <div className="space-y-1 col-span-2">
-                                            <Label className="text-[10px] font-bold text-muted-foreground">Unit</Label>
-                                            <Input className="h-8 text-xs bg-yellow-50/30" />
-                                        </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-bold text-muted-foreground">Code</Label>
+                                        <Input className="h-8 text-xs" value={consignor?.code || ''} readOnly />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold text-muted-foreground">GST</Label>
-                                        <Input className="h-8 font-mono text-xs" placeholder="AUTO EXTENDER CNOR GST" />
+                                        <Input className="h-8 font-mono text-xs" placeholder="GSTIN" value={consignor?.gstin || ''} readOnly />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
-                                        <Input className="h-9" />
+                                        <Input className="h-9" value={consignor?.address || ''} readOnly />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Mobile</Label>
-                                            <Input className="h-8 text-xs" />
+                                            <Input className="h-8 text-xs" value={consignor?.phone || ''} readOnly />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Email</Label>
-                                            <Input className="h-8 text-xs" />
+                                            <Input className="h-8 text-xs" value={consignor?.email || ''} readOnly />
                                         </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold text-muted-foreground">Legal Name</Label>
-                                        <Input className="h-8 text-xs bg-yellow-50/30" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold text-muted-foreground">Trade Name</Label>
-                                        <Input className="h-8 text-xs bg-yellow-50/30" />
                                     </div>
                                 </CardContent>
                             </Card>
 
                             {/* Consignee Card */}
                             <Card className="border-none shadow-md bg-white">
-                                <CardHeader className="bg-emerald-50/50 py-3 px-6 border-b">
+                                <CardHeader className="bg-emerald-50/50 py-3 px-6 border-b flex flex-row justify-between items-center">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-emerald-700">
                                         <User className="h-4 w-4" /> Consignee Details
                                     </CardTitle>
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox id="save-consignee" />
+                                        <Label htmlFor="save-consignee" className="text-[10px] font-bold cursor-pointer uppercase text-emerald-700">Save</Label>
+                                    </div>
                                 </CardHeader>
                                 <CardContent className="p-6 space-y-4">
                                     <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignee Name/Code</Label>
-                                        <Input placeholder="AUTO EXTENDER CONSIGNEE" className="h-9 bg-muted/20" />
+                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignee Name</Label>
+                                        <PartyAutocomplete
+                                            type="consignee"
+                                            onSelect={setConsignee}
+                                            value={consignee?.name}
+                                            placeholder="Select Consignee"
+                                        />
                                     </div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <div className="space-y-1">
-                                            <Label className="text-[10px] font-bold text-muted-foreground">Code</Label>
-                                            <Input className="h-8 text-xs" />
-                                        </div>
-                                        <div className="space-y-1 col-span-2">
-                                            <Label className="text-[10px] font-bold text-muted-foreground">Unit</Label>
-                                            <Input className="h-8 text-xs bg-yellow-50/30" />
-                                        </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-bold text-muted-foreground">Code</Label>
+                                        <Input className="h-8 text-xs" value={consignee?.code || ''} readOnly />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold text-muted-foreground">GST</Label>
-                                        <Input className="h-8 font-mono text-xs" placeholder="AUTO EXTENDER CNEE GST" />
+                                        <Input className="h-8 font-mono text-xs" placeholder="GSTIN" value={consignee?.gstin || ''} readOnly />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
-                                        <Input className="h-9" />
+                                        <Input className="h-9" value={consignee?.address || ''} readOnly />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Mobile</Label>
-                                            <Input className="h-8 text-xs" />
+                                            <Input className="h-8 text-xs" value={consignee?.phone || ''} readOnly />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Email</Label>
-                                            <Input className="h-8 text-xs" />
+                                            <Input className="h-8 text-xs" value={consignee?.email || ''} readOnly />
                                         </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold text-muted-foreground">Legal Name</Label>
-                                        <Input className="h-8 text-xs bg-yellow-50/30" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold text-muted-foreground">Trade Name</Label>
-                                        <Input className="h-8 text-xs bg-yellow-50/30" />
                                     </div>
                                 </CardContent>
                             </Card>
@@ -320,59 +352,46 @@ export default function NewConsignmentPage() {
                                     </div>
 
                                     <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Bill For & Station</Label>
-                                        <div className="flex gap-2">
-                                            <Select>
-                                                <SelectTrigger className="w-24 h-9">
-                                                    <SelectValue placeholder="Stn" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="s1">MRG</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <Input placeholder="AUTO EXTENDER BILLING STATION" className="flex-1 h-9" />
-                                        </div>
+                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Bill For (Branch)</Label>
+                                        <Select value={billingBranch} onValueChange={setBillingBranch}>
+                                            <SelectTrigger className="h-9">
+                                                <SelectValue placeholder="Select Branch" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="mrg">MRG - MARGAO</SelectItem>
+                                                <SelectItem value="pnj">PNJ - PANAJI</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Code Station Name</Label>
+                                        <Input className="h-9 bg-slate-50 font-bold" value={billingBranch.toUpperCase()} readOnly />
                                     </div>
 
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party</Label>
-                                        <Input placeholder="AUTO EXTENDER BILLING PARTY" className="h-9" />
+                                        <PartyAutocomplete
+                                            type="billing"
+                                            onSelect={setBillingParty}
+                                            value={billingParty?.name}
+                                            placeholder="Select Billing Party"
+                                        />
                                     </div>
 
                                     <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Party Code & Unit</Label>
-                                        <Input className="h-9 bg-yellow-50/30" />
+                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Party Code</Label>
+                                        <Input className="h-9 bg-yellow-50/30" value={billingParty?.code || ''} readOnly />
                                     </div>
 
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party GST</Label>
-                                        <Input className="h-9 font-mono bg-yellow-50/30" />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Sector / DCC Days</Label>
-                                        <div className="flex gap-2">
-                                            <Input className="flex-1 h-9 bg-yellow-50/30" placeholder="Sector" />
-                                            <Input className="w-20 h-9 bg-yellow-50/30" placeholder="Days" />
-                                        </div>
+                                        <Input className="h-9 font-mono bg-yellow-50/30" value={billingParty?.gstin || ''} readOnly />
                                     </div>
 
                                     <div className="space-y-1 lg:col-span-2">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
-                                        <Input className="h-9 bg-yellow-50/30" />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Cnee Type</Label>
-                                        <Select defaultValue="direct">
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="direct">D - DIRECT</SelectItem>
-                                                <SelectItem value="agent">A - AGENT</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Input className="h-9 bg-yellow-50/30" value={billingParty?.address || ''} readOnly />
                                     </div>
                                 </div>
                             </CardContent>
@@ -403,14 +422,14 @@ export default function NewConsignmentPage() {
                                             </CardHeader>
                                             <CardContent className="p-4 space-y-4">
                                                 <div className="flex items-center space-x-2 bg-yellow-50 p-2 rounded border border-yellow-100">
-                                                    <Checkbox id="loose" />
-                                                    <Label htmlFor="loose" className="text-xs font-bold cursor-pointer text-yellow-800">LOOSE (Zero Package)</Label>
+                                                    <Checkbox id="loose" checked={isLoose} onCheckedChange={(c) => setIsLoose(!!c)} />
+                                                    <Label htmlFor="loose" className="text-xs font-bold cursor-pointer text-yellow-800">LOOSE</Label>
                                                 </div>
 
                                                 <div className="grid grid-cols-12 gap-2 items-end">
                                                     <div className="col-span-5 space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Package Method</Label>
-                                                        <Select>
+                                                        <Select value={currentPackageMethod} onValueChange={setCurrentPackageMethod} disabled={isLoose}>
                                                             <SelectTrigger className="h-8 text-xs">
                                                                 <SelectValue placeholder="Select Method" />
                                                             </SelectTrigger>
@@ -423,10 +442,10 @@ export default function NewConsignmentPage() {
                                                     </div>
                                                     <div className="col-span-3 space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Qty</Label>
-                                                        <Input type="number" className="h-8 text-xs" />
+                                                        <Input type="number" className="h-8 text-xs" disabled={isLoose} value={currentPackageQty} onChange={(e) => setCurrentPackageQty(e.target.value)} />
                                                     </div>
                                                     <div className="col-span-4">
-                                                        <Button size="sm" className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-xs">Add More</Button>
+                                                        <Button size="sm" className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-xs" onClick={handleAddPackage}>Add More</Button>
                                                     </div>
                                                 </div>
 
@@ -438,19 +457,32 @@ export default function NewConsignmentPage() {
                                                         <div className="col-span-2 text-center">Qty</div>
                                                         <div className="col-span-2 text-center">Action</div>
                                                     </div>
-                                                    <div className="p-4 text-center text-xs text-muted-foreground italic">
-                                                        No packages added
-                                                    </div>
+                                                    {packages.length === 0 ? (
+                                                        <div className="p-4 text-center text-xs text-muted-foreground italic">
+                                                            No packages added
+                                                        </div>
+                                                    ) : (
+                                                        <div className="max-h-32 overflow-y-auto">
+                                                            {packages.map((pkg, idx) => (
+                                                                <div key={pkg.id} className="grid grid-cols-12 p-2 text-xs border-b last:border-0 hover:bg-slate-100">
+                                                                    <div className="col-span-2 text-center">{idx + 1}</div>
+                                                                    <div className="col-span-6">{pkg.method}</div>
+                                                                    <div className="col-span-2 text-center">{pkg.qty}</div>
+                                                                    <div className="col-span-2 text-center text-destructive cursor-pointer hover:underline" onClick={() => setPackages(packages.filter(p => p.id !== pkg.id))}>X</div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="grid grid-cols-2 gap-4 pt-2">
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Total Packages</Label>
-                                                        <Input className="h-8 text-xs font-bold bg-slate-50" readOnly value="0" />
+                                                        <Input className="h-8 text-xs font-bold bg-slate-50" readOnly value={packages.length} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Total Qty</Label>
-                                                        <Input className="h-8 text-xs font-bold bg-slate-50" readOnly value="0" />
+                                                        <Input className="h-8 text-xs font-bold bg-slate-50" readOnly value={isLoose ? packages.length : totalQty} />
                                                     </div>
                                                 </div>
                                             </CardContent>
@@ -509,27 +541,15 @@ export default function NewConsignmentPage() {
                                                         <Input className="h-8 text-xs" />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Load & Unit Type</Label>
-                                                        <div className="flex gap-1">
-                                                            <Select>
-                                                                <SelectTrigger className="h-8 text-xs w-1/2 px-1">
-                                                                    <SelectValue placeholder="Load" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="ftl">FTL</SelectItem>
-                                                                    <SelectItem value="ptl">PTL</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                            <Select>
-                                                                <SelectTrigger className="h-8 text-xs w-1/2 px-1">
-                                                                    <SelectValue placeholder="Unit" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="kg">KG</SelectItem>
-                                                                    <SelectItem value="mt">MT</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
+                                                        <Label className="text-[10px] font-bold text-muted-foreground">Load Unit</Label>
+                                                        <Select>
+                                                            <SelectTrigger className="h-8 text-xs">
+                                                                <SelectValue placeholder="Unit" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="mt">MT</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
                                                     </div>
                                                 </div>
 
@@ -544,7 +564,7 @@ export default function NewConsignmentPage() {
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Charged Wt</Label>
-                                                        <Input className="h-8 text-xs bg-yellow-50/50" />
+                                                        <Input className="h-8 text-xs bg-yellow-50/50" value={chargedWeight} onChange={(e) => setChargedWeight(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Volume</Label>
@@ -554,11 +574,7 @@ export default function NewConsignmentPage() {
 
                                                 <div className="grid grid-cols-2 gap-3">
                                                     <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Odd Package</Label>
-                                                        <Input className="h-8 text-xs" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Single Piece</Label>
+                                                        <Label className="text-[10px] font-bold text-muted-foreground">Private Mark</Label>
                                                         <Input className="h-8 text-xs" />
                                                     </div>
                                                 </div>
@@ -754,38 +770,48 @@ export default function NewConsignmentPage() {
                                         <div className="space-y-3 pb-6">
                                             <div className="flex flex-col space-y-2">
                                                 <div className="flex items-center space-x-2 pb-2">
-                                                    <Checkbox id="freight-pending" />
+                                                    <Checkbox id="freight-pending" checked={isFreightPending} onCheckedChange={(c) => setIsFreightPending(!!c)} />
                                                     <Label htmlFor="freight-pending" className="text-xs font-bold cursor-pointer">Freight Pending</Label>
                                                 </div>
                                             </div>
 
+                                            <div className="flex items-center justify-between gap-4">
+                                                <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Rate</Label>
+                                                <Input
+                                                    type="text"
+                                                    className="h-7 w-28 text-right font-mono text-xs"
+                                                    disabled={isFreightPending}
+                                                    value={isFreightPending ? "0" : freightRate}
+                                                    onChange={(e) => setFreightRate(e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Basic Freight</Label>
+                                                <Input
+                                                    type="text"
+                                                    className="h-7 w-28 text-right font-mono text-xs bg-primary/5 border-primary/20 font-bold"
+                                                    value={isFreightPending ? "0.00" : (parseFloat(freightRate || "0") * parseFloat(chargedWeight || "0")).toFixed(2)}
+                                                    readOnly
+                                                />
+                                            </div>
+
                                             {[
-                                                { label: "Rate/kg", value: "" },
-                                                { label: "Derived Freight", value: "" },
-                                                { label: "Basic Freight", value: "" },
-                                                { label: "A.O.C. Charges", value: "" },
-                                                { label: "FOV Charges", value: "" },
-                                                { label: "Cover Charges", value: "" },
-                                                { label: "MHC Charges", value: "" },
-                                                { label: "Door Coll Charges", value: "" },
-                                                { label: "Door Del Charges", value: "" },
-                                                { label: "With Pass Charges", value: "" },
-                                                { label: "Enroute Charges", value: "135.00" },
-                                                { label: "Statistical Charges", value: "60.00" },
-                                                { label: "Misc. Charges", value: "40.00" },
-                                                { label: "COD Charges", value: "" },
-                                                { label: "Toll Charges", value: "", disabled: true },
-                                                { label: "Green Tax", value: "" },
-                                                { label: "eWay Bill Charges", value: "20.00" },
-                                                { label: "Other Charges", value: "" },
-                                            ].map((field, i) => (
-                                                <div key={i} className="flex items-center justify-between gap-4">
+                                                { key: 'unload', label: "Unload Charges" },
+                                                { key: 'retention', label: "Retention Charges" },
+                                                { key: 'extraKm', label: "Extra KM Charges" },
+                                                { key: 'mhc', label: "MHC Charges" },
+                                                { key: 'doorColl', label: "Door Coll Charges" },
+                                                { key: 'doorDel', label: "Door Del Charges" },
+                                                { key: 'other', label: "Other Charges" },
+                                            ].map((field) => (
+                                                <div key={field.key} className="flex items-center justify-between gap-4">
                                                     <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">{field.label}</Label>
                                                     <Input
                                                         type="text"
-                                                        disabled={field.disabled}
-                                                        className={`h-7 w-28 text-right font-mono text-xs ${field.value ? 'bg-primary/5 border-primary/20 font-bold' : ''}`}
-                                                        defaultValue={field.value}
+                                                        disabled={isFreightPending}
+                                                        className="h-7 w-28 text-right font-mono text-xs"
+                                                        value={isFreightPending ? "0" : charges[field.key as keyof typeof charges]}
+                                                        onChange={(e) => setCharges({ ...charges, [field.key]: e.target.value })}
                                                     />
                                                 </div>
                                             ))}
@@ -797,7 +823,7 @@ export default function NewConsignmentPage() {
                                             <div className="bg-yellow-100/50 p-4 rounded-lg border border-yellow-200">
                                                 <div className="flex items-center justify-between">
                                                     <Label className="text-xs font-black uppercase text-yellow-800">Total Freight</Label>
-                                                    <div className="text-xl font-black text-yellow-900">₹ 255.00</div>
+                                                    <div className="text-xl font-black text-yellow-900">₹ {calculateFreight().toFixed(2)}</div>
                                                 </div>
                                             </div>
 
@@ -809,7 +835,7 @@ export default function NewConsignmentPage() {
                                             <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
                                                 <div className="flex items-center justify-between">
                                                     <Label className="text-xs font-black uppercase text-primary">Balance Due</Label>
-                                                    <div className="text-xl font-black text-primary">₹ 255.00</div>
+                                                    <div className="text-xl font-black text-primary">₹ {calculateFreight().toFixed(2)}</div>
                                                 </div>
                                             </div>
 
