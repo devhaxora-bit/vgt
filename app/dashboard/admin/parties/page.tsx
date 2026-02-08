@@ -14,9 +14,9 @@ import {
     Mail,
     Hash
 } from 'lucide-react';
+import { AddPartyDialog } from '@/components/AddPartyDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Card,
     CardContent,
@@ -32,37 +32,10 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 
-interface Party {
-    id: string;
-    code: string;
-    name: string;
-    type: 'consignor' | 'consignee' | 'both';
-    gstin: string;
-    address: string;
-    pincode: string;
-    phone: string;
-    email: string;
-    status: 'active' | 'inactive';
-}
+
+import { Party } from '@/lib/types/party.types';
 
 export default function PartiesPage() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -77,10 +50,14 @@ export default function PartiesPage() {
             type: 'both',
             gstin: '27AAACA1234A1Z1',
             address: 'Industrial Area, Phase II',
+            city: 'Goa',
+            state: 'Goa',
             pincode: '403722',
             phone: '9876543210',
             email: 'admin@acme.com',
-            status: 'active'
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
         },
         {
             id: '2',
@@ -89,17 +66,21 @@ export default function PartiesPage() {
             type: 'consignee',
             gstin: '27BBABA5678B2Z2',
             address: 'Main St, Near Station',
+            city: 'Mumbai',
+            state: 'Maharashtra',
             pincode: '403001',
             phone: '9822113344',
             email: 'ops@bharat.in',
-            status: 'active'
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
         }
     ]);
 
     const filteredParties = parties.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.code.includes(searchTerm) ||
-        p.gstin.toLowerCase().includes(searchTerm.toLowerCase())
+        (p.gstin && p.gstin.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     return (
@@ -109,68 +90,18 @@ export default function PartiesPage() {
                     <h1 className="text-2xl font-bold tracking-tight">Party Management</h1>
                     <p className="text-muted-foreground">Manage your consignors, consignees, and billing parties.</p>
                 </div>
-                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-2">
-                            <Plus className="h-4 w-4" /> Add New Party
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>Add New Party</DialogTitle>
-                            <DialogDescription>
-                                Enter the details of the party. The party code will be automatically generated as a 6-digit number.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Party Name</Label>
-                                <Input id="name" placeholder="Enter party name" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="type">Party Type</Label>
-                                <Select defaultValue="both">
-                                    <SelectTrigger id="type">
-                                        <SelectValue placeholder="Select type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="consignor">Consignor Only</SelectItem>
-                                        <SelectItem value="consignee">Consignee Only</SelectItem>
-                                        <SelectItem value="both">Both (Consignor & Consignee)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="code">Party Code (6 Digits)</Label>
-                                <Input id="code" placeholder="100003" defaultValue="100003" readOnly className="bg-slate-50" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="gstin">GST Number</Label>
-                                <Input id="gstin" placeholder="27XXXXX0000X0Z0" className="font-mono uppercase" />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <Label htmlFor="address">Full Address</Label>
-                                <Input id="address" placeholder="Address line 1, Area, Landmark" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="pincode">Pincode</Label>
-                                <Input id="pincode" placeholder="6-digit PIN" maxLength={6} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="phone">Phone / Mobile</Label>
-                                <Input id="phone" placeholder="10-digit mobile" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="email">Email Address</Label>
-                                <Input id="email" type="email" placeholder="email@example.com" />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={() => setIsAddDialogOpen(false)}>Save Party</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                <Button onClick={() => setIsAddDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Party
+                </Button>
+                <AddPartyDialog
+                    open={isAddDialogOpen}
+                    onOpenChange={setIsAddDialogOpen}
+                    onSave={(newParty) => {
+                        setParties([...parties, newParty]);
+                        // In a real app, this would also save to backend
+                    }}
+                />
             </div>
 
             <Card className="border-none shadow-sm">

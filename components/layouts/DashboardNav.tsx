@@ -166,6 +166,7 @@ export default function DashboardNav() {
                     items: [
                         { title: 'User Management', href: '/dashboard/admin/users' },
                         { title: 'Branch Management', href: '/dashboard/admin/branches' },
+                        { title: 'Party Management', href: '/dashboard/admin/parties' },
                         { title: 'Role Configuration', href: '#' },
                         { title: 'Audit Logs', href: '#' },
                     ]

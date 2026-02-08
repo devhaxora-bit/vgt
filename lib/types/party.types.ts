@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PARTY_TYPES = ['consignor', 'consignee', 'billing'] as const;
+export const PARTY_TYPES = ['consignor', 'consignee', 'both', 'billing'] as const;
 export type PartyType = typeof PARTY_TYPES[number];
 
 export interface Party {

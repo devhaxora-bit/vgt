@@ -10,7 +10,16 @@ export const getParties = async (type?: PartyType, search?: string) => {
         .order('name');
 
     if (type) {
-        query = query.eq('type', type);
+        if (type === 'consignor') {
+            query = query.in('type', ['consignor', 'both']);
+        } else if (type === 'consignee') {
+            query = query.in('type', ['consignee', 'both']);
+        } else if (type === 'billing') {
+            // For billing party, show all parties (any party can be a billing party)
+            // No type filter needed - show consignor, consignee, both, and billing types
+        } else {
+            query = query.eq('type', type);
+        }
     }
 
     if (search) {
@@ -20,7 +29,7 @@ export const getParties = async (type?: PartyType, search?: string) => {
     const { data, error } = await query;
 
     if (error) {
-        console.error('Error fetching parties:', error);
+        console.error('Error fetching parties:', error.message, error.code, error.details, error.hint);
         return [];
     }
 

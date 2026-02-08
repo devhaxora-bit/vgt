@@ -1,18 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown, Loader2 } from "lucide-react"
+import { Check, ChevronsUpDown, Loader2, Plus } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-    Command,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-} from "@/components/ui/command"
+import { Input } from "@/components/ui/input"
 import {
     Popover,
     PopoverContent,
@@ -70,16 +63,31 @@ export function PartyAutocomplete({
         setOpen(false)
     }
 
-    const handleInputChange = (val: string) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value
         setInputValue(val)
         onValueChange?.(val)
-        // If user types something that doesn't match a selected party, we clear the selected party object
-        // provided we want to allow free text.
-        // But for autocomplete, usually we want to filter.
-        // Let's debounce search here? Or just search on open?
-        // For now, simple client-side filtering if list is small, or server side if large.
-        // Given the requirement "auto show dropdown of all available names", let's reload on type.
         fetchParties(val)
+    }
+
+    const handleAddNewParty = () => {
+        const newParty: Party = {
+            id: 'new',
+            name: inputValue,
+            code: '',
+            type: type,
+            gstin: '',
+            address: '',
+            city: '',
+            pincode: '',
+            state: '',
+            phone: '',
+            email: '',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        };
+        handleSelect(newParty);
     }
 
     return (
@@ -95,40 +103,73 @@ export function PartyAutocomplete({
                     <ChevronsUpDown className="opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[300px] p-0">
-                <Command shouldFilter={false}>
-                    <CommandInput
-                        placeholder={`Search ${type}...`}
-                        value={inputValue}
-                        onValueChange={handleInputChange}
-                    />
-                    <CommandList>
-                        {loading && <div className="p-2 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading...</div>}
-                        {!loading && parties.length === 0 && (
-                            <CommandEmpty>No party found.</CommandEmpty>
+            <PopoverContent className="w-[300px] p-0" align="start">
+                <div className="flex flex-col">
+                    {/* Search Input */}
+                    <div className="p-2 border-b">
+                        <Input
+                            placeholder={`Search ${type}...`}
+                            value={inputValue}
+                            onChange={handleInputChange}
+                            className="h-8"
+                            autoFocus
+                        />
+                    </div>
+
+                    {/* Results List */}
+                    <div className="max-h-[200px] overflow-y-auto">
+                        {loading && (
+                            <div className="p-2 text-center text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                                Loading...
+                            </div>
                         )}
-                        <CommandGroup>
-                            {parties.map((party) => (
-                                <CommandItem
-                                    key={party.id}
-                                    value={party.name}
-                                    onSelect={() => handleSelect(party)}
-                                >
-                                    <div className="flex flex-col">
-                                        <span className="font-medium">{party.name}</span>
-                                        <span className="text-xs text-muted-foreground">{party.code} - {party.city}</span>
-                                    </div>
-                                    <Check
-                                        className={cn(
-                                            "ml-auto",
-                                            inputValue === party.name ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
-                                </CommandItem>
-                            ))}
-                        </CommandGroup>
-                    </CommandList>
-                </Command>
+
+                        {!loading && parties.length === 0 && !inputValue && (
+                            <div className="p-2 text-center text-sm text-muted-foreground">
+                                Type to search or add a new party
+                            </div>
+                        )}
+
+                        {!loading && parties.length === 0 && inputValue && (
+                            <div className="p-2 text-center text-sm text-muted-foreground">
+                                No parties found
+                            </div>
+                        )}
+
+                        {parties.map((party) => (
+                            <div
+                                key={party.id}
+                                onClick={() => handleSelect(party)}
+                                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-accent transition-colors"
+                            >
+                                <div className="flex flex-col">
+                                    <span className="font-medium">{party.name}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                        {party.code} - {party.city}
+                                    </span>
+                                </div>
+                                {inputValue === party.name && (
+                                    <Check className="h-4 w-4 text-primary" />
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Add New Party Button */}
+                    {!loading && inputValue && (
+                        <div className="border-t p-1">
+                            <Button
+                                variant="ghost"
+                                className="w-full justify-start text-primary font-bold h-9"
+                                onClick={handleAddNewParty}
+                            >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add "{inputValue}" as new party
+                            </Button>
+                        </div>
+                    )}
+                </div>
             </PopoverContent>
         </Popover>
     )

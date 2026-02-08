@@ -39,7 +39,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 
 import { PartyAutocomplete } from "@/components/PartyAutocomplete";
-import { Party } from "@/lib/types/party.types";
+import { AddPartyDialog } from "@/components/AddPartyDialog";
+import { Party, PartyType } from "@/lib/types/party.types";
 
 interface PackageItem {
     id: string;
@@ -54,6 +55,11 @@ export default function NewConsignmentPage() {
     const [consignee, setConsignee] = useState<Party | null>(null);
     const [billingParty, setBillingParty] = useState<Party | null>(null);
     const [billingBranch, setBillingBranch] = useState("mrg");
+
+    // Add Party Dialog State
+    const [isAddPartyDialogOpen, setIsAddPartyDialogOpen] = useState(false);
+    const [pendingPartyName, setPendingPartyName] = useState("");
+    const [pendingPartyType, setPendingPartyType] = useState<PartyType>('consignor');
 
     // Package State
     const [isLoose, setIsLoose] = useState(false);
@@ -223,10 +229,9 @@ export default function NewConsignmentPage() {
                                     </div>
 
                                     <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery / Distance</Label>
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Distance</Label>
                                         <div className="flex gap-2">
-                                            <Input placeholder="Distance" className="w-28 h-9 bg-yellow-50/50" />
-                                            <Input placeholder="Drop Location Name" className="flex-1 h-9 bg-yellow-50/50" />
+                                            <Input placeholder="Distance in KM" className="w-full h-9 bg-yellow-50/50" />
                                         </div>
                                     </div>
                                 </div>
@@ -251,31 +256,60 @@ export default function NewConsignmentPage() {
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignor Name</Label>
                                         <PartyAutocomplete
                                             type="consignor"
-                                            onSelect={setConsignor}
+                                            onSelect={(p) => {
+                                                if (p?.id === 'new') {
+                                                    setPendingPartyName(p.name);
+                                                    setPendingPartyType('consignor');
+                                                    setIsAddPartyDialogOpen(true);
+                                                } else {
+                                                    setConsignor(p);
+                                                }
+                                            }}
                                             value={consignor?.name}
                                             placeholder="Select Consignor"
                                         />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold text-muted-foreground">Code</Label>
-                                        <Input className="h-8 text-xs" value={consignor?.code || ''} readOnly />
+                                        <Input
+                                            className="h-8 text-xs"
+                                            value={consignor?.code || ''}
+                                            readOnly
+                                        />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold text-muted-foreground">GST</Label>
-                                        <Input className="h-8 font-mono text-xs" placeholder="GSTIN" value={consignor?.gstin || ''} readOnly />
+                                        <Input
+                                            className="h-8 font-mono text-xs"
+                                            placeholder="GSTIN"
+                                            value={consignor?.gstin || ''}
+                                            readOnly
+                                        />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
-                                        <Input className="h-9" value={consignor?.address || ''} readOnly />
+                                        <Input
+                                            className="h-9"
+                                            value={consignor?.address || ''}
+                                            readOnly
+                                        />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Mobile</Label>
-                                            <Input className="h-8 text-xs" value={consignor?.phone || ''} readOnly />
+                                            <Input
+                                                className="h-8 text-xs"
+                                                value={consignor?.phone || ''}
+                                                readOnly
+                                            />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Email</Label>
-                                            <Input className="h-8 text-xs" value={consignor?.email || ''} readOnly />
+                                            <Input
+                                                className="h-8 text-xs"
+                                                value={consignor?.email || ''}
+                                                readOnly
+                                            />
                                         </div>
                                     </div>
                                 </CardContent>
@@ -297,31 +331,60 @@ export default function NewConsignmentPage() {
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignee Name</Label>
                                         <PartyAutocomplete
                                             type="consignee"
-                                            onSelect={setConsignee}
+                                            onSelect={(p) => {
+                                                if (p?.id === 'new') {
+                                                    setPendingPartyName(p.name);
+                                                    setPendingPartyType('consignee');
+                                                    setIsAddPartyDialogOpen(true);
+                                                } else {
+                                                    setConsignee(p);
+                                                }
+                                            }}
                                             value={consignee?.name}
                                             placeholder="Select Consignee"
                                         />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold text-muted-foreground">Code</Label>
-                                        <Input className="h-8 text-xs" value={consignee?.code || ''} readOnly />
+                                        <Input
+                                            className="h-8 text-xs"
+                                            value={consignee?.code || ''}
+                                            readOnly
+                                        />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold text-muted-foreground">GST</Label>
-                                        <Input className="h-8 font-mono text-xs" placeholder="GSTIN" value={consignee?.gstin || ''} readOnly />
+                                        <Input
+                                            className="h-8 font-mono text-xs"
+                                            placeholder="GSTIN"
+                                            value={consignee?.gstin || ''}
+                                            readOnly
+                                        />
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
-                                        <Input className="h-9" value={consignee?.address || ''} readOnly />
+                                        <Input
+                                            className="h-9"
+                                            value={consignee?.address || ''}
+                                            readOnly
+                                        />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Mobile</Label>
-                                            <Input className="h-8 text-xs" value={consignee?.phone || ''} readOnly />
+                                            <Input
+                                                className="h-8 text-xs"
+                                                value={consignee?.phone || ''}
+                                                readOnly
+                                            />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">Email</Label>
-                                            <Input className="h-8 text-xs" value={consignee?.email || ''} readOnly />
+                                            <Input
+                                                className="h-8 text-xs"
+                                                value={consignee?.email || ''}
+                                                readOnly
+                                            />
                                         </div>
                                     </div>
                                 </CardContent>
@@ -373,7 +436,15 @@ export default function NewConsignmentPage() {
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party</Label>
                                         <PartyAutocomplete
                                             type="billing"
-                                            onSelect={setBillingParty}
+                                            onSelect={(p) => {
+                                                if (p?.id === 'new') {
+                                                    setPendingPartyName(p.name);
+                                                    setPendingPartyType('billing');
+                                                    setIsAddPartyDialogOpen(true);
+                                                } else {
+                                                    setBillingParty(p);
+                                                }
+                                            }}
                                             value={billingParty?.name}
                                             placeholder="Select Billing Party"
                                         />
@@ -855,9 +926,26 @@ export default function NewConsignmentPage() {
                         </div>
                     </div>
                 </div>
+
+                <AddPartyDialog
+                    open={isAddPartyDialogOpen}
+                    onOpenChange={setIsAddPartyDialogOpen}
+                    initialName={pendingPartyName}
+                    defaultType={pendingPartyType}
+                    onSave={(newParty) => {
+                        // Update the appropriate state based on pendingPartyType
+                        if (pendingPartyType === 'consignor') {
+                            setConsignor(newParty);
+                        } else if (pendingPartyType === 'consignee') {
+                            setConsignee(newParty);
+                        } else if (pendingPartyType === 'billing') {
+                            setBillingParty(newParty);
+                        }
+                    }}
+                />
             </div>
 
             {/* Footer is handled by layout */}
-        </div>
+        </div >
     );
 }
