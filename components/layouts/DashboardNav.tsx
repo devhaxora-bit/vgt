@@ -73,10 +73,11 @@ export default function DashboardNav() {
                 if (profile) {
                     setUser(profile);
                 } else {
+                    // Fallback to auth data if profile is missing
                     setUser({
-                        full_name: 'Amit Pandey',
-                        employee_code: 'A8644',
-                        role: 'Admin'
+                        full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Unknown User',
+                        employee_code: 'UNC-000',
+                        role: 'admin' // Default to admin so they can fix their profile
                     });
                 }
             }

@@ -32,14 +32,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
-// Dummy data mirroring seed-users.ts
-const initialUsers = [
-    { id: 1, code: 'EMP001', name: 'System Administrator', email: 'admin@vgt.com', role: 'admin', dept: 'IT', status: 'Active' },
-    { id: 2, code: 'EMP002', name: 'John Doe', email: 'employee@vgt.com', role: 'employee', dept: 'Operations', status: 'Active' },
-    { id: 3, code: 'AGT001', name: 'Jane Smith', email: 'agent@vgt.com', role: 'agent', dept: 'Sales', status: 'Active' },
-    { id: 4, code: 'EMP003', name: 'Sarah Wilson', email: 'sarah@vgt.com', role: 'employee', dept: 'Finance', status: 'Inactive' },
-];
-
+import { useEffect } from 'react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -51,7 +44,8 @@ import {
 import { Pencil, KeyRound, Ban } from 'lucide-react';
 
 export default function UserManagementPage() {
-    const [users, setUsers] = useState(initialUsers);
+    const [users, setUsers] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
 
@@ -64,6 +58,27 @@ export default function UserManagementPage() {
     // Edit State
     const [editingUser, setEditingUser] = useState<any>(null);
 
+    // Fetch users
+    const fetchUsers = async () => {
+        setIsLoading(true);
+        try {
+            const res = await fetch('/api/admin/users');
+            if (res.ok) {
+                const data = await res.json();
+                setUsers(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch users:', error);
+            toast.error('Failed to load users');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchUsers();
+    }, []);
+
     // Dummy branches for dropdown
     const branches = [
         { code: 'MRG', name: 'Margao Hub' },
@@ -75,9 +90,8 @@ export default function UserManagementPage() {
 
     // Filter users
     const filteredUsers = users.filter(user =>
-        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase())
+        user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.employee_code?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const generateCode = (branchCode: string, role: string) => {
@@ -102,11 +116,40 @@ export default function UserManagementPage() {
         }
     };
 
-    const handleAddUser = (e: React.FormEvent) => {
+    const handleAddUser = async (e: React.FormEvent) => {
         e.preventDefault();
-        const action = mode === 'create' ? 'invite sent' : 'profile updated';
-        toast.success(`User ${generatedCode} ${action} successfully (Mock)`);
-        setIsAddOpen(false);
+
+        if (mode === 'edit' && editingUser) {
+            try {
+                const formData = new FormData(e.target as HTMLFormElement);
+                const data = {
+                    id: editingUser.id,
+                    full_name: formData.get('name') as string,
+                    department: formData.get('dept') as string,
+                    phone: formData.get('phone') as string,
+                };
+
+                const res = await fetch('/api/admin/users', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+
+                if (res.ok) {
+                    toast.success('User updated successfully');
+                    fetchUsers();
+                    setIsAddOpen(false);
+                } else {
+                    const err = await res.json();
+                    toast.error(err.error || 'Failed to update user');
+                }
+            } catch (error) {
+                toast.error('An error occurred while updating');
+            }
+        } else {
+            toast.info('Create functionality is currently limited to seed scripts');
+            setIsAddOpen(false);
+        }
         resetForm();
     };
 
@@ -121,16 +164,17 @@ export default function UserManagementPage() {
     const openEditModel = (user: any) => {
         setMode('edit');
         setEditingUser(user);
-        // Reverse engineer mock data to set dropdowns
-        const branchCode = user.dept === 'IT' ? 'HO' : 'MRG';
-        setSelectedBranch(branchCode);
+
+        // Match branch if possible from department/code
+        const branchMatch = branches.find(b => user.employee_code?.startsWith(b.code))?.code || 'HO';
+        setSelectedBranch(branchMatch);
         setSelectedRole(user.role);
-        setGeneratedCode(user.code);
+        setGeneratedCode(user.employee_code);
         setIsAddOpen(true);
     };
 
     const handlePasswordReset = () => {
-        toast.success(`Password reset email sent to ${editingUser.email}`);
+        toast.info('Password reset feature coming soon');
     };
 
     return (
@@ -314,7 +358,16 @@ export default function UserManagementPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filteredUsers.length > 0 ? (
+                        {isLoading ? (
+                            <TableRow>
+                                <TableCell colSpan={6} className="h-24 text-center">
+                                    <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                        Loading users...
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ) : filteredUsers.length > 0 ? (
                             filteredUsers.map((user) => (
                                 <TableRow key={user.id} className="hover:bg-slate-50/50">
                                     <TableCell className="font-mono font-medium">{user.code}</TableCell>
