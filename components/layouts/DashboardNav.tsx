@@ -195,7 +195,7 @@ export default function DashboardNav() {
 
     const filteredNavItems = navItems.filter(item => {
         if (item.title === 'Admin') {
-            return user?.role === 'admin';
+            return user?.role?.toLowerCase() === 'admin';
         }
         return true;
     });
