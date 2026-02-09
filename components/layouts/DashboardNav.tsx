@@ -16,7 +16,9 @@ import {
     HelpCircle,
     Menu,
     Clock,
-    MapPin
+    MapPin,
+    ChevronDown,
+    X
 } from 'lucide-react';
 
 import {
@@ -30,6 +32,8 @@ import {
 } from "@/components/ui/navigation-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 
 interface User {
@@ -43,6 +47,7 @@ export default function DashboardNav() {
     const [user, setUser] = useState<User | null>(null);
     const [currentTime, setCurrentTime] = useState<string>('');
     const [mounted, setMounted] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     useEffect(() => {
         setMounted(true);
@@ -188,18 +193,25 @@ export default function DashboardNav() {
         },
     ];
 
+    const filteredNavItems = navItems.filter(item => {
+        if (item.title === 'Admin') {
+            return user?.role === 'admin';
+        }
+        return true;
+    });
+
     if (!mounted) return null;
 
     return (
         <div className="flex flex-col w-full z-50 sticky top-0 backdrop-blur-md bg-background/80 border-b">
             {/* Main Navigation Bar */}
-            <div className="flex items-center justify-between px-6 h-16 w-full max-w-[1920px] mx-auto">
+            <div className="flex items-center justify-between px-4 md:px-6 h-14 md:h-16 w-full max-w-[1920px] mx-auto">
                 {/* Logo Area */}
-                <Link href="/dashboard" className="flex items-center gap-3">
-                    <div className="h-9 w-9 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
-                        <Truck className="h-5 w-5 text-primary-foreground" />
+                <Link href="/dashboard" className="flex items-center gap-2 md:gap-3">
+                    <div className="h-8 w-8 md:h-9 md:w-9 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
+                        <Truck className="h-4 w-4 md:h-5 md:w-5 text-primary-foreground" />
                     </div>
-                    <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60 hidden md:block">
+                    <span className="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
                         VGT
                     </span>
                 </Link>
@@ -207,12 +219,7 @@ export default function DashboardNav() {
                 {/* Desktop Navigation */}
                 <NavigationMenu className="hidden md:flex">
                     <NavigationMenuList className="gap-1">
-                        {navItems.filter(item => {
-                            if (item.title === 'Admin') {
-                                return user?.role === 'admin';
-                            }
-                            return true;
-                        }).map((item) => (
+                        {filteredNavItems.map((item) => (
                             <NavigationMenuItem key={item.title}>
                                 <NavigationMenuTrigger className="bg-transparent hover:bg-muted data-[state=open]:bg-muted text-muted-foreground hover:text-foreground">
                                     {item.title}
@@ -249,21 +256,98 @@ export default function DashboardNav() {
                 </NavigationMenu>
 
                 {/* Right Actions */}
-                <div className="flex items-center gap-4">
-                    {/* Mobile Menu Trigger could go here */}
-                    <Button variant="ghost" size="icon" onClick={handleLogout} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                <div className="flex items-center gap-2 md:gap-4">
+                    {/* Mobile Menu */}
+                    <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+                        <SheetTrigger asChild>
+                            <Button variant="ghost" size="icon" className="md:hidden">
+                                <Menu className="h-5 w-5" />
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="left" className="w-[300px] sm:w-[350px] p-0">
+                            <SheetHeader className="p-4 border-b">
+                                <SheetTitle className="flex items-center gap-2">
+                                    <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
+                                        <Truck className="h-4 w-4 text-primary-foreground" />
+                                    </div>
+                                    VGT Menu
+                                </SheetTitle>
+                            </SheetHeader>
+                            <div className="flex flex-col h-[calc(100vh-80px)] overflow-y-auto">
+                                <div className="flex-1 py-2">
+                                    {filteredNavItems.map((item) => (
+                                        <Collapsible key={item.title} className="border-b">
+                                            <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium hover:bg-muted transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <item.icon className="h-4 w-4 text-muted-foreground" />
+                                                    {item.title}
+                                                </div>
+                                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent>
+                                                <div className="bg-muted/50 py-2">
+                                                    {item.content.map((section) => (
+                                                        <div key={section.title} className="px-4 py-2">
+                                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                                                                {section.title}
+                                                            </p>
+                                                            {section.items.map((subItem) => (
+                                                                <Link
+                                                                    key={subItem.title}
+                                                                    href={subItem.href}
+                                                                    onClick={() => setMobileMenuOpen(false)}
+                                                                    className="block py-2 px-3 text-sm text-foreground hover:bg-background rounded-md transition-colors"
+                                                                >
+                                                                    {subItem.title}
+                                                                </Link>
+                                                            ))}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CollapsibleContent>
+                                        </Collapsible>
+                                    ))}
+                                </div>
+
+                                {/* User Info in Mobile */}
+                                <div className="border-t p-4 bg-muted/30">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <Avatar className="h-10 w-10 border">
+                                            <AvatarFallback className="bg-primary text-primary-foreground">
+                                                {user?.full_name?.charAt(0) || 'U'}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                            <p className="text-sm font-medium">{user?.full_name}</p>
+                                            <p className="text-xs text-muted-foreground">{user?.employee_code} • {user?.role}</p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={handleLogout}
+                                    >
+                                        <LogOut className="h-4 w-4 mr-2" />
+                                        Logout
+                                    </Button>
+                                </div>
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+
+                    <Button variant="ghost" size="icon" onClick={handleLogout} className="hidden md:flex text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                         <LogOut className="h-5 w-5" />
                     </Button>
                 </div>
             </div>
 
             {/* Info Bar - Secondary Navigation */}
-            <div className="bg-muted/50 border-t border-b px-6 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm">
+            <div className="bg-muted/50 border-t border-b px-4 md:px-6 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm">
                 <div className="max-w-[1920px] mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-4 md:gap-6">
                         <div className="flex items-center gap-2 text-primary">
                             <LayoutDashboard className="h-3.5 w-3.5" />
-                            <span>Welcome to VGT</span>
+                            <span className="hidden sm:inline">Welcome to VGT</span>
                         </div>
                         <div className="hidden sm:flex items-center gap-2">
                             <Users className="h-3.5 w-3.5" />
@@ -271,23 +355,24 @@ export default function DashboardNav() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3 md:gap-6">
+                        <div className="hidden sm:flex items-center gap-2">
                             <Avatar className="h-5 w-5 border border-border">
                                 <AvatarImage src="" />
                                 <AvatarFallback className="text-[9px] bg-primary text-primary-foreground">
                                     {user?.full_name?.charAt(0) || 'U'}
                                 </AvatarFallback>
                             </Avatar>
-                            <span>{user?.employee_code} - {user?.full_name}</span>
+                            <span className="hidden lg:inline">{user?.employee_code} - {user?.full_name}</span>
+                            <span className="lg:hidden">{user?.employee_code}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <MapPin className="h-3.5 w-3.5" />
                             <span>MRG</span>
                         </div>
-                        <div className="flex items-center gap-2 bg-background px-2 py-0.5 rounded-full border shadow-sm text-foreground">
+                        <div className="flex items-center gap-1 md:gap-2 bg-background px-2 py-0.5 rounded-full border shadow-sm text-foreground">
                             <Clock className="h-3 w-3 text-primary" />
-                            <span>{currentTime}</span>
+                            <span className="text-[10px] md:text-xs">{currentTime}</span>
                         </div>
                     </div>
                 </div>

@@ -12,7 +12,8 @@ import {
     Calendar as CalendarIcon,
     Hash,
     MapPin,
-    FileText
+    FileText,
+    Printer
 } from 'lucide-react';
 import {
     Dialog,
@@ -45,6 +46,281 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
     const billing = c.billing_details || {};
     const freight = c.freight_details || {};
     const history = c.tracking_history || [];
+
+    // Print handler
+    const handlePrint = () => {
+        // Build package table rows
+        const packageRows = c.package_details?.packages?.map((pkg: any) => `
+            <tr>
+                <td style="border:1px solid #ccc; padding:4px; text-align:center;">${pkg.sr_no}</td>
+                <td style="border:1px solid #ccc; padding:4px;">${pkg.method}</td>
+                <td style="border:1px solid #ccc; padding:4px; text-align:center;">${pkg.qty}</td>
+            </tr>
+        `).join('') || '<tr><td colspan="3" style="border:1px solid #ccc; padding:8px; text-align:center; color:#666;">No packages</td></tr>';
+
+        // Build invoice table rows
+        const invoiceRows = c.invoice_details?.invoices?.map((inv: any) => `
+            <tr>
+                <td style="border:1px solid #ccc; padding:4px;">${inv.invoice_no}</td>
+                <td style="border:1px solid #ccc; padding:4px;">${inv.date}</td>
+                <td style="border:1px solid #ccc; padding:4px;">₹ ${inv.amount?.toLocaleString()}</td>
+                <td style="border:1px solid #ccc; padding:4px;">${inv.eway_bill || '---'}</td>
+            </tr>
+        `).join('') || '<tr><td colspan="4" style="border:1px solid #ccc; padding:8px; text-align:center; color:#666;">No invoices</td></tr>';
+
+        // Build history rows
+        const historyRows = history.map((event: any) => `
+            <div style="margin-bottom:10px; padding-left:15px; border-left:3px solid #3b82f6;">
+                <div style="font-weight:bold;">${event.status}</div>
+                <div style="font-size:10px; color:#666;">${event.date} | ${event.location}</div>
+                <div style="font-size:11px;">${event.description}</div>
+            </div>
+        `).join('') || '<div style="color:#666; text-align:center;">No tracking history</div>';
+
+        const printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Consignment Note - ${c.cn_no}</title>
+                <style>
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { font-family: Arial, sans-serif; font-size: 11px; padding: 15px; }
+                    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
+                    .header h1 { font-size: 18px; margin-bottom: 5px; }
+                    .header .cn-no { font-size: 16px; font-weight: bold; }
+                    .section { margin-bottom: 12px; page-break-inside: avoid; }
+                    .section-title { font-size: 11px; font-weight: bold; text-transform: uppercase; background: #e5e7eb; padding: 5px 8px; margin-bottom: 8px; border-left: 3px solid #3b82f6; }
+                    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+                    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+                    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+                    .field { margin-bottom: 6px; }
+                    .field .label { font-size: 9px; text-transform: uppercase; color: #666; }
+                    .field .value { font-size: 11px; font-weight: 500; }
+                    .party-box { border: 1px solid #ccc; padding: 10px; }
+                    .party-name { font-weight: bold; font-size: 12px; margin-bottom: 5px; }
+                    .charges-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+                    .charge-item { border: 1px solid #ddd; padding: 6px; text-align: center; }
+                    .charge-item .label { font-size: 8px; text-transform: uppercase; color: #666; }
+                    .charge-item .value { font-size: 11px; font-weight: 600; }
+                    .total-box { text-align: right; font-size: 14px; font-weight: bold; background: #ecfdf5; padding: 10px; border: 2px solid #10b981; margin-top: 8px; }
+                    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+                    th { background: #f3f4f6; border: 1px solid #ccc; padding: 4px; text-align: left; font-size: 9px; text-transform: uppercase; }
+                    .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ccc; padding-top: 10px; }
+                    .remarks-box { background: #fef3c7; border: 1px solid #f59e0b; padding: 8px; margin-top: 8px; }
+                    @media print { 
+                        body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+                        .section { page-break-inside: avoid; }
+                    }
+                </style>
+            </head>
+            <body>
+                <!-- HEADER -->
+                <div class="header">
+                    <h1>VGT Transport</h1>
+                    <div class="cn-no">CN No: ${c.cn_no}</div>
+                    <div>Booking Date: ${c.bkg_date} | Branch: ${c.booking_branch} | Basis: ${c.bkg_basis}</div>
+                </div>
+
+                <!-- GENERAL DETAILS -->
+                <div class="section">
+                    <div class="section-title">General Details</div>
+                    <div class="grid">
+                        <div class="field"><div class="label">Booking Branch</div><div class="value">${c.booking_branch || '---'}</div></div>
+                        <div class="field"><div class="label">CN Date</div><div class="value">${c.bkg_date || '---'}</div></div>
+                        <div class="field"><div class="label">Destination</div><div class="value">${c.dest_branch || '---'}</div></div>
+                        <div class="field"><div class="label">Delivery Type</div><div class="value">${c.delivery_type || '---'}</div></div>
+                        <div class="field"><div class="label">Packages</div><div class="value">${c.no_of_pkg} ${c.package_method}</div></div>
+                        <div class="field"><div class="label">Actual Weight</div><div class="value">${c.actual_weight} KG</div></div>
+                        <div class="field"><div class="label">Charged Weight</div><div class="value">${c.charged_weight} KG</div></div>
+                        <div class="field"><div class="label">Distance</div><div class="value">${c.distance_km} KM</div></div>
+                        <div class="field"><div class="label">Delivery Location</div><div class="value">${c.delivery_drop_location || '---'}</div></div>
+                        <div class="field"><div class="label">Landmark</div><div class="value">${c.del_loc_landmark || '---'}</div></div>
+                        <div class="field"><div class="label">Risk Type</div><div class="value">${c.owner_risk ? 'OWNER RISK' : 'CARRIER RISK'}</div></div>
+                        <div class="field"><div class="label">Door Collection</div><div class="value">${c.door_collection ? 'YES' : 'NO'}</div></div>
+                    </div>
+                </div>
+
+                <!-- CONSIGNOR / CONSIGNEE -->
+                <div class="section">
+                    <div class="grid-2">
+                        <div class="party-box">
+                            <div class="section-title" style="margin:-10px -10px 10px -10px;">Consignor</div>
+                            <div class="party-name">${consignor.name || '---'}</div>
+                            <div style="font-size:10px; color:#444;">${consignor.legal_name || ''}</div>
+                            <div style="font-size:10px; margin:5px 0;">${consignor.address || ''}</div>
+                            <div style="font-size:10px;">Code: ${consignor.code || '---'} | Unit: ${consignor.unit || '---'}</div>
+                            <div style="font-size:10px;">GST: ${consignor.gst || '---'} | Trade: ${consignor.trade_name || '---'}</div>
+                            <div style="font-size:10px;">Mobile: ${consignor.mobile || '---'} | Email: ${consignor.email || '---'}</div>
+                        </div>
+                        <div class="party-box">
+                            <div class="section-title" style="margin:-10px -10px 10px -10px;">Consignee</div>
+                            <div class="party-name">${consignee.name || '---'}</div>
+                            <div style="font-size:10px; color:#444;">${consignee.legal_name || ''}</div>
+                            <div style="font-size:10px; margin:5px 0;">${consignee.address || ''}</div>
+                            <div style="font-size:10px;">Code: ${consignee.code || '---'} | Unit: ${consignee.unit || '---'}</div>
+                            <div style="font-size:10px;">GST: ${consignee.gst || '---'} | Trade: ${consignee.trade_name || '---'}</div>
+                            <div style="font-size:10px;">Mobile: ${consignee.mobile || '---'} | Email: ${consignee.email || '---'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PACKAGE DETAILS -->
+                <div class="section">
+                    <div class="section-title">Package Details</div>
+                    <div class="grid-2">
+                        <div>
+                            <table>
+                                <thead><tr><th>Sr.No.</th><th>Package Method</th><th>Qty</th></tr></thead>
+                                <tbody>${packageRows}</tbody>
+                            </table>
+                            <div style="margin-top:8px; display:flex; gap:20px;">
+                                <div class="field"><div class="label">Total Packages</div><div class="value">${c.package_details?.total_pkg || 0}</div></div>
+                                <div class="field"><div class="label">Total Quantity</div><div class="value">${c.package_details?.total_qty || 0}</div></div>
+                                <div class="field"><div class="label">Loose/Zero Pkg</div><div class="value">${c.package_details?.loose_pkg ? 'YES' : 'NO'}</div></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="section-title" style="margin-top:0;">Goods Information</div>
+                            <div class="grid-2">
+                                <div class="field"><div class="label">Goods Class</div><div class="value">${c.goods_details?.goods_class || '---'}</div></div>
+                                <div class="field"><div class="label">Value of Goods</div><div class="value">₹ ${c.goods_details?.value_of_goods?.toLocaleString() || 0}</div></div>
+                                <div class="field"><div class="label">HSN Description</div><div class="value">${c.goods_details?.hsn_desc || '---'}</div></div>
+                                <div class="field"><div class="label">COD Amount</div><div class="value">₹ ${c.goods_details?.cod_amount || 0}</div></div>
+                                <div class="field"><div class="label">Dimensions (LxWxH)</div><div class="value">${c.goods_details?.dimensions ? `${c.goods_details.dimensions.l} x ${c.goods_details.dimensions.w} x ${c.goods_details.dimensions.h}` : '---'}</div></div>
+                                <div class="field"><div class="label">Volume</div><div class="value">${c.goods_details?.volume || '---'}</div></div>
+                            </div>
+                            <div class="field"><div class="label">Goods Description</div><div class="value">${c.goods_details?.goods_desc || '---'}</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BILLING DETAILS -->
+                <div class="section">
+                    <div class="section-title">Billing Information</div>
+                    <div class="grid">
+                        <div class="field"><div class="label">Booking Basis</div><div class="value">${c.bkg_basis || '---'}</div></div>
+                        <div class="field"><div class="label">Billing Party</div><div class="value">${billing.billing_party || '---'}</div></div>
+                        <div class="field"><div class="label">Party Code</div><div class="value">${billing.party_code_unit || '---'}</div></div>
+                        <div class="field"><div class="label">Party GST</div><div class="value">${billing.billing_party_gst || '---'}</div></div>
+                        <div class="field"><div class="label">Sector / DCC</div><div class="value">${billing.sector_dcc || '---'}</div></div>
+                        <div class="field"><div class="label">Bill Station</div><div class="value">${billing.bill_for_station || '---'}</div></div>
+                        <div class="field"><div class="label">Consignee Type</div><div class="value">${billing.cnee_type || '---'}</div></div>
+                    </div>
+                </div>
+
+                <!-- FREIGHT CHARGES -->
+                <div class="section">
+                    <div class="section-title">Freight Charges Breakdown</div>
+                    <div class="charges-grid">
+                        <div class="charge-item"><div class="label">Rate/KG</div><div class="value">₹ ${freight.rate_kg || 0}</div></div>
+                        <div class="charge-item"><div class="label">Basic Freight</div><div class="value" style="font-weight:bold;">₹ ${freight.basic_freight || 0}</div></div>
+                        <div class="charge-item"><div class="label">AOC Charges</div><div class="value">₹ ${freight.aoc_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">FOV Charges</div><div class="value">₹ ${freight.fov_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Cover Charges</div><div class="value">₹ ${freight.cover_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">MHC Charges</div><div class="value">₹ ${freight.mhc_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Door Coll.</div><div class="value">₹ ${freight.door_collection_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Door Del.</div><div class="value">₹ ${freight.door_delivery_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">With Pass</div><div class="value">₹ ${freight.with_pass_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Enroute</div><div class="value">₹ ${freight.enroute_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Statistical</div><div class="value">₹ ${freight.statistical_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Misc Charges</div><div class="value">₹ ${freight.misc_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">COD Charges</div><div class="value">₹ ${freight.cod_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Toll Charges</div><div class="value">₹ ${freight.toll_charges || 0}</div></div>
+                        <div class="charge-item"><div class="label">Green Tax</div><div class="value">₹ ${freight.green_tax || 0}</div></div>
+                        <div class="charge-item"><div class="label">E-Way Bill</div><div class="value">₹ ${freight.eway_bill_charges || 0}</div></div>
+                    </div>
+                    <div class="total-box">
+                        <div style="font-size:10px; color:#666; margin-bottom:4px;">${freight.amount_in_words || ''}</div>
+                        Total Freight: ₹ ${freight.total_freight?.toLocaleString() || 0}
+                    </div>
+                </div>
+
+                <!-- INSURANCE & PO -->
+                <div class="section">
+                    <div class="grid-2">
+                        <div>
+                            <div class="section-title">Insurance Details</div>
+                            <div class="grid-2">
+                                <div class="field"><div class="label">Company</div><div class="value">${c.insurance_details?.insurance_comp || '---'}</div></div>
+                                <div class="field"><div class="label">Policy Amount</div><div class="value">${c.insurance_details?.policy_amount || '---'}</div></div>
+                                <div class="field"><div class="label">Policy No</div><div class="value">${c.insurance_details?.policy_no || '---'}</div></div>
+                                <div class="field"><div class="label">Valid Date</div><div class="value">${c.insurance_details?.policy_valid_date || '---'}</div></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="section-title">Purchase Order</div>
+                            <div class="grid-2">
+                                <div class="field"><div class="label">PO No</div><div class="value">${c.insurance_details?.po_no || '---'}</div></div>
+                                <div class="field"><div class="label">PO Date</div><div class="value">${c.insurance_details?.po_date || '---'}</div></div>
+                                <div class="field"><div class="label">STF No</div><div class="value">${c.insurance_details?.stf_no || '---'}</div></div>
+                                <div class="field"><div class="label">STF Valid Date</div><div class="value">${c.insurance_details?.stf_valid_upto || '---'}</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INVOICE DETAILS -->
+                <div class="section">
+                    <div class="section-title">Invoice Details</div>
+                    <table>
+                        <thead><tr><th>Invoice No</th><th>Date</th><th>Amount</th><th>eWay Bill</th></tr></thead>
+                        <tbody>${invoiceRows}</tbody>
+                    </table>
+                    <div style="margin-top:8px; display:flex; gap:20px;">
+                        <div class="field"><div class="label">Indent No</div><div class="value">${c.invoice_details?.indent_no || '---'}</div></div>
+                        <div class="field"><div class="label">Indent Date</div><div class="value">${c.invoice_details?.indent_date || '---'}</div></div>
+                        <div class="field"><div class="label">eWay From</div><div class="value">${c.invoice_details?.eway_from_date || '---'}</div></div>
+                        <div class="field"><div class="label">eWay To</div><div class="value">${c.invoice_details?.eway_to_date || '---'}</div></div>
+                    </div>
+                </div>
+
+                <!-- OTHER DETAILS -->
+                <div class="section">
+                    <div class="section-title">Other Details</div>
+                    <div class="grid">
+                        <div class="field"><div class="label">Type of Business</div><div class="value">${c.other_details?.type_of_business || '---'}</div></div>
+                        <div class="field"><div class="label">Transport Mode</div><div class="value">${c.other_details?.transport_mode || '---'}</div></div>
+                        <div class="field"><div class="label">Doc Prepared By</div><div class="value">${c.other_details?.doc_prepared_by || '---'}</div></div>
+                    </div>
+                </div>
+
+                <!-- TRACKING HISTORY -->
+                <div class="section">
+                    <div class="section-title">Tracking History</div>
+                    ${historyRows}
+                </div>
+
+                <!-- REMARKS -->
+                <div class="section">
+                    <div class="grid-2">
+                        <div class="remarks-box">
+                            <div style="font-size:9px; font-weight:bold; text-transform:uppercase; margin-bottom:4px;">Private Marks</div>
+                            <div>${c.private_marks || '---'}</div>
+                        </div>
+                        <div style="background:#f1f5f9; border:1px solid #cbd5e1; padding:8px;">
+                            <div style="font-size:9px; font-weight:bold; text-transform:uppercase; margin-bottom:4px;">Remarks</div>
+                            <div>${c.remarks || '---'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FOOTER -->
+                <div class="footer">
+                    Printed on ${new Date().toLocaleString()} | System ID: VGT-${c.cn_no}
+                </div>
+            </body>
+            </html>
+        `;
+
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+        }
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -433,7 +709,13 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
                     <div className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-2">
                         <Info className="h-3 w-3 text-primary" /> System ID: <span className="text-foreground">VGT-{c.cn_no}</span>
                     </div>
-                    <Button size="sm" onClick={onClose} className="bg-slate-900 text-white hover:bg-slate-800">Close</Button>
+                    <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={handlePrint} className="gap-2">
+                            <Printer className="h-4 w-4" />
+                            Print
+                        </Button>
+                        <Button size="sm" onClick={onClose} className="bg-slate-900 text-white hover:bg-slate-800">Close</Button>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>
