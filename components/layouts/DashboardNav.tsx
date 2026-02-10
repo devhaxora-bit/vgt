@@ -113,6 +113,7 @@ export default function DashboardNav() {
                     title: 'Dispatch',
                     items: [
                         { title: 'Manifest Generation', href: '#' },
+                        { title: 'Challan Entry', href: '/dashboard/challans' },
                         { title: 'Vehicle Placement', href: '#' },
                         { title: 'Trip Sheet', href: '#' },
                     ]
