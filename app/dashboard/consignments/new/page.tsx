@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
     ArrowLeft,
     Save,
@@ -83,6 +84,88 @@ export default function NewConsignmentPage() {
         other: ""
     });
 
+    // General fields state
+    const [bookingBranchCode, setBookingBranchCode] = useState("mrg");
+    const [cnNo, setCnNo] = useState("801191");
+    const [cnDate, setCnDate] = useState(new Date().toLocaleDateString('en-GB'));
+    const [deliveryType, setDeliveryType] = useState("");
+    const [distance, setDistance] = useState("");
+    const [isDoorCollection, setIsDoorCollection] = useState(false);
+    const [bkgBasis, setBkgBasis] = useState("");
+    const [destBranch, setDestBranch] = useState("");
+    const [cnPrefix, setCnPrefix] = useState("S"); // State for CN prefix
+
+    // Goods fields
+    const [goodsClass, setGoodsClass] = useState("");
+    const [goodsValue, setGoodsValue] = useState("");
+    const [goodsDesc, setGoodsDesc] = useState("");
+    const [hsnDesc, setHsnDesc] = useState("");
+    const [codAmount, setCodAmount] = useState("");
+    const [actualWeight, setActualWeight] = useState("");
+    const [loadUnit, setLoadUnit] = useState("mt");
+    const [dimL, setDimL] = useState("");
+    const [dimW, setDimW] = useState("");
+    const [dimH, setDimH] = useState("");
+    const [volume, setVolume] = useState("");
+    const [privateMark, setPrivateMark] = useState("");
+
+    // Invoice fields
+    const [invoiceNo, setInvoiceNo] = useState("");
+    const [invoiceDate, setInvoiceDate] = useState("");
+    const [invoiceAmt, setInvoiceAmt] = useState("");
+    const [indentNo, setIndentNo] = useState("");
+    const [indentDate, setIndentDate] = useState("");
+    const [ewayBill, setEwayBill] = useState("");
+    const [ewayFrom, setEwayFrom] = useState("");
+    const [ewayTo, setEwayTo] = useState("");
+
+    // Insurance fields
+    const [insuranceComp, setInsuranceComp] = useState("not-known");
+    const [policyNo, setPolicyNo] = useState("");
+    const [policyDate, setPolicyDate] = useState("");
+    const [policyAmount, setPolicyAmount] = useState("");
+    const [poNo, setPoNo] = useState("");
+    const [poDate, setPoDate] = useState("");
+    const [stfNo, setStfNo] = useState("");
+    const [stfDate, setStfDate] = useState("");
+    const [stfValidUpto, setStfValidUpto] = useState("");
+
+    // Others fields
+    const [businessType, setBusinessType] = useState("regular");
+    const [transportMode, setTransportMode] = useState("road");
+    const [docPreparedBy, setDocPreparedBy] = useState("amit");
+    const [remarks, setRemarks] = useState("");
+    const [otherPrivateMark, setOtherPrivateMark] = useState("");
+
+    // Advance
+    const [advanceAmount, setAdvanceAmount] = useState("");
+
+    // Saving state
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Fetch next CN no when branch changes
+    React.useEffect(() => {
+        const fetchNextCN = async () => {
+            try {
+                const response = await fetch(`/api/branches/next-cn?branch=${bookingBranchCode}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setCnPrefix(data.prefix);
+                    setCnNo(data.nextNo.toString());
+                }
+            } catch (error) {
+                console.error("Error fetching next CN No:", error);
+            }
+        };
+
+        if (bookingBranchCode) {
+            fetchNextCN();
+        }
+    }, [bookingBranchCode]);
+
+    // Router for redirect
+    const router = useRouter();
+
     const handleAddPackage = () => {
         if (isLoose) {
             const newPackage: PackageItem = {
@@ -121,6 +204,139 @@ export default function NewConsignmentPage() {
         return basic + extra;
     };
 
+    // Parse DD/MM/YYYY to YYYY-MM-DD for DB, or return null
+    const parseDateForDB = (val: string) => {
+        if (!val || val.trim() === '') return null;
+        const parts = val.split('/');
+        if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        return val; // assume already ISO
+    };
+
+    const handleSave = async () => {
+        if (isSaving) return;
+
+        const fullCnNo = `S${cnNo}`;
+        if (!cnNo) {
+            alert('CN No. is required.');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const totalFrt = calculateFreight();
+            const adv = parseFloat(advanceAmount) || 0;
+
+            const body = {
+                cn_no: `${cnPrefix}${cnNo}`,
+                bkg_date: cnDate.split('/').reverse().join('-'), // DD/MM/YYYY to YYYY-MM-DD
+                booking_branch: bookingBranchCode.toUpperCase(),
+                dest_branch: destBranch,
+                delivery_type: deliveryType === 'dd' ? 'Door Delivery' : deliveryType === 'gd' ? 'Godown Delivery' : deliveryType,
+                distance_km: distance,
+                owner_risk: isOwnersRisk,
+                door_collection: isDoorCollection,
+                cancel_cn: isCancelCn,
+                bkg_basis: bkgBasis === 'topay' ? 'TOPAY' : bkgBasis === 'paid' ? 'PAID' : bkgBasis === 'tbb' ? 'TO BE BILLED' : bkgBasis,
+
+                consignor_name: consignor?.name,
+                consignor_code: consignor?.code,
+                consignor_gst: consignor?.gstin,
+                consignor_address: consignor?.address,
+                consignor_mobile: consignor?.phone,
+                consignor_email: consignor?.email,
+
+                consignee_name: consignee?.name,
+                consignee_code: consignee?.code,
+                consignee_gst: consignee?.gstin,
+                consignee_address: consignee?.address,
+                consignee_mobile: consignee?.phone,
+                consignee_email: consignee?.email,
+
+                billing_party: billingParty?.name,
+                billing_party_code: billingParty?.code,
+                billing_party_gst: billingParty?.gstin,
+                billing_party_address: billingParty?.address,
+                billing_branch: billingBranch.toUpperCase(),
+
+                no_of_pkg: packages.length,
+                total_qty: isLoose ? packages.length : totalQty,
+                is_loose: isLoose,
+                packages: packages,
+                goods_class: goodsClass === 'general' ? 'General Goods' : goodsClass === 'hazardous' ? 'Hazardous' : goodsClass,
+                goods_value: goodsValue,
+                goods_desc: goodsDesc,
+                hsn_desc: hsnDesc,
+                cod_amount: codAmount,
+                actual_weight: actualWeight,
+                charged_weight: chargedWeight,
+                load_unit: loadUnit.toUpperCase(),
+                dimension_l: dimL,
+                dimension_w: dimW,
+                dimension_h: dimH,
+                volume: volume,
+                private_mark: privateMark || otherPrivateMark,
+
+                freight_pending: isFreightPending,
+                freight_rate: freightRate,
+                basic_freight: ((parseFloat(freightRate) || 0) * (parseFloat(chargedWeight) || 0)).toFixed(2),
+                unload_charges: charges.unload,
+                retention_charges: charges.retention,
+                extra_km_charges: charges.extraKm,
+                mhc_charges: charges.mhc,
+                door_coll_charges: charges.doorColl,
+                door_del_charges: charges.doorDel,
+                other_charges: charges.other,
+                total_freight: totalFrt.toFixed(2),
+                advance_amount: advanceAmount,
+                balance_amount: (totalFrt - adv).toFixed(2),
+
+                invoice_no: invoiceNo,
+                invoice_date: parseDateForDB(invoiceDate),
+                invoice_amount: invoiceAmt,
+                indent_no: indentNo,
+                indent_date: parseDateForDB(indentDate),
+                eway_bill: ewayBill,
+                eway_from_date: parseDateForDB(ewayFrom),
+                eway_to_date: parseDateForDB(ewayTo),
+
+                insurance_company: insuranceComp === 'not-known' ? 'NOT KNOWN' : insuranceComp,
+                policy_no: policyNo,
+                policy_date: parseDateForDB(policyDate),
+                policy_amount: policyAmount,
+                po_no: poNo,
+                po_date: parseDateForDB(poDate),
+                stf_no: stfNo,
+                stf_date: parseDateForDB(stfDate),
+                stf_valid_upto: parseDateForDB(stfValidUpto),
+
+                business_type: businessType === 'regular' ? 'REGULAR' : businessType,
+                transport_mode: transportMode === 'road' ? 'BY ROAD' : transportMode,
+                doc_prepared_by: docPreparedBy === 'amit' ? 'AMIT PANDEY [A8644]' : docPreparedBy,
+                remarks: remarks,
+            };
+
+            const res = await fetch('/api/consignments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to save consignment');
+            }
+
+            alert(`Consignment ${fullCnNo} saved successfully!`);
+
+            router.push('/dashboard/consignments');
+        } catch (error: any) {
+            console.error('Save error:', error);
+            alert(error.message || 'Failed to save consignment');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
 
     return (
         <div className="flex flex-col min-h-screen bg-[#f8f9fa] animate-fadeIn">
@@ -144,8 +360,8 @@ export default function NewConsignmentPage() {
                         <Button variant="outline" className="gap-2 h-9">
                             <RotateCcw className="h-4 w-4" /> Reset Form
                         </Button>
-                        <Button className="gap-2 h-9 shadow-lg shadow-primary/20">
-                            <Save className="h-4 w-4" /> Save Consignment
+                        <Button className="gap-2 h-9 shadow-lg shadow-primary/20" onClick={handleSave} disabled={isSaving}>
+                            <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Save Consignment'}
                         </Button>
                     </div>
                 </div>
@@ -164,7 +380,7 @@ export default function NewConsignmentPage() {
                                 <Label htmlFor="owners-risk" className="text-sm font-bold cursor-pointer">Owner's Risk</Label>
                             </div>
                             <div className="flex items-center space-x-2">
-                                <Checkbox id="door-collection" />
+                                <Checkbox id="door-collection" checked={isDoorCollection} onCheckedChange={(c) => setIsDoorCollection(!!c)} />
                                 <Label htmlFor="door-collection" className="text-sm font-bold cursor-pointer">Door Collection</Label>
                             </div>
                             <div className="flex items-center space-x-2">
@@ -193,7 +409,7 @@ export default function NewConsignmentPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-4">
                                     <div className="space-y-1">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Booking Branch</Label>
-                                        <Select defaultValue="mrg">
+                                        <Select value={bookingBranchCode} onValueChange={setBookingBranchCode}>
                                             <SelectTrigger className="h-9 bg-slate-50">
                                                 <SelectValue />
                                             </SelectTrigger>
@@ -208,16 +424,16 @@ export default function NewConsignmentPage() {
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">CN No & Date</Label>
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
-                                                <span className="absolute left-3 top-2 text-xs font-bold text-muted-foreground select-none">S</span>
-                                                <Input className="pl-6 h-9 font-mono font-bold" defaultValue="801191" />
+                                                <span className="absolute left-3 top-2 text-xs font-bold text-muted-foreground select-none">{cnPrefix}</span>
+                                                <Input className="pl-8 h-9 font-mono font-bold" value={cnNo} onChange={(e) => setCnNo(e.target.value)} />
                                             </div>
-                                            <Input type="text" className="w-32 h-9 text-center" defaultValue="19/01/2026" />
+                                            <Input type="text" className="w-32 h-9 text-center" value={cnDate} onChange={(e) => setCnDate(e.target.value)} />
                                         </div>
                                     </div>
 
                                     <div className="space-y-1">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery Type</Label>
-                                        <Select>
+                                        <Select value={deliveryType} onValueChange={setDeliveryType}>
                                             <SelectTrigger className="h-9">
                                                 <SelectValue placeholder="Select Type" />
                                             </SelectTrigger>
@@ -231,7 +447,7 @@ export default function NewConsignmentPage() {
                                     <div className="space-y-1 lg:col-span-2">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Distance</Label>
                                         <div className="flex gap-2">
-                                            <Input placeholder="Distance in KM" className="w-full h-9 bg-yellow-50/50" />
+                                            <Input placeholder="Distance in KM" className="w-full h-9 bg-yellow-50/50" value={distance} onChange={(e) => setDistance(e.target.value)} />
                                         </div>
                                     </div>
                                 </div>
@@ -402,7 +618,7 @@ export default function NewConsignmentPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Booking Basis</Label>
-                                        <Select>
+                                        <Select value={bkgBasis} onValueChange={setBkgBasis}>
                                             <SelectTrigger className="h-9">
                                                 <SelectValue placeholder="Select Basis" />
                                             </SelectTrigger>
@@ -586,30 +802,30 @@ export default function NewConsignmentPage() {
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Value Of Goods</Label>
-                                                        <Input className="h-8 text-xs" />
+                                                        <Input className="h-8 text-xs" value={goodsValue} onChange={(e) => setGoodsValue(e.target.value)} />
                                                     </div>
                                                 </div>
 
                                                 <div className="space-y-1">
                                                     <Label className="text-[10px] font-bold text-muted-foreground">Goods Description</Label>
-                                                    <Input className="h-8 text-xs" />
+                                                    <Input className="h-8 text-xs" value={goodsDesc} onChange={(e) => setGoodsDesc(e.target.value)} />
                                                 </div>
 
                                                 <div className="grid grid-cols-3 gap-3">
                                                     <div className="col-span-2 space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">HSN Description</Label>
-                                                        <Input className="h-8 text-xs" placeholder="AUTO EXTENDER" />
+                                                        <Input className="h-8 text-xs" placeholder="AUTO EXTENDER" value={hsnDesc} onChange={(e) => setHsnDesc(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">COD Amount</Label>
-                                                        <Input className="h-8 text-xs bg-yellow-50/50" />
+                                                        <Input className="h-8 text-xs bg-yellow-50/50" value={codAmount} onChange={(e) => setCodAmount(e.target.value)} />
                                                     </div>
                                                 </div>
 
                                                 <div className="grid grid-cols-2 gap-3">
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Actual Weight (kg)</Label>
-                                                        <Input className="h-8 text-xs" />
+                                                        <Input className="h-8 text-xs" value={actualWeight} onChange={(e) => setActualWeight(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Load Unit</Label>
@@ -900,7 +1116,7 @@ export default function NewConsignmentPage() {
 
                                             <div className="space-y-2">
                                                 <Label className="text-[10px] font-bold uppercase text-muted-foreground">Advance</Label>
-                                                <Input className="h-9 text-right font-mono font-bold" placeholder="0.00" />
+                                                <Input className="h-9 text-right font-mono font-bold" placeholder="0.00" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} />
                                             </div>
 
                                             <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
@@ -920,8 +1136,8 @@ export default function NewConsignmentPage() {
                                 </CardContent>
                             </Card>
 
-                            <Button className="w-full h-12 text-lg font-bold shadow-xl shadow-primary/20">
-                                <Save className="mr-2" /> Finalize Booking
+                            <Button className="w-full h-12 text-lg font-bold shadow-xl shadow-primary/20" onClick={handleSave} disabled={isSaving}>
+                                <Save className="mr-2" /> {isSaving ? 'Saving...' : 'Finalize Booking'}
                             </Button>
                         </div>
                     </div>

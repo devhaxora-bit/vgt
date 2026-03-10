@@ -73,43 +73,143 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-    try {
-        const supabase = await createClient();
+    const supabase = await createClient();
 
-        // Check auth
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+    // Check auth
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-        const json = await request.json();
-        const body = createChallanSchema.parse(json);
+    const body = await request.json();
 
-        // Generate Challan Number if not provided logic 
-        // For now, let's use a simple timestamp-based one or random if db doesn't handle it
-        // But better to generate one: KC + 10 digits
-        const challanNo = `KC${Date.now().toString().slice(-10)}`;
+    // Prepare insert data from body
+    const insertData: any = {
+        challan_no: body.challan_no,
+        origin_branch_code: body.origin_branch_code,
+        destination_branch_code: body.destination_branch_code,
+        challan_mode: body.challan_type || 'MAIN',
+        sub_type: body.sub_type || 'Route',
+        owner_type: body.owner_type || 'MARKET',
+        vehicle_no: body.vehicle_no,
+        driver_name: body.driver_name,
+        driver_mobile: body.driver_mobile,
+        
+        // Lane Details
+        loading_at: body.loading_at,
+        unloading_at: body.unloading_at,
+        loading_branch_code: body.loading_branch_code,
+        unloading_branch_code: body.unloading_branch_code,
+        loading_pincode: body.loading_pincode,
+        unloading_pincode: body.unloading_pincode,
+        loading_area: body.loading_area,
+        unloading_area: body.unloading_area,
+        trip_distance: body.trip_distance || 0,
+        expected_trip_complete_at: body.expected_trip_complete_at,
 
-        const { data, error } = await supabase
-            .from('challans')
-            .insert({
-                ...body,
-                challan_no: challanNo,
-                created_by: user.id,
-                status: 'ACTIVE'
-            })
-            .select()
+        // Owner/Broker
+        owner_pan: body.owner_pan,
+        owner_name: body.owner_name,
+        owner_mobile: body.owner_mobile,
+        owner_address: body.owner_address,
+        owner_tel: body.owner_tel,
+        broker_name: body.broker_name,
+        broker_code: body.broker_code,
+        broker_mobile: body.broker_mobile,
+        broker_address: body.broker_address,
+        slip_no: body.slip_no,
+        slip_date: body.slip_date,
+
+        // Vehicle
+        vehicle_type: body.vehicle_type,
+        permit_no: body.permit_no,
+        permit_validity: body.permit_validity,
+        vehicle_make: body.vehicle_make,
+        engine_no: body.engine_no,
+        chasis_no: body.chasis_no,
+        tax_token_no: body.tax_token_no,
+        tax_token_validity: body.tax_token_validity,
+        tax_token_issued_by: body.tax_token_issued_by,
+        vehicle_model: body.vehicle_model,
+
+        // Insurance
+        insurance_policy_no: body.insurance_policy_no,
+        insurance_validity: body.insurance_validity,
+        insurance_company_name: body.insurance_company_name,
+        insurance_city: body.insurance_city,
+        finance_detail: body.finance_detail,
+        ewaybill_no: body.ewaybill_no,
+        ewaybill_date: body.ewaybill_date,
+
+        // ITDS
+        itds_ref_branch: body.itds_ref_branch,
+        itds_declare_date: body.itds_declare_date,
+        itds_financial_year: body.itds_financial_year,
+
+        // Driver
+        driver_dl_no: body.driver_dl_no,
+        driver_dl_validity: body.driver_dl_validity,
+        driver_rto: body.driver_rto,
+        trip_tracking_consent: body.trip_tracking_consent || false,
+
+        // Financials
+        total_hire_amount: body.total_hire_amount || 0,
+        extra_hire_amount: body.extra_hire_amount || 0,
+        advance_amount: body.advance_amount || 0,
+        hire_rate_per_kg: body.hire_rate_per_kg || 0,
+        hire_amount: body.hire_amount || 0,
+        extra_over_weight: body.extra_over_weight || 0,
+        extra_over_length: body.extra_over_length || 0,
+        extra_over_height: body.extra_over_height || 0,
+        extra_over_width: body.extra_over_width || 0,
+        extra_km_charges: body.extra_km_charges || 0,
+        detent_charges: body.detent_charges || 0,
+        transit_pass_charges: body.transit_pass_charges || 0,
+        total_extra_charges: body.total_extra_charges || 0,
+        tds_percent: body.tds_percent || 0,
+        less_tds: body.less_tds || 0,
+        bal_payment_branch_code: body.bal_payment_branch_code,
+        card_amount: body.card_amount || 0,
+        generic_no: body.generic_no,
+        card_no: body.card_no,
+        credit_date: body.credit_date,
+        petro_card_branch_code: body.petro_card_branch_code,
+
+        // Others
+        engaged_by: body.engaged_by,
+        engaged_date: body.engaged_date,
+        remarks: body.remarks,
+
+        created_by: user.id,
+        status: 'ACTIVE'
+    };
+
+    const { data, error } = await supabase
+        .from('challans')
+        .insert(insertData)
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Failed to create challan:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Increment sequence in branches table
+    if (insertData.origin_branch_code) {
+        const { data: branchData } = await supabase
+            .from("branches")
+            .select("next_challan_no")
+            .eq("code", insertData.origin_branch_code.toUpperCase())
             .single();
 
-        if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 });
+        if (branchData) {
+            await supabase
+                .from("branches")
+                .update({ next_challan_no: (branchData.next_challan_no || 0) + 1 })
+                .eq("code", insertData.origin_branch_code.toUpperCase());
         }
-
-        return NextResponse.json(data);
-    } catch (error) {
-        if (error instanceof z.ZodError) {
-            return NextResponse.json({ error: (error as any).errors }, { status: 400 });
-        }
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
+
+    return NextResponse.json(data, { status: 201 });
 }

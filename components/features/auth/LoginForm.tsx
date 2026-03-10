@@ -61,12 +61,7 @@ export function LoginForm() {
 
             toast.success('Welcome back!');
 
-            // Redirect based on role
-            if (values.role === 'admin') {
-                router.push('/dashboard');
-            } else {
-                router.push('/entry');
-            }
+            router.push('/dashboard');
         } catch (error) {
             toast.error('Something went wrong. Please try again.');
             console.error(error);
@@ -220,7 +215,7 @@ export function LoginForm() {
 
                     {/* Sign Up Link */}
                     <p className="text-center text-sm text-[#475467]">
-                        Don't have an account?{' '}
+                        Don&apos;t have an account?{' '}
                         <button
                             type="button"
                             className="text-[#FF6154] hover:text-[#FF7B6D] font-medium transition-colors"

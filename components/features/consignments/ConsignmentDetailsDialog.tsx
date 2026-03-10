@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import {
     X,
     User,
@@ -36,295 +36,362 @@ interface ConsignmentDetailsDialogProps {
     consignment: any;
 }
 
+type CopyType = 'consigner' | 'consignee' | 'lorry' | 'office';
+
+const COPY_CONFIG: Record<CopyType, { label: string; paperTint: string }> = {
+    consigner: { label: 'CONSIGNER COPY', paperTint: '#ffffff' },
+    consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffd9df' },
+    lorry: { label: 'LORRY COPY', paperTint: '#fff6a6' },
+    office: { label: 'OFFICE COPY', paperTint: '#cdefff' },
+};
+
 export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: ConsignmentDetailsDialogProps) {
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const [copyType, setCopyType] = React.useState<CopyType>('consignee');
+
     if (!consignment) return null;
 
-    // Helper to safely access nested data
+    // Helper to safely access data (DB is flat, JSON was nested)
     const c = consignment;
-    const consignor = c.consignor || {};
-    const consignee = c.consignee || {};
-    const billing = c.billing_details || {};
-    const freight = c.freight_details || {};
+    const consignor = {
+        name: c.consignor_name || c.consignor?.name || '---',
+        legal_name: c.consignor_name || c.consignor?.legal_name || '---',
+        trade_name: c.consignor_name || c.consignor?.trade_name || '---',
+        code: c.consignor_code || c.consignor?.code || '---',
+        unit: c.consignor_unit || c.consignor?.unit || '---',
+        address: c.consignor_address || c.consignor?.address || '---',
+        gst: c.consignor_gst || c.consignor?.gst || '---',
+        mobile: c.consignor_mobile || c.consignor?.mobile || '---',
+        email: c.consignor_email || c.consignor?.email || '---',
+    };
+    const consignee = {
+        name: c.consignee_name || c.consignee?.name || '---',
+        legal_name: c.consignee_name || c.consignee?.legal_name || '---',
+        trade_name: c.consignee_name || c.consignee?.trade_name || '---',
+        code: c.consignee_code || c.consignee?.code || '---',
+        unit: c.consignee_unit || c.consignee?.unit || '---',
+        address: c.consignee_address || c.consignee?.address || '---',
+        gst: c.consignee_gst || c.consignee?.gst || '---',
+        mobile: c.consignee_mobile || c.consignee?.mobile || '---',
+        email: c.consignee_email || c.consignee?.email || '---',
+    };
+    const billing = {
+        billing_party: c.billing_party || c.billing_details?.billing_party || '---',
+        billing_party_gst: c.billing_party_gst || c.billing_details?.billing_party_gst || '---',
+        address: c.billing_party_address || c.billing_details?.address || '---',
+        party_code_unit: c.billing_party_code || c.billing_details?.party_code_unit || '---',
+        sector_dcc: c.billing_sector || c.billing_details?.sector_dcc || '---',
+        bill_for_station: c.billing_branch || c.billing_details?.bill_for_station || '---',
+        cnee_type: c.consignee_type || c.billing_details?.cnee_type || '---',
+    };
+    const freight = {
+        rate_kg: c.freight_rate || c.freight_details?.rate_kg || 0,
+        basic_freight: c.basic_freight || c.freight_details?.basic_freight || 0,
+        door_del_charges: c.door_del_charges || c.freight_details?.door_delivery_charges || 0,
+        door_coll_charges: c.door_coll_charges || c.freight_details?.door_collection_charges || 0,
+        statistical_charges: c.statistical_charges || c.freight_details?.statistical_charges || 0,
+        misc_charges: c.other_charges || c.freight_details?.misc_charges || 0,
+        aoc_charges: c.aoc_charges || c.freight_details?.aoc_charges || 0,
+        fov_charges: c.fov_charges || c.freight_details?.fov_charges || 0,
+        cover_charges: c.cover_charges || c.freight_details?.cover_charges || 0,
+        mhc_charges: c.mhc_charges || c.freight_details?.mhc_charges || 0,
+        with_pass_charges: c.with_pass_charges || c.freight_details?.with_pass_charges || 0,
+        enroute_charges: c.enroute_charges || c.freight_details?.enroute_charges || 0,
+        cod_charges: c.cod_charges || c.freight_details?.cod_charges || 0,
+        toll_charges: c.toll_charges || c.freight_details?.toll_charges || 0,
+        green_tax: c.green_tax || c.freight_details?.green_tax || 0,
+        eway_bill_charges: c.eway_bill_charges || c.freight_details?.eway_bill_charges || 0,
+        total_freight: c.total_freight || c.freight_details?.total_freight || 0,
+        advance: c.advance_amount || c.freight_details?.advance || 0,
+        balance: c.balance_amount || c.freight_details?.balance || 0,
+        amount_in_words: c.amount_in_words || c.freight_details?.amount_in_words || '',
+    };
     const history = c.tracking_history || [];
 
-    // Print handler
-    const handlePrint = () => {
-        // Build package table rows
-        const packageRows = c.package_details?.packages?.map((pkg: any) => `
-            <tr>
-                <td style="border:1px solid #ccc; padding:4px; text-align:center;">${pkg.sr_no}</td>
-                <td style="border:1px solid #ccc; padding:4px;">${pkg.method}</td>
-                <td style="border:1px solid #ccc; padding:4px; text-align:center;">${pkg.qty}</td>
-            </tr>
-        `).join('') || '<tr><td colspan="3" style="border:1px solid #ccc; padding:8px; text-align:center; color:#666;">No packages</td></tr>';
+    // Print/Download handler
+    const handlePrint = async (type: CopyType, mode: 'print' | 'download' = 'print') => {
+        const config = COPY_CONFIG[type];
+        const formatDate = (dateValue: string | null | undefined) => {
+            if (!dateValue) return '---';
+            const parsed = new Date(dateValue);
+            if (Number.isNaN(parsed.getTime())) return dateValue;
+            const day = String(parsed.getDate()).padStart(2, '0');
+            const month = String(parsed.getMonth() + 1).padStart(2, '0');
+            const year = String(parsed.getFullYear()).slice(-2);
+            return `${day}/${month}/${year}`;
+        };
 
-        // Build invoice table rows
-        const invoiceRows = c.invoice_details?.invoices?.map((inv: any) => `
-            <tr>
-                <td style="border:1px solid #ccc; padding:4px;">${inv.invoice_no}</td>
-                <td style="border:1px solid #ccc; padding:4px;">${inv.date}</td>
-                <td style="border:1px solid #ccc; padding:4px;">₹ ${inv.amount?.toLocaleString()}</td>
-                <td style="border:1px solid #ccc; padding:4px;">${inv.eway_bill || '---'}</td>
-            </tr>
-        `).join('') || '<tr><td colspan="4" style="border:1px solid #ccc; padding:8px; text-align:center; color:#666;">No invoices</td></tr>';
+        const invoiceNo = c.invoice_no || c.invoice_details?.invoices?.[0]?.invoice_no || '---';
+        const invoiceDate = formatDate(c.invoice_date || c.invoice_details?.invoices?.[0]?.date);
+        const ewayNo = c.eway_bill || c.invoice_details?.invoices?.[0]?.eway_bill || '---';
+        const ewayValidUpto = formatDate(c.eway_to_date || c.invoice_details?.eway_to_date);
+        const cnDate = formatDate(c.bkg_date);
+        const goodsValue = Number(c.goods_value || c.goods_details?.value_of_goods || 0);
+        const actualWeight = c.actual_weight || c.goods_details?.actual_weight || '---';
+        const chargedWeight = c.charged_weight || c.goods_details?.charged_weight || '---';
+        const packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
+        const goodsDescription = c.goods_desc || c.goods_details?.goods_desc || '---';
+        const topayLabel = c.bkg_basis || 'TOPAY';
+        const totalFreight = Number(freight.total_freight || c.total_freight || 0);
+        const truckNo = c.vehicle_no || c.truck_no || '---';
+        const issuingOffice = c.booking_branch || c.bkg_branch || '---';
 
-        // Build history rows
-        const historyRows = history.map((event: any) => `
-            <div style="margin-bottom:10px; padding-left:15px; border-left:3px solid #3b82f6;">
-                <div style="font-weight:bold;">${event.status}</div>
-                <div style="font-size:10px; color:#666;">${event.date} | ${event.location}</div>
-                <div style="font-size:11px;">${event.description}</div>
+        const html = `<!DOCTYPE html>
+<html>
+<head>
+<title>${config.label} - ${c.cn_no}</title>
+<style>
+@page { size: A4 landscape; margin: 4mm; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; }
+.page { border: 2px solid #1d2f7a; background: ${config.paperTint}; width: 289mm; min-height: 202mm; margin: 0 auto; }
+.row { display: flex; width: 100%; }
+.box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
+.tiny { font-size: 11px; line-height: 1.25; }
+.mini { font-size: 10px; line-height: 1.2; }
+.lbl { font-size: 11px; font-weight: 700; color: #1d2f7a; }
+.strong { font-weight: 700; }
+.head-blue { color: #17308b; font-weight: 800; }
+.lr-red { color: #cc1a1a; font-weight: 900; font-size: 44px; letter-spacing: 1px; }
+.line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
+.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 6px; }
+.logo-box { width: 86px; height: 54px; border: 2px solid #1d2f7a; border-radius: 6px; display:flex; align-items:center; justify-content:center; font-size: 26px; color:#1d2f7a; font-weight: 900; }
+.top-grid { display: grid; grid-template-columns: 1.2fr 1.2fr 1.2fr 0.95fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
+.name-grid { display:grid; grid-template-columns: 1.4fr 0.45fr 0.65fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
+.right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 5px 6px; min-height: 32px; }
+.right-stack > div:last-child { border-bottom: none; }
+.main-table { width:100%; border-collapse: collapse; }
+.main-table th, .main-table td { border:1px solid #1d2f7a; padding: 4px 6px; vertical-align: top; }
+.main-table th { background: rgba(255,255,255,0.65); color:#122d7a; font-size: 13px; }
+.charges-list { font-size: 13px; line-height: 1.45; }
+.footer { display:flex; justify-content:space-between; padding:10px 12px; align-items:flex-end; }
+.copy-chip { text-align:center; border:1px solid #1d2f7a; border-radius:6px; font-size: 30px; font-weight: 800; color:#163082; letter-spacing: 1px; margin-top:4px; }
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="hdr">
+        <div class="row" style="gap:10px; align-items:center;">
+            <div class="logo-box">VGT</div>
+            <div style="flex:1; text-align:center;">
+                <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:4px;">Visakha Golden Transport</div>
+                <div class="strong" style="font-size:18px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
+                <div style="font-size:16px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
-        `).join('') || '<div style="color:#666; text-align:center;">No tracking history</div>';
+        </div>
+        <div class="copy-chip">${config.label}</div>
+    </div>
 
-        const printContent = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Consignment Note - ${c.cn_no}</title>
-                <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { font-family: Arial, sans-serif; font-size: 11px; padding: 15px; }
-                    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
-                    .header h1 { font-size: 18px; margin-bottom: 5px; }
-                    .header .cn-no { font-size: 16px; font-weight: bold; }
-                    .section { margin-bottom: 12px; page-break-inside: avoid; }
-                    .section-title { font-size: 11px; font-weight: bold; text-transform: uppercase; background: #e5e7eb; padding: 5px 8px; margin-bottom: 8px; border-left: 3px solid #3b82f6; }
-                    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-                    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-                    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-                    .field { margin-bottom: 6px; }
-                    .field .label { font-size: 9px; text-transform: uppercase; color: #666; }
-                    .field .value { font-size: 11px; font-weight: 500; }
-                    .party-box { border: 1px solid #ccc; padding: 10px; }
-                    .party-name { font-weight: bold; font-size: 12px; margin-bottom: 5px; }
-                    .charges-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
-                    .charge-item { border: 1px solid #ddd; padding: 6px; text-align: center; }
-                    .charge-item .label { font-size: 8px; text-transform: uppercase; color: #666; }
-                    .charge-item .value { font-size: 11px; font-weight: 600; }
-                    .total-box { text-align: right; font-size: 14px; font-weight: bold; background: #ecfdf5; padding: 10px; border: 2px solid #10b981; margin-top: 8px; }
-                    table { width: 100%; border-collapse: collapse; font-size: 10px; }
-                    th { background: #f3f4f6; border: 1px solid #ccc; padding: 4px; text-align: left; font-size: 9px; text-transform: uppercase; }
-                    .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ccc; padding-top: 10px; }
-                    .remarks-box { background: #fef3c7; border: 1px solid #f59e0b; padding: 8px; margin-top: 8px; }
-                    @media print { 
-                        body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-                        .section { page-break-inside: avoid; }
-                    }
-                </style>
-            </head>
-            <body>
-                <!-- HEADER -->
-                <div class="header">
-                    <h1>VGT Transport</h1>
-                    <div class="cn-no">CN No: ${c.cn_no}</div>
-                    <div>Booking Date: ${c.bkg_date} | Branch: ${c.booking_branch} | Basis: ${c.bkg_basis}</div>
+    <div class="top-grid">
+        <div>
+            <div class="box tiny" style="margin-bottom:6px;">
+                <div class="lbl">SCHEDULE OF DEMURRAGE CHARGES</div>
+                <div>Demurrage chargeable after .......... days from today @ Rs. .......... per day per Qtl / on weight charged.</div>
+            </div>
+            <div class="box tiny">
+                <div class="lbl">NOTICE</div>
+                <div>The consignment covered by this Lorry Receipt shall be stored at destination under the control of transporter. Delivery only on consignee bank instruction.</div>
+            </div>
+        </div>
+
+        <div>
+            <div class="box tiny" style="margin-bottom:6px;">
+                <div class="lbl" style="text-align:center; font-size:22px;">AT/CARRIER'S RISK/OWNER'S RISK</div>
+                <div class="lbl" style="text-align:center; font-size:22px;">INSURANCE</div>
+                <div class="line">The consignor has stated that he has not insured the consignment</div>
+                <div class="line">OR he has insured the consignment</div>
+                <div class="line">Company ..................... Policy No ............. Date .............</div>
+                <div>Amount ..................... Risk .............</div>
+            </div>
+
+            <div class="box tiny">
+                <div class="lbl" style="text-align:center; font-size:24px;">CONSIGNMENT NOTE</div>
+                <div class="row" style="align-items:center; gap:8px; margin-top:3px;">
+                    <span class="strong">No.</span>
+                    <span class="lr-red">${c.cn_no || '---'}</span>
                 </div>
+                <div class="line"><span class="strong">Date</span>&nbsp;&nbsp;<span style="font-size:18px; font-weight:700;">${cnDate}</span></div>
+            </div>
+        </div>
 
-                <!-- GENERAL DETAILS -->
-                <div class="section">
-                    <div class="section-title">General Details</div>
-                    <div class="grid">
-                        <div class="field"><div class="label">Booking Branch</div><div class="value">${c.booking_branch || '---'}</div></div>
-                        <div class="field"><div class="label">CN Date</div><div class="value">${c.bkg_date || '---'}</div></div>
-                        <div class="field"><div class="label">Destination</div><div class="value">${c.dest_branch || '---'}</div></div>
-                        <div class="field"><div class="label">Delivery Type</div><div class="value">${c.delivery_type || '---'}</div></div>
-                        <div class="field"><div class="label">Packages</div><div class="value">${c.no_of_pkg} ${c.package_method}</div></div>
-                        <div class="field"><div class="label">Actual Weight</div><div class="value">${c.actual_weight} KG</div></div>
-                        <div class="field"><div class="label">Charged Weight</div><div class="value">${c.charged_weight} KG</div></div>
-                        <div class="field"><div class="label">Distance</div><div class="value">${c.distance_km} KM</div></div>
-                        <div class="field"><div class="label">Delivery Location</div><div class="value">${c.delivery_drop_location || '---'}</div></div>
-                        <div class="field"><div class="label">Landmark</div><div class="value">${c.del_loc_landmark || '---'}</div></div>
-                        <div class="field"><div class="label">Risk Type</div><div class="value">${c.owner_risk ? 'OWNER RISK' : 'CARRIER RISK'}</div></div>
-                        <div class="field"><div class="label">Door Collection</div><div class="value">${c.door_collection ? 'YES' : 'NO'}</div></div>
-                    </div>
-                </div>
+        <div>
+            <div class="box tiny" style="margin-bottom:6px;">
+                <div class="lbl" style="text-align:center;">CAUTION</div>
+                <div>The consignment will not be detained/diverted/re-routed without Consignee Bank's written permission.</div>
+                <div class="line">Address of Delivery office :</div>
+                <div class="line">&nbsp;</div>
+                <div class="line">&nbsp;</div>
+            </div>
 
-                <!-- CONSIGNOR / CONSIGNEE -->
-                <div class="section">
-                    <div class="grid-2">
-                        <div class="party-box">
-                            <div class="section-title" style="margin:-10px -10px 10px -10px;">Consignor</div>
-                            <div class="party-name">${consignor.name || '---'}</div>
-                            <div style="font-size:10px; color:#444;">${consignor.legal_name || ''}</div>
-                            <div style="font-size:10px; margin:5px 0;">${consignor.address || ''}</div>
-                            <div style="font-size:10px;">Code: ${consignor.code || '---'} | Unit: ${consignor.unit || '---'}</div>
-                            <div style="font-size:10px;">GST: ${consignor.gst || '---'} | Trade: ${consignor.trade_name || '---'}</div>
-                            <div style="font-size:10px;">Mobile: ${consignor.mobile || '---'} | Email: ${consignor.email || '---'}</div>
-                        </div>
-                        <div class="party-box">
-                            <div class="section-title" style="margin:-10px -10px 10px -10px;">Consignee</div>
-                            <div class="party-name">${consignee.name || '---'}</div>
-                            <div style="font-size:10px; color:#444;">${consignee.legal_name || ''}</div>
-                            <div style="font-size:10px; margin:5px 0;">${consignee.address || ''}</div>
-                            <div style="font-size:10px;">Code: ${consignee.code || '---'} | Unit: ${consignee.unit || '---'}</div>
-                            <div style="font-size:10px;">GST: ${consignee.gst || '---'} | Trade: ${consignee.trade_name || '---'}</div>
-                            <div style="font-size:10px;">Mobile: ${consignee.mobile || '---'} | Email: ${consignee.email || '---'}</div>
-                        </div>
-                    </div>
-                </div>
+            <div class="box tiny">
+                <div class="lbl">From</div>
+                <div class="line strong" style="font-size:18px;">${c.booking_branch || c.bkg_branch || '---'}</div>
+                <div class="lbl">To</div>
+                <div class="line strong" style="font-size:18px;">${c.dest_branch || '---'}</div>
+            </div>
+        </div>
 
-                <!-- PACKAGE DETAILS -->
-                <div class="section">
-                    <div class="section-title">Package Details</div>
-                    <div class="grid-2">
-                        <div>
-                            <table>
-                                <thead><tr><th>Sr.No.</th><th>Package Method</th><th>Qty</th></tr></thead>
-                                <tbody>${packageRows}</tbody>
-                            </table>
-                            <div style="margin-top:8px; display:flex; gap:20px;">
-                                <div class="field"><div class="label">Total Packages</div><div class="value">${c.package_details?.total_pkg || 0}</div></div>
-                                <div class="field"><div class="label">Total Quantity</div><div class="value">${c.package_details?.total_qty || 0}</div></div>
-                                <div class="field"><div class="label">Loose/Zero Pkg</div><div class="value">${c.package_details?.loose_pkg ? 'YES' : 'NO'}</div></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="section-title" style="margin-top:0;">Goods Information</div>
-                            <div class="grid-2">
-                                <div class="field"><div class="label">Goods Class</div><div class="value">${c.goods_details?.goods_class || '---'}</div></div>
-                                <div class="field"><div class="label">Value of Goods</div><div class="value">₹ ${c.goods_details?.value_of_goods?.toLocaleString() || 0}</div></div>
-                                <div class="field"><div class="label">HSN Description</div><div class="value">${c.goods_details?.hsn_desc || '---'}</div></div>
-                                <div class="field"><div class="label">COD Amount</div><div class="value">₹ ${c.goods_details?.cod_amount || 0}</div></div>
-                                <div class="field"><div class="label">Dimensions (LxWxH)</div><div class="value">${c.goods_details?.dimensions ? `${c.goods_details.dimensions.l} x ${c.goods_details.dimensions.w} x ${c.goods_details.dimensions.h}` : '---'}</div></div>
-                                <div class="field"><div class="label">Volume</div><div class="value">${c.goods_details?.volume || '---'}</div></div>
-                            </div>
-                            <div class="field"><div class="label">Goods Description</div><div class="value">${c.goods_details?.goods_desc || '---'}</div></div>
-                        </div>
-                    </div>
-                </div>
+        <div class="box right-stack tiny">
+            <div><span class="lbl">PAN NO : </span><span class="strong">AAWFV7670H</span></div>
+            <div><span class="lbl">GSTIN : </span><span class="strong">37AAWFV7670H1Z8</span></div>
+            <div><span class="lbl">E-Way Bill No. : </span><span class="strong">${ewayNo}</span><br/><span class="lbl">valid upto : </span><span class="strong">${ewayValidUpto}</span></div>
+            <div><span class="lbl">Address of issuing office / agent</span><br/><span class="strong">${issuingOffice}</span></div>
+            <div><span class="lbl">Truck No.</span><br/><span class="strong" style="font-size:20px;">${truckNo}</span></div>
+            <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong">${consignor.gst || '---'}</span></div>
+            <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong">${consignee.gst || '---'}</span></div>
+            <div><span class="lbl">GST payable by</span><br/><span class="strong">Consignor / Consignee</span></div>
+        </div>
+    </div>
 
-                <!-- BILLING DETAILS -->
-                <div class="section">
-                    <div class="section-title">Billing Information</div>
-                    <div class="grid">
-                        <div class="field"><div class="label">Booking Basis</div><div class="value">${c.bkg_basis || '---'}</div></div>
-                        <div class="field"><div class="label">Billing Party</div><div class="value">${billing.billing_party || '---'}</div></div>
-                        <div class="field"><div class="label">Party Code</div><div class="value">${billing.party_code_unit || '---'}</div></div>
-                        <div class="field"><div class="label">Party GST</div><div class="value">${billing.billing_party_gst || '---'}</div></div>
-                        <div class="field"><div class="label">Sector / DCC</div><div class="value">${billing.sector_dcc || '---'}</div></div>
-                        <div class="field"><div class="label">Bill Station</div><div class="value">${billing.bill_for_station || '---'}</div></div>
-                        <div class="field"><div class="label">Consignee Type</div><div class="value">${billing.cnee_type || '---'}</div></div>
-                    </div>
-                </div>
+    <div class="name-grid">
+        <div>
+            <div class="line"><span class="lbl">Consignor's Name & Address</span>&nbsp;&nbsp;<span class="strong" style="font-size:17px;">${consignor.name || '---'}</span></div>
+            <div class="line strong" style="font-size:16px;">${consignor.address || '---'}</div>
+            <div class="line"><span class="lbl">Consignee's Name & Address</span>&nbsp;&nbsp;<span class="strong" style="font-size:17px;">${consignee.name || '---'}</span></div>
+            <div class="line strong" style="font-size:16px;">${consignee.address || '---'}</div>
+        </div>
+        <div class="box tiny">
+            <div class="lbl">Mode</div>
+            <div class="line">${c.transport_mode || 'BY ROAD'}</div>
+            <div class="lbl">Risk</div>
+            <div class="line">${c.owner_risk ? 'OWNER RISK' : 'CARRIER RISK'}</div>
+            <div class="lbl">Basis</div>
+            <div class="line">${topayLabel}</div>
+        </div>
+        <div class="box tiny">
+            <div class="lbl">Billing Party</div>
+            <div class="line strong">${billing.billing_party || '---'}</div>
+            <div class="lbl">Branch</div>
+            <div class="line">${billing.bill_for_station || '---'}</div>
+            <div class="lbl">Code</div>
+            <div class="line">${billing.party_code_unit || '---'}</div>
+        </div>
+    </div>
 
-                <!-- FREIGHT CHARGES -->
-                <div class="section">
-                    <div class="section-title">Freight Charges Breakdown</div>
-                    <div class="charges-grid">
-                        <div class="charge-item"><div class="label">Rate/KG</div><div class="value">₹ ${freight.rate_kg || 0}</div></div>
-                        <div class="charge-item"><div class="label">Basic Freight</div><div class="value" style="font-weight:bold;">₹ ${freight.basic_freight || 0}</div></div>
-                        <div class="charge-item"><div class="label">AOC Charges</div><div class="value">₹ ${freight.aoc_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">FOV Charges</div><div class="value">₹ ${freight.fov_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Cover Charges</div><div class="value">₹ ${freight.cover_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">MHC Charges</div><div class="value">₹ ${freight.mhc_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Door Coll.</div><div class="value">₹ ${freight.door_collection_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Door Del.</div><div class="value">₹ ${freight.door_delivery_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">With Pass</div><div class="value">₹ ${freight.with_pass_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Enroute</div><div class="value">₹ ${freight.enroute_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Statistical</div><div class="value">₹ ${freight.statistical_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Misc Charges</div><div class="value">₹ ${freight.misc_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">COD Charges</div><div class="value">₹ ${freight.cod_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Toll Charges</div><div class="value">₹ ${freight.toll_charges || 0}</div></div>
-                        <div class="charge-item"><div class="label">Green Tax</div><div class="value">₹ ${freight.green_tax || 0}</div></div>
-                        <div class="charge-item"><div class="label">E-Way Bill</div><div class="value">₹ ${freight.eway_bill_charges || 0}</div></div>
-                    </div>
-                    <div class="total-box">
-                        <div style="font-size:10px; color:#666; margin-bottom:4px;">${freight.amount_in_words || ''}</div>
-                        Total Freight: ₹ ${freight.total_freight?.toLocaleString() || 0}
-                    </div>
-                </div>
+    <table class="main-table">
+        <thead>
+            <tr>
+                <th style="width:9%;">Packages</th>
+                <th style="width:29%;">Description (Said to Contain)</th>
+                <th style="width:9%;">Weight<br/>Actual</th>
+                <th style="width:9%;">Weight<br/>Charged</th>
+                <th style="width:10%;">Rate</th>
+                <th style="width:20%;">Amount to pay / paid</th>
+                <th style="width:14%;">Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="height:146px;">
+                <td class="strong" style="font-size:30px; text-align:center;">${packageText}</td>
+                <td>
+                    <div class="strong" style="font-size:24px;">${goodsDescription}</div>
+                    <div style="margin-top:34px; font-size:18px;">Invoice No. <span class="strong">${invoiceNo}</span></div>
+                    <div style="margin-top:8px; font-size:18px;">Invoice Date . <span class="strong">${invoiceDate}</span></div>
+                </td>
+                <td class="strong" style="text-align:center; font-size:26px;">${actualWeight}</td>
+                <td class="strong" style="text-align:center; font-size:26px;">${chargedWeight}</td>
+                <td class="charges-list">
+                    Hamali<br/>
+                    Hire charges<br/>
+                    St. Ch.<br/>
+                    Sur Ch. ${topayLabel}<br/>
+                    Service Ch.<br/>
+                    Risk Charge<br/><br/>
+                    <span class="strong">TOTAL</span>
+                </td>
+                <td class="charges-list">
+                    Rs. ${(freight.basic_freight || 0).toFixed(2)}<br/>
+                    Rs. ${(freight.mhc_charges || 0).toFixed(2)}<br/>
+                    Rs. ${(freight.statistical_charges || 0).toFixed(2)}<br/>
+                    Rs. ${(c.other_charges || 0).toFixed(2)}<br/>
+                    Rs. ${(freight.misc_charges || 0).toFixed(2)}<br/>
+                    Rs. ${(freight.fov_charges || 0).toFixed(2)}<br/><br/>
+                    <span class="strong">Rs. ${totalFreight.toFixed(2)}</span>
+                </td>
+                <td class="tiny">
+                    <div><span class="lbl">LR No.</span> <span class="lr-red" style="font-size:24px;">${c.cn_no || '---'}</span></div>
+                    <div style="margin-top:10px;"><span class="lbl">E-Way</span> ${ewayNo}</div>
+                    <div><span class="lbl">Valid</span> ${ewayValidUpto}</div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
 
-                <!-- INSURANCE & PO -->
-                <div class="section">
-                    <div class="grid-2">
-                        <div>
-                            <div class="section-title">Insurance Details</div>
-                            <div class="grid-2">
-                                <div class="field"><div class="label">Company</div><div class="value">${c.insurance_details?.insurance_comp || '---'}</div></div>
-                                <div class="field"><div class="label">Policy Amount</div><div class="value">${c.insurance_details?.policy_amount || '---'}</div></div>
-                                <div class="field"><div class="label">Policy No</div><div class="value">${c.insurance_details?.policy_no || '---'}</div></div>
-                                <div class="field"><div class="label">Valid Date</div><div class="value">${c.insurance_details?.policy_valid_date || '---'}</div></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="section-title">Purchase Order</div>
-                            <div class="grid-2">
-                                <div class="field"><div class="label">PO No</div><div class="value">${c.insurance_details?.po_no || '---'}</div></div>
-                                <div class="field"><div class="label">PO Date</div><div class="value">${c.insurance_details?.po_date || '---'}</div></div>
-                                <div class="field"><div class="label">STF No</div><div class="value">${c.insurance_details?.stf_no || '---'}</div></div>
-                                <div class="field"><div class="label">STF Valid Date</div><div class="value">${c.insurance_details?.stf_valid_upto || '---'}</div></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <div class="footer">
+        <div style="font-size:19px; font-weight:700;">Value . ${goodsValue.toLocaleString('en-IN')}</div>
+        <div style="font-size:19px; font-weight:700;">Signature of the Issuing Officer .......................................</div>
+    </div>
+</div>
+</body>
+</html>`;
 
-                <!-- INVOICE DETAILS -->
-                <div class="section">
-                    <div class="section-title">Invoice Details</div>
-                    <table>
-                        <thead><tr><th>Invoice No</th><th>Date</th><th>Amount</th><th>eWay Bill</th></tr></thead>
-                        <tbody>${invoiceRows}</tbody>
-                    </table>
-                    <div style="margin-top:8px; display:flex; gap:20px;">
-                        <div class="field"><div class="label">Indent No</div><div class="value">${c.invoice_details?.indent_no || '---'}</div></div>
-                        <div class="field"><div class="label">Indent Date</div><div class="value">${c.invoice_details?.indent_date || '---'}</div></div>
-                        <div class="field"><div class="label">eWay From</div><div class="value">${c.invoice_details?.eway_from_date || '---'}</div></div>
-                        <div class="field"><div class="label">eWay To</div><div class="value">${c.invoice_details?.eway_to_date || '---'}</div></div>
-                    </div>
-                </div>
+        // Use hidden iframe to avoid screen blink
+        const iframe = iframeRef.current;
+        if (!iframe) return;
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+        doc.open();
+        doc.write(html);
+        doc.close();
 
-                <!-- OTHER DETAILS -->
-                <div class="section">
-                    <div class="section-title">Other Details</div>
-                    <div class="grid">
-                        <div class="field"><div class="label">Type of Business</div><div class="value">${c.other_details?.type_of_business || '---'}</div></div>
-                        <div class="field"><div class="label">Transport Mode</div><div class="value">${c.other_details?.transport_mode || '---'}</div></div>
-                        <div class="field"><div class="label">Doc Prepared By</div><div class="value">${c.other_details?.doc_prepared_by || '---'}</div></div>
-                    </div>
-                </div>
+        await new Promise((resolve) => setTimeout(resolve, 400));
 
-                <!-- TRACKING HISTORY -->
-                <div class="section">
-                    <div class="section-title">Tracking History</div>
-                    ${historyRows}
-                </div>
-
-                <!-- REMARKS -->
-                <div class="section">
-                    <div class="grid-2">
-                        <div class="remarks-box">
-                            <div style="font-size:9px; font-weight:bold; text-transform:uppercase; margin-bottom:4px;">Private Marks</div>
-                            <div>${c.private_marks || '---'}</div>
-                        </div>
-                        <div style="background:#f1f5f9; border:1px solid #cbd5e1; padding:8px;">
-                            <div style="font-size:9px; font-weight:bold; text-transform:uppercase; margin-bottom:4px;">Remarks</div>
-                            <div>${c.remarks || '---'}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- FOOTER -->
-                <div class="footer">
-                    Printed on ${new Date().toLocaleString()} | System ID: VGT-${c.cn_no}
-                </div>
-            </body>
-            </html>
-        `;
-
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-            printWindow.focus();
-            printWindow.print();
-            printWindow.close();
+        if (mode === 'print') {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            return;
         }
+
+        const page = doc.querySelector('.page') as HTMLElement | null;
+        if (!page) return;
+
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+            import('html2canvas'),
+            import('jspdf'),
+        ]);
+
+        const canvas = await html2canvas(page, {
+            scale: 3,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            width: page.scrollWidth,
+            height: page.scrollHeight,
+            windowWidth: page.scrollWidth,
+            windowHeight: page.scrollHeight,
+        });
+
+        const imageData = canvas.toDataURL('image/jpeg', 1);
+        const pdf = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4',
+            compress: true,
+        });
+
+        pdf.addImage(imageData, 'JPEG', 0, 0, 297, 210, undefined, 'FAST');
+        const safeCopyLabel = config.label.toLowerCase().replace(/\s+/g, '-');
+        const safeCn = String(c.cn_no || 'cns').replace(/[^a-zA-Z0-9-_]/g, '');
+        pdf.save(`${safeCn}-${safeCopyLabel}.pdf`);
     };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-[95vw] w-[95vw] h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col sm:max-w-[95vw]">
+                {/* Hidden iframe for printing */}
+                <iframe
+                    ref={iframeRef}
+                    style={{
+                        position: 'fixed',
+                        left: '-10000px',
+                        top: 0,
+                        width: '1400px',
+                        height: '1000px',
+                        border: 'none',
+                        opacity: 0,
+                        pointerEvents: 'none',
+                    }}
+                />
+
                 {/* Header */}
                 <DialogHeader className="bg-primary px-6 py-4 flex-shrink-0 flex flex-row items-center justify-between space-y-0 text-white">
                     <div className="flex flex-col">
@@ -444,6 +511,14 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-4">
+                                            <div className="flex justify-between text-xs py-1 border-b border-dashed">
+                                                <span>Door Collection</span>
+                                                <span className="font-mono">₹ {(freight.door_coll_charges || 0).toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-xs py-1 border-b border-dashed">
+                                                <span>Door Delivery</span>
+                                                <span className="font-mono">₹ ${(freight.door_del_charges || 0).toFixed(2)}</span>
+                                            </div>
                                             <div className="flex items-center justify-between bg-yellow-50 p-2 rounded border border-yellow-100">
                                                 <span className="text-xs font-bold text-yellow-800 uppercase">Loose / Zero Pkg</span>
                                                 <Badge variant={c.package_details?.loose_pkg ? "default" : "outline"} className="bg-white text-yellow-800 border-yellow-200">
@@ -540,8 +615,8 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
                                             <ChargeItem label="FOV Charges" value={freight.fov_charges} />
                                             <ChargeItem label="Cover Charges" value={freight.cover_charges} />
                                             <ChargeItem label="MHC Charges" value={freight.mhc_charges} />
-                                            <ChargeItem label="Door Coll." value={freight.door_collection_charges} />
-                                            <ChargeItem label="Door Del." value={freight.door_delivery_charges} />
+                                            <ChargeItem label="Door Coll." value={freight.door_coll_charges} />
+                                            <ChargeItem label="Door Del." value={freight.door_del_charges} />
                                             <ChargeItem label="With Pass" value={freight.with_pass_charges} />
                                             <ChargeItem label="Enroute" value={freight.enroute_charges} />
                                             <ChargeItem label="Statistical" value={freight.statistical_charges} />
@@ -709,10 +784,28 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
                     <div className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-2">
                         <Info className="h-3 w-3 text-primary" /> System ID: <span className="text-foreground">VGT-{c.cn_no}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={handlePrint} className="gap-2">
+                    <div className="flex items-center gap-3">
+                        {/* Copy Type Selector */}
+                        <div className="flex items-center gap-2 border rounded-md px-2 py-1 bg-slate-50">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Copy:</span>
+                            <select
+                                value={copyType}
+                                onChange={(e) => setCopyType(e.target.value as CopyType)}
+                                className="text-xs font-bold border-none bg-transparent focus:outline-none cursor-pointer pr-1"
+                            >
+                                <option value="consigner">Consigner (White)</option>
+                                <option value="consignee">Consignee (Pink)</option>
+                                <option value="lorry">Lorry (Yellow)</option>
+                                <option value="office">Office (Blue)</option>
+                            </select>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => handlePrint(copyType, 'print')} className="gap-2">
                             <Printer className="h-4 w-4" />
                             Print
+                        </Button>
+                        <Button size="sm" onClick={() => handlePrint(copyType, 'download')} className="gap-2">
+                            <FileText className="h-4 w-4" />
+                            Download PDF
                         </Button>
                         <Button size="sm" onClick={onClose} className="bg-slate-900 text-white hover:bg-slate-800">Close</Button>
                     </div>

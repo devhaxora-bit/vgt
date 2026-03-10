@@ -15,7 +15,7 @@ export async function proxy(request: NextRequest) {
                     return request.cookies.getAll()
                 },
                 setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value, options }) => {
+                    cookiesToSet.forEach(({ name, value }) => {
                         request.cookies.set(name, value)
                     })
                     supabaseResponse = NextResponse.next({
@@ -33,7 +33,7 @@ export async function proxy(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
 
     // Protected routes - redirect to login if not authenticated
-    const protectedRoutes = ['/dashboard', '/entry', '/admin']
+    const protectedRoutes = ['/dashboard']
     const isProtectedRoute = protectedRoutes.some(route =>
         request.nextUrl.pathname.startsWith(route)
     )
@@ -47,7 +47,14 @@ export async function proxy(request: NextRequest) {
     // Redirect authenticated users away from login
     if (request.nextUrl.pathname === '/login' && user) {
         const redirectUrl = request.nextUrl.clone()
-        redirectUrl.pathname = '/'
+        redirectUrl.pathname = '/dashboard'
+        return NextResponse.redirect(redirectUrl)
+    }
+
+    // Keep authenticated users inside app shell instead of the template home page
+    if (request.nextUrl.pathname === '/' && user) {
+        const redirectUrl = request.nextUrl.clone()
+        redirectUrl.pathname = '/dashboard'
         return NextResponse.redirect(redirectUrl)
     }
 

@@ -30,6 +30,77 @@ export default function NewChallanPage() {
     const router = useRouter();
     const [branches, setBranches] = useState<Branch[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Basic Details
+    const [originBranch, setOriginBranch] = useState('MRG');
+    const [challanNo, setChallanNo] = useState('');
+    const [challanPrefix, setChallanPrefix] = useState('KC');
+    const [challanDate, setChallanDate] = useState(new Date().toISOString().split('T')[0]);
+    const [challanTime, setChallanTime] = useState(new Date().toTimeString().slice(0, 5));
+    const [subType, setSubType] = useState('Route');
+    const [destBranch, setDestBranch] = useState('');
+    
+    // Lane Details
+    const [loadingPincode, setLoadingPincode] = useState('');
+    const [loadingArea, setLoadingArea] = useState('VERNA GOA');
+    const [unloadingBranch, setUnloadingBranch] = useState('');
+    const [unloadingPincode, setUnloadingPincode] = useState('');
+    const [unloadingArea, setUnloadingArea] = useState('');
+    const [tripDistance, setTripDistance] = useState(0);
+    const [expectedTripDate, setExpectedTripDate] = useState('');
+    const [expectedTripTime, setExpectedTripTime] = useState('');
+
+    // Owner/Broker
+    const [ownerType, setOwnerType] = useState('Market');
+    const [ownerPan, setOwnerPan] = useState('');
+    const [ownerName, setOwnerName] = useState('');
+    const [ownerMobile, setOwnerMobile] = useState('');
+    const [ownerAddress, setOwnerAddress] = useState('');
+    const [ownerTel, setOwnerTel] = useState('');
+    const [brokerName, setBrokerName] = useState('');
+    const [brokerCode, setBrokerCode] = useState('');
+    const [brokerMobile, setBrokerMobile] = useState('');
+    const [brokerAddress, setBrokerAddress] = useState('');
+    const [slipNo, setSlipNo] = useState('');
+    const [slipDate, setSlipDate] = useState('');
+
+    // Vehicle
+    const [vehicleNo, setVehicleNo] = useState('');
+    const [vehicleType, setVehicleType] = useState('open');
+    const [permitNo, setPermitNo] = useState('');
+    const [permitValidity, setPermitValidity] = useState('');
+    const [vehicleMake, setVehicleMake] = useState('tata');
+    const [engineNo, setEngineNo] = useState('');
+    const [chasisNo, setChasisNo] = useState('');
+    const [taxTokenNo, setTaxTokenNo] = useState('');
+    const [taxTokenValidity, setTaxTokenValidity] = useState('');
+    const [taxTokenIssuedBy, setTaxTokenIssuedBy] = useState('');
+    const [vehicleModel, setVehicleModel] = useState('lpt');
+
+    // Driver
+    const [driverDlNo, setDriverDlNo] = useState('');
+    const [driverName, setDriverName] = useState('');
+    const [driverDlValidity, setDriverDlValidity] = useState('');
+    const [driverMobile, setDriverMobile] = useState('');
+    const [driverRto, setDriverRto] = useState('goa');
+
+    // Insurance & eWaybill
+    const [policyNo, setPolicyNo] = useState('');
+    const [policyValidity, setPolicyValidity] = useState('');
+    const [insCompany, setInsCompany] = useState('');
+    const [insCity, setInsCity] = useState('');
+    const [financeDetail, setFinanceDetail] = useState('');
+    const [ewaybillNo, setEwaybillNo] = useState('');
+    const [ewaybillDate, setEwaybillDate] = useState('');
+
+    // ITDS Declaration
+    const [itdsRefBranch, setItdsRefBranch] = useState('');
+    const [itdsDeclareDate, setItdsDeclareDate] = useState('');
+    const [itdsFinYear, setItdsFinYear] = useState('2025-2026');
+
+    // Other Info
+    const [engagedBy, setEngagedBy] = useState('emp1');
+    const [engagedDate, setEngagedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [remarks, setRemarks] = useState('');
     const [challanType, setChallanType] = useState('MAIN');
     const [onScheduleRoute, setOnScheduleRoute] = useState(true);
     const [loadingAt, setLoadingAt] = useState('arc');
@@ -48,6 +119,7 @@ export default function NewChallanPage() {
         advPayment: 0, tdsPercent: 0, lessTds: 0,
         creditDate: '', cardAmount: 0, genericNo: '', cardNo: '',
         balAmount: 0, balPaymentBranch: '',
+        petroCardBranch: ''
     });
 
     useEffect(() => {
@@ -66,6 +138,23 @@ export default function NewChallanPage() {
         fetchBranches();
     }, []);
 
+    // Fetch next Challan No when origin branch changes
+    useEffect(() => {
+        const fetchNextChallan = async () => {
+            try {
+                const res = await fetch(`/api/branches/next-challan?branch=${originBranch}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setChallanPrefix(data.prefix);
+                    setChallanNo(data.nextNo.toString());
+                }
+            } catch (error) {
+                console.error('Failed to fetch next challan no', error);
+            }
+        };
+        if (originBranch) fetchNextChallan();
+    }, [originBranch]);
+
     const updateHire = (field: string, value: number | string) => {
         setHireDetails(prev => {
             const next = { ...prev, [field]: value };
@@ -79,8 +168,121 @@ export default function NewChallanPage() {
     };
 
     const handleSave = async () => {
+        if (!vehicleNo) {
+            toast.error('Vehicle Number is required');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
+            const body = {
+                challan_no: `${challanPrefix}${challanNo}`,
+                origin_branch_code: originBranch,
+                destination_branch_code: destBranch,
+                challan_type: challanType,
+                sub_type: subType,
+                owner_type: ownerType,
+                vehicle_no: vehicleNo.toUpperCase(),
+                driver_name: driverName,
+                driver_mobile: driverMobile,
+                
+                // Lane Details
+                loading_at: loadingAt === 'arc' ? 'ARC' : 'Party',
+                unloading_at: unloadingAt === 'arc' ? 'ARC' : 'Party',
+                loading_branch_code: originBranch,
+                unloading_branch_code: unloadingBranch,
+                loading_pincode: loadingPincode,
+                unloading_pincode: unloadingPincode,
+                loading_area: loadingArea,
+                unloading_area: unloadingArea,
+                trip_distance: tripDistance,
+                expected_trip_complete_at: expectedTripDate && expectedTripTime ? `${expectedTripDate}T${expectedTripTime}` : null,
+
+                // Owner/Broker
+                owner_pan: ownerPan.toUpperCase(),
+                owner_name: ownerName,
+                owner_mobile: ownerMobile,
+                owner_address: ownerAddress,
+                owner_tel: ownerTel,
+                broker_name: brokerName,
+                broker_code: brokerCode,
+                broker_mobile: brokerMobile,
+                broker_address: brokerAddress,
+                slip_no: slipNo,
+                slip_date: slipDate || null,
+
+                // Vehicle
+                vehicle_type: vehicleType,
+                permit_no: permitNo,
+                permit_validity: permitValidity || null,
+                vehicle_make: vehicleMake,
+                engine_no: engineNo,
+                chasis_no: chasisNo,
+                tax_token_no: taxTokenNo,
+                tax_token_validity: taxTokenValidity || null,
+                tax_token_issued_by: taxTokenIssuedBy,
+                vehicle_model: vehicleModel,
+
+                // Insurance
+                insurance_policy_no: policyNo,
+                insurance_validity: policyValidity || null,
+                insurance_company_name: insCompany,
+                insurance_city: insCity,
+                finance_detail: financeDetail,
+                ewaybill_no: ewaybillNo,
+                ewaybill_date: ewaybillDate || null,
+
+                // ITDS
+                itds_ref_branch: itdsRefBranch,
+                itds_declare_date: itdsDeclareDate || null,
+                itds_financial_year: itdsFinYear,
+
+                // Driver
+                driver_dl_no: driverDlNo,
+                driver_dl_validity: driverDlValidity || null,
+                driver_rto: driverRto,
+                trip_tracking_consent: tripTracking,
+
+                // Financials
+                total_hire_amount: hireDetails.totalHire,
+                extra_hire_amount: hireDetails.totalExtra,
+                advance_amount: hireDetails.advPayment,
+                hire_rate_per_kg: hireDetails.ratePerKg,
+                hire_amount: hireDetails.hire,
+                extra_over_weight: hireDetails.extraOverWeight,
+                extra_over_length: hireDetails.overLength,
+                extra_over_height: hireDetails.overHeight,
+                extra_over_width: hireDetails.overWidth,
+                extra_km_charges: hireDetails.extraKmCharges,
+                detent_charges: hireDetails.detentCharges,
+                transit_pass_charges: hireDetails.transitPass,
+                total_extra_charges: hireDetails.totalExtra,
+                tds_percent: hireDetails.tdsPercent,
+                less_tds: hireDetails.lessTds,
+                bal_payment_branch_code: hireDetails.balPaymentBranch,
+                card_amount: hireDetails.cardAmount,
+                generic_no: hireDetails.genericNo,
+                card_no: hireDetails.cardNo,
+                credit_date: hireDetails.creditDate || null,
+                petro_card_branch_code: hireDetails.petroCardBranch,
+
+                // Others
+                engaged_by: engagedBy,
+                engaged_date: engagedDate || null,
+                remarks
+            };
+
+            const res = await fetch('/api/challans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                throw new Error(error.error || 'Failed to save challan');
+            }
+
             toast.success('Challan saved successfully!');
             router.push('/dashboard/challans');
         } catch (error: any) {
@@ -170,7 +372,7 @@ export default function NewChallanPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan Branch</Label>
-                                            <Select>
+                                            <Select value={originBranch} onValueChange={setOriginBranch}>
                                                 <SelectTrigger className={inputCls + " bg-slate-50"}>
                                                     <SelectValue placeholder="Select Branch" />
                                                 </SelectTrigger>
@@ -183,35 +385,38 @@ export default function NewChallanPage() {
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan Type</Label>
-                                            <Select defaultValue="1">
+                                            <Select value={subType} onValueChange={setSubType}>
                                                 <SelectTrigger className={inputCls}>
                                                     <SelectValue placeholder="Select Type" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="1">1 - Route</SelectItem>
-                                                    <SelectItem value="2">2 - Local</SelectItem>
+                                                    <SelectItem value="Route">1 - Route</SelectItem>
+                                                    <SelectItem value="Local">2 - Local</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Challan Date & Time</Label>
                                             <div className="flex gap-2">
-                                                <Input type="date" className={inputCls + " flex-1"} defaultValue="2026-02-10" />
-                                                <Input type="time" className={inputCls + " w-28"} defaultValue="15:39" />
+                                                <Input type="date" className={inputCls + " flex-1"} value={challanDate} onChange={(e) => setChallanDate(e.target.value)} />
+                                                <Input type="time" className={inputCls + " w-28"} value={challanTime} onChange={(e) => setChallanTime(e.target.value)} />
                                             </div>
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan No</Label>
-                                            <Input className={inputCls + " font-mono font-bold bg-yellow-50/60 border-yellow-200"} placeholder="Auto Generated" />
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-2 text-xs font-bold text-muted-foreground select-none">{challanPrefix}</span>
+                                                <Input className={inputCls + " pl-10 font-mono font-bold bg-yellow-50/60 border-yellow-200"} value={challanNo} onChange={(e) => setChallanNo(e.target.value)} placeholder="Auto Generated" />
+                                            </div>
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Owner Type</Label>
-                                            <Select defaultValue="MARKET">
+                                            <Select value={ownerType} onValueChange={setOwnerType}>
                                                 <SelectTrigger className={inputCls}>
                                                     <SelectValue placeholder="Select Owner Type" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="MARKET">1 - Market</SelectItem>
+                                                    <SelectItem value="Market">1 - Market</SelectItem>
                                                     <SelectItem value="ARC">2 - ARC</SelectItem>
                                                 </SelectContent>
                                             </Select>
@@ -219,13 +424,13 @@ export default function NewChallanPage() {
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Vehicle No</Label>
                                             <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1 uppercase"} placeholder="AUTO EXTENDER VEHICLE NO." />
+                                                <Input className={inputCls + " flex-1 uppercase"} value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} placeholder="AUTO EXTENDER VEHICLE NO." />
                                                 <Button type="button" variant="outline" className="h-9 text-xs bg-slate-100 font-bold px-3">FLEET CODE</Button>
                                             </div>
                                         </div>
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Destination Branch</Label>
-                                            <Select>
+                                            <Select value={destBranch} onValueChange={setDestBranch}>
                                                 <SelectTrigger className={inputCls}>
                                                     <SelectValue placeholder="DESTINATION BRANCH" />
                                                 </SelectTrigger>
@@ -287,28 +492,21 @@ export default function NewChallanPage() {
                                                 <div className="space-y-1 sm:col-span-2">
                                                     <Label className={labelCls}>Loading Branch</Label>
                                                     <div className="flex gap-2">
-                                                        <Input className={inputCls + " w-20 bg-slate-100 font-mono font-bold"} placeholder="CODE" readOnly />
-                                                        <Input className={inputCls + " flex-1 bg-slate-100"} placeholder="BRANCH NAME" readOnly />
+                                                        <Input className={inputCls + " w-20 bg-slate-100 font-mono font-bold"} value={originBranch} readOnly />
+                                                        <Input className={inputCls + " flex-1 bg-slate-100"} value={branches.find(b => b.code === originBranch)?.name || ''} readOnly />
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>Pin Code</Label>
-                                                    <Input className={inputCls} placeholder="Pin Code" />
+                                                    <Input className={inputCls} value={loadingPincode} onChange={(e) => setLoadingPincode(e.target.value)} placeholder="Pin Code" />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>Area Name</Label>
-                                                    <Select>
-                                                        <SelectTrigger className={inputCls}>
-                                                            <SelectValue placeholder="Select Area" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="verna">VERNA GOA</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                    <Input className={inputCls} value={loadingArea} onChange={(e) => setLoadingArea(e.target.value)} placeholder="Area Name" />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>Trip Distance (KM)</Label>
-                                                    <Input type="number" className={inputCls} defaultValue="0" />
+                                                    <Input type="number" className={inputCls} value={tripDistance} onChange={(e) => setTripDistance(Number(e.target.value))} />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>Next Loading Points</Label>
@@ -340,31 +538,30 @@ export default function NewChallanPage() {
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div className="space-y-1 sm:col-span-2">
                                                     <Label className={labelCls}>Unloading Branch</Label>
-                                                    <div className="flex gap-2">
-                                                        <Input className={inputCls + " w-20 font-mono font-bold"} placeholder="CODE" />
-                                                        <Input className={inputCls + " flex-1"} placeholder="UNLOADING BRANCH" />
-                                                    </div>
+                                                    <Select value={unloadingBranch} onValueChange={setUnloadingBranch}>
+                                                        <SelectTrigger className={inputCls}>
+                                                            <SelectValue placeholder="UNLOADING BRANCH" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {branches.map(b => (
+                                                                <SelectItem key={b.code} value={b.code}>{b.code} - {b.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>Pin Code</Label>
-                                                    <Input className={inputCls} placeholder="PIN CODE" />
+                                                    <Input className={inputCls} value={unloadingPincode} onChange={(e) => setUnloadingPincode(e.target.value)} placeholder="PIN CODE" />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>Area Name</Label>
-                                                    <Select>
-                                                        <SelectTrigger className={inputCls}>
-                                                            <SelectValue placeholder="UNLOADING AREA NAME" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="none">Select Area</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                    <Input className={inputCls} value={unloadingArea} onChange={(e) => setUnloadingArea(e.target.value)} placeholder="Area Name" />
                                                 </div>
                                                 <div className="space-y-1 sm:col-span-2">
                                                     <Label className={labelCls}>Expected Trip Complete Date & Time</Label>
                                                     <div className="flex gap-2">
-                                                        <Input type="date" className={inputCls + " flex-1"} />
-                                                        <Input type="time" className={inputCls + " w-28"} />
+                                                        <Input type="date" className={inputCls + " flex-1"} value={expectedTripDate} onChange={(e) => setExpectedTripDate(e.target.value)} />
+                                                        <Input type="time" className={inputCls + " w-28"} value={expectedTripTime} onChange={(e) => setExpectedTripTime(e.target.value)} />
                                                     </div>
                                                 </div>
                                             </div>
@@ -382,76 +579,60 @@ export default function NewChallanPage() {
                                 </CardHeader>
                                 <CardContent className="p-4 md:p-6">
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        {/* Owner Side */}
+                                        {/* Broker Side */}
                                         <div className="space-y-4">
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div className="space-y-1">
-                                                    <Label className={labelCls}>Owner PAN No</Label>
-                                                    <Input className={inputCls + " uppercase"} placeholder="PAN Number" />
-                                                </div>
-                                                <div className="flex items-end pb-1">
-                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                        <Checkbox checked={engagedThroughOwner} onCheckedChange={(c) => setEngagedThroughOwner(!!c)} />
-                                                        <span className="text-xs font-bold text-green-700">Engaged through Owner</span>
-                                                    </label>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Owner Name</Label>
-                                                <Input className={inputCls} placeholder="AUTO EXTENDER OWNER NAME" />
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Owner Mobile No</Label>
-                                                    <Input className={inputCls} placeholder="Mobile" />
+                                                    <Label className={labelCls}>Broker / Owner Name</Label>
+                                                    <Input className={inputCls} value={brokerName} onChange={(e) => setBrokerName(e.target.value)} placeholder="Engaged Broker/Owner Name" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label className={labelCls}>Tel. No</Label>
-                                                    <Input className={inputCls} placeholder="Telephone" />
+                                                    <Label className={labelCls}>Broker Code / Phone</Label>
+                                                    <div className="flex gap-2">
+                                                        <Input className={inputCls + " w-24"} value={brokerCode} onChange={(e) => setBrokerCode(e.target.value)} placeholder="CODE" />
+                                                        <Input className={inputCls + " flex-1"} value={brokerMobile} onChange={(e) => setBrokerMobile(e.target.value)} placeholder="Phone Number" />
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Owner Address</Label>
-                                                <Input className={inputCls} placeholder="Address" />
+                                                <div className="space-y-1 sm:col-span-2">
+                                                    <Label className={labelCls}>Address</Label>
+                                                    <Input className={inputCls} value={brokerAddress} onChange={(e) => setBrokerAddress(e.target.value)} placeholder="Full Address" />
+                                                </div>
                                             </div>
                                         </div>
 
-                                        {/* Broker Side */}
+                                        {/* Owner Side */}
                                         <div className="space-y-4">
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Broker Name</Label>
-                                                <Input className={inputCls} placeholder="AUTO EXTENDER BROKER NAME" />
+                                            <div className="flex items-center gap-4">
+                                                <Label className={labelCls + " min-w-[120px]"}>Engaged Through Owner</Label>
+                                                <Checkbox checked={engagedThroughOwner} onCheckedChange={(checked) => setEngagedThroughOwner(!!checked)} id="engaged_owner" />
+                                                <Label htmlFor="engaged_owner" className="text-xs font-bold cursor-pointer">Yes</Label>
                                             </div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div className="space-y-1">
-                                                    <Label className={labelCls}>Broker Code & Mobile</Label>
+                                                    <Label className={labelCls}>Owner Name / Mobile</Label>
                                                     <div className="flex gap-2">
-                                                        <Input className={inputCls + " w-24 bg-yellow-50/60"} placeholder="Code" />
-                                                        <Input className={inputCls + " flex-1"} placeholder="Mobile" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Broker Address</Label>
-                                                <Input className={inputCls} placeholder="Broker Address" />
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-                                                <div className="flex items-center gap-2 h-9">
-                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                        <Checkbox checked={slipAttached} onCheckedChange={(c) => setSlipAttached(!!c)} />
-                                                        <span className="text-xs font-bold">Slip Attached?</span>
-                                                    </label>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Slip No & Date</Label>
-                                                    <div className="flex gap-2">
-                                                        <Input className={inputCls + " flex-1"} placeholder="SLIP NO" />
-                                                        <Input type="date" className={inputCls + " w-36"} />
+                                                        <Input className={inputCls + " flex-1"} value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Owner Name" />
+                                                        <Input className={inputCls + " w-32"} value={ownerMobile} onChange={(e) => setOwnerMobile(e.target.value)} placeholder="Mobile No" />
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label className={labelCls}>Slip File</Label>
-                                                    <Input type="file" className="h-9 text-xs file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary" />
+                                                    <Label className={labelCls}>PAN No / Tel No</Label>
+                                                    <div className="flex gap-2">
+                                                        <Input className={inputCls + " flex-1 uppercase"} value={ownerPan} onChange={(e) => setOwnerPan(e.target.value)} placeholder="PAN NO." />
+                                                        <Input className={inputCls + " w-32"} value={ownerTel} onChange={(e) => setOwnerTel(e.target.value)} placeholder="TEL NO." />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1 sm:col-span-2">
+                                                    <Label className={labelCls}>Address</Label>
+                                                    <Input className={inputCls} value={ownerAddress} onChange={(e) => setOwnerAddress(e.target.value)} placeholder="Owner Address" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className={labelCls}>Owner Slip No.</Label>
+                                                    <Input className={inputCls} value={slipNo} onChange={(e) => setSlipNo(e.target.value)} placeholder="Slip No" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className={labelCls}>Slip Date</Label>
+                                                    <Input type="date" className={inputCls} value={slipDate} onChange={(e) => setSlipDate(e.target.value)} />
                                                 </div>
                                             </div>
                                         </div>
@@ -469,73 +650,68 @@ export default function NewChallanPage() {
                                 <CardContent className="p-4 md:p-6">
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Vehicle No</Label>
-                                            <Input className={inputCls + " uppercase font-bold bg-yellow-50/60 border-yellow-200"} placeholder="Vehicle No" />
-                                        </div>
-                                        <div className="space-y-1">
                                             <Label className={labelCls}>Vehicle Type</Label>
-                                            <Select>
+                                            <Select value={vehicleType} onValueChange={setVehicleType}>
                                                 <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="SELECT VEH TYPE" />
+                                                    <SelectValue placeholder="Select Type" />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="open">Open Body</SelectItem>
-                                                    <SelectItem value="closed">Closed Container</SelectItem>
-                                                    <SelectItem value="trailer">Trailer</SelectItem>
+                                                    <SelectItem value="container">Container</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div className="space-y-1 lg:col-span-2">
-                                            <Label className={labelCls}>Permit No & Validity</Label>
-                                            <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1"} placeholder="Permit No" />
-                                                <Input type="date" className={inputCls + " w-36"} />
-                                            </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Permit No</Label>
+                                            <Input className={inputCls} value={permitNo} onChange={(e) => setPermitNo(e.target.value)} placeholder="Permit No" />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Make</Label>
-                                            <Select>
+                                            <Label className={labelCls}>Permit Validity</Label>
+                                            <Input type="date" className={inputCls} value={permitValidity} onChange={(e) => setPermitValidity(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Vehicle Make</Label>
+                                            <Select value={vehicleMake} onValueChange={setVehicleMake}>
                                                 <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="SELECT VEH MAKE" />
+                                                    <SelectValue placeholder="Select Make" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="tata">TATA</SelectItem>
+                                                    <SelectItem value="tata">TATA MOTORS</SelectItem>
                                                     <SelectItem value="ashok">ASHOK LEYLAND</SelectItem>
-                                                    <SelectItem value="eicher">EICHER</SelectItem>
-                                                    <SelectItem value="mahindra">MAHINDRA</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Engine No</Label>
-                                            <Input className={inputCls} placeholder="Engine No" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Tax Token No/Valid</Label>
-                                            <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1"} placeholder="Token No" />
-                                                <Input type="date" className={inputCls + " w-36"} />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Token Issued By</Label>
-                                            <Input className={inputCls} placeholder="Token Issued By" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Model</Label>
-                                            <Select>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="VEHICLE MODEL" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="lpt">LPT 1109</SelectItem>
-                                                    <SelectItem value="eicher-pro">EICHER PRO</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Input className={inputCls} value={engineNo} onChange={(e) => setEngineNo(e.target.value)} placeholder="Engine No" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Chasis No</Label>
-                                            <Input className={inputCls} placeholder="Chasis No" />
+                                            <Input className={inputCls} value={chasisNo} onChange={(e) => setChasisNo(e.target.value)} placeholder="Chasis No" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Tax Token No</Label>
+                                            <Input className={inputCls} value={taxTokenNo} onChange={(e) => setTaxTokenNo(e.target.value)} placeholder="Tax Token No" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Tax Token Validity</Label>
+                                            <Input type="date" className={inputCls} value={taxTokenValidity} onChange={(e) => setTaxTokenValidity(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Tax Token Issued By</Label>
+                                            <Input className={inputCls} value={taxTokenIssuedBy} onChange={(e) => setTaxTokenIssuedBy(e.target.value)} placeholder="Issued By" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Vehicle Model</Label>
+                                            <Select value={vehicleModel} onValueChange={setVehicleModel}>
+                                                <SelectTrigger className={inputCls}>
+                                                    <SelectValue placeholder="Select Model" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="lpt">LPT 1613</SelectItem>
+                                                    <SelectItem value="lpk">LPK 2518</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -553,13 +729,13 @@ export default function NewChallanPage() {
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Policy No & Valid Date</Label>
                                             <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1"} placeholder="Policy No" />
-                                                <Input type="date" className={inputCls + " w-36"} />
+                                                <Input className={inputCls + " flex-1"} placeholder="Policy No" value={policyNo} onChange={(e) => setPolicyNo(e.target.value)} />
+                                                <Input type="date" className={inputCls + " w-36"} value={policyValidity} onChange={(e) => setPolicyValidity(e.target.value)} />
                                             </div>
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Ins Company Name & City</Label>
-                                            <Select>
+                                            <Select value={insCompany} onValueChange={setInsCompany}>
                                                 <SelectTrigger className={inputCls}>
                                                     <SelectValue placeholder="Select Insurance Company" />
                                                 </SelectTrigger>
@@ -572,7 +748,7 @@ export default function NewChallanPage() {
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Insurance City</Label>
-                                            <Select>
+                                            <Select value={insCity} onValueChange={setInsCity}>
                                                 <SelectTrigger className={inputCls}>
                                                     <SelectValue placeholder="Insurance City" />
                                                 </SelectTrigger>
@@ -584,13 +760,13 @@ export default function NewChallanPage() {
                                         </div>
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Finance Detail</Label>
-                                            <Input className={inputCls} placeholder="Finance Detail" />
+                                            <Input className={inputCls} placeholder="Finance Detail" value={financeDetail} onChange={(e) => setFinanceDetail(e.target.value)} />
                                         </div>
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Cons. eWaybill No & Date</Label>
                                             <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1"} placeholder="eWaybill No" />
-                                                <Input type="date" className={inputCls + " w-36"} />
+                                                <Input className={inputCls + " flex-1"} placeholder="eWaybill No" value={ewaybillNo} onChange={(e) => setEwaybillNo(e.target.value)} />
+                                                <Input type="date" className={inputCls + " w-36"} value={ewaybillDate} onChange={(e) => setEwaybillDate(e.target.value)} />
                                             </div>
                                         </div>
                                     </div>
@@ -608,46 +784,37 @@ export default function NewChallanPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Driver DL No</Label>
-                                            <div className="relative">
-                                                <Input className={inputCls + " pr-9 bg-slate-100 font-mono"} placeholder="DL NUMBER" />
-                                                <Button type="button" size="icon" variant="ghost" className="absolute right-0 top-0 h-9 w-9 text-primary hover:bg-primary/10">
-                                                    <Search className="h-4 w-4" />
-                                                </Button>
-                                            </div>
+                                            <Input className={inputCls} value={driverDlNo} onChange={(e) => setDriverDlNo(e.target.value)} placeholder="DL No" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Driver Name</Label>
-                                            <Input className={inputCls} placeholder="Driver Name" />
+                                            <Input className={inputCls} value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Driver Name" />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>DL Valid Upto</Label>
-                                            <Input type="date" className={inputCls} />
+                                            <Label className={labelCls}>DL Validity Date</Label>
+                                            <Input type="date" className={inputCls} value={driverDlValidity} onChange={(e) => setDriverDlValidity(e.target.value)} />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Mobile No</Label>
-                                            <div className="relative">
-                                                <Input className={inputCls + " pr-9"} placeholder="Mobile Number" />
-                                                <Button type="button" size="icon" variant="ghost" className="absolute right-0 top-0 h-9 w-9 text-primary hover:bg-primary/10">
-                                                    <Search className="h-4 w-4" />
-                                                </Button>
-                                            </div>
+                                            <Label className={labelCls}>Driver Mobile</Label>
+                                            <Input className={inputCls} value={driverMobile} onChange={(e) => setDriverMobile(e.target.value)} placeholder="Driver Mobile" />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>DL Issued By (RTO)</Label>
-                                            <Select>
+                                            <Label className={labelCls}>Driver RTO State</Label>
+                                            <Select value={driverRto} onValueChange={setDriverRto}>
                                                 <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select RTO Name" />
+                                                    <SelectValue placeholder="RTO State" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="goa">GOA RTO</SelectItem>
-                                                    <SelectItem value="mumbai">MUMBAI RTO</SelectItem>
+                                                    <SelectItem value="goa">GOA</SelectItem>
+                                                    <SelectItem value="maharashtra">MAHARASHTRA</SelectItem>
+                                                    <SelectItem value="karnataka">KARNATAKA</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div className="flex items-end pb-1">
+                                        <div className="flex items-end pb-1 h-9 space-y-1">
                                             <label className="flex items-center gap-2 cursor-pointer">
-                                                <Checkbox checked={tripTracking} onCheckedChange={(c) => setTripTracking(!!c)} />
-                                                <span className="text-xs font-bold">Take Consent For Trip Tracking</span>
+                                                <Checkbox checked={tripTracking} onCheckedChange={(checked) => setTripTracking(!!checked)} />
+                                                <span className="text-xs font-bold text-slate-700">Trip Tracking Consent?</span>
                                             </label>
                                         </div>
                                     </div>
@@ -668,15 +835,15 @@ export default function NewChallanPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Ref Branch</Label>
-                                            <Input className={inputCls + " bg-white"} placeholder="Branch Code & Name" />
+                                            <Input className={inputCls + " bg-white"} placeholder="Branch Code & Name" value={itdsRefBranch} onChange={(e) => setItdsRefBranch(e.target.value)} />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Declare Date</Label>
-                                            <Input type="date" className={inputCls + " bg-white"} />
+                                            <Input type="date" className={inputCls + " bg-white"} value={itdsDeclareDate} onChange={(e) => setItdsDeclareDate(e.target.value)} />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Financial Year</Label>
-                                            <Input className={inputCls + " bg-white"} placeholder="2025-2026" />
+                                            <Input className={inputCls + " bg-white"} placeholder="2025-2026" value={itdsFinYear} onChange={(e) => setItdsFinYear(e.target.value)} />
                                         </div>
                                     </div>
                                 </CardContent>
@@ -805,12 +972,15 @@ export default function NewChallanPage() {
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Petro Card Branch</Label>
-                                                <Select>
+                                                <Select value={hireDetails.petroCardBranch} onValueChange={(v) => updateHire('petroCardBranch', v)}>
                                                     <SelectTrigger className={inputCls}>
                                                         <SelectValue placeholder="Petro card Branch" />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="none">None</SelectItem>
+                                                        {branches.map(b => (
+                                                            <SelectItem key={b.code} value={b.code}>{b.code} - {b.name}</SelectItem>
+                                                        ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -820,19 +990,19 @@ export default function NewChallanPage() {
                                         <div className="lg:col-span-2 space-y-3">
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Credit Date</Label>
-                                                <Input type="date" className={inputCls} />
+                                                <Input type="date" className={inputCls} value={hireDetails.creditDate} onChange={(e) => updateHire('creditDate', e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Card Amount (Rs.)</Label>
-                                                <div className={redValueCls + " flex items-center"}>{hireDetails.cardAmount}</div>
+                                                <Input type="number" className={redValueCls} value={hireDetails.cardAmount} onChange={(e) => updateHire('cardAmount', Number(e.target.value))} />
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Generic No</Label>
-                                                <Input className={inputCls} placeholder="Generic No" />
+                                                <Input className={inputCls} value={hireDetails.genericNo} onChange={(e) => updateHire('genericNo', e.target.value)} placeholder="Generic No" />
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Card No</Label>
-                                                <Input className={inputCls} placeholder="Card No" />
+                                                <Input className={inputCls} value={hireDetails.cardNo} onChange={(e) => updateHire('cardNo', e.target.value)} placeholder="Card No" />
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Bal Amount (Rs.)</Label>
@@ -840,7 +1010,7 @@ export default function NewChallanPage() {
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Bal Payment Branch</Label>
-                                                <Select>
+                                                <Select value={hireDetails.balPaymentBranch} onValueChange={(v) => updateHire('balPaymentBranch', v)}>
                                                     <SelectTrigger className={inputCls}>
                                                         <SelectValue placeholder="LBH BRANCH" />
                                                     </SelectTrigger>
@@ -867,22 +1037,23 @@ export default function NewChallanPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Engaged By</Label>
-                                            <Select>
+                                            <Select value={engagedBy} onValueChange={setEngagedBy}>
                                                 <SelectTrigger className={inputCls}>
                                                     <SelectValue placeholder="Select Employee" />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="emp1">AMIT PANDEY [A8644]</SelectItem>
+                                                    <SelectItem value="emp2">RAHUL SHARMA [R1234]</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Engaged Date</Label>
-                                            <Input type="date" className={inputCls} defaultValue="2026-02-10" />
+                                            <Input type="date" className={inputCls} value={engagedDate} onChange={(e) => setEngagedDate(e.target.value)} />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Remarks</Label>
-                                            <Input className={inputCls} placeholder="Remarks" />
+                                            <Input className={inputCls} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Remarks" />
                                         </div>
                                     </div>
                                 </CardContent>

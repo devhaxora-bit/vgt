@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Plus, Search, MapPin, Building2, MoreHorizontal } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Building2, MoreHorizontal, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -32,32 +32,86 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
-// Dummy data for branches
-const initialBranches = [
-    { id: 1, code: 'MRG', name: 'Margao Hub', type: 'Hub', city: 'Margao', state: 'Goa', status: 'Active' },
-    { id: 2, code: 'PNJ', name: 'Panjim Branch', type: 'Branch', city: 'Panjim', state: 'Goa', status: 'Active' },
-    { id: 3, code: 'VZG', name: 'Vasco Branch', type: 'Branch', city: 'Vasco', state: 'Goa', status: 'Active' },
-    { id: 4, code: 'MAP', name: 'Mapusa Hub', type: 'Hub', city: 'Mapusa', state: 'Goa', status: 'Active' },
-    { id: 5, code: 'PND', name: 'Ponda Branch', type: 'Branch', city: 'Ponda', state: 'Goa', status: 'Inactive' },
-];
+type Branch = {
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+    city: string;
+    state: string;
+    is_active: boolean;
+};
+
+const defaultForm = {
+    code: '',
+    name: '',
+    type: 'Branch',
+    city: '',
+    state: '',
+    phone: '',
+};
 
 export default function BranchManagementPage() {
-    const [branches, setBranches] = useState(initialBranches);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [form, setForm] = useState(defaultForm);
 
-    // Filter branches
+    const fetchBranches = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch('/api/references/branches');
+            if (!res.ok) throw new Error('Failed to fetch branches');
+            const data = await res.json();
+            setBranches(data);
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to load branches');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchBranches();
+    }, []);
+
     const filteredBranches = branches.filter(branch =>
         branch.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         branch.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         branch.city.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleAddBranch = (e: React.FormEvent) => {
+    const handleFormChange = (field: string, value: string) => {
+        setForm(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleAddBranch = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Here we would typically make an API call
-        toast.success('Branch added successfully (Mock)');
-        setIsAddOpen(false);
+        setSubmitting(true);
+        try {
+            const res = await fetch('/api/references/branches', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to add branch');
+            }
+
+            toast.success(`Branch "${data.name}" added successfully`);
+            setIsAddOpen(false);
+            setForm(defaultForm);
+            fetchBranches(); // Refresh list
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to add branch');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -67,66 +121,106 @@ export default function BranchManagementPage() {
                     <h2 className="text-xl font-bold text-[#101828]">Branch Management</h2>
                     <p className="text-sm text-muted-foreground">Manage your hubs and branch offices across locations.</p>
                 </div>
-                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-2 shadow-sm">
-                            <Plus className="h-4 w-4" />
-                            Add Branch
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
-                        <form onSubmit={handleAddBranch}>
-                            <DialogHeader>
-                                <DialogTitle>Add New Branch</DialogTitle>
-                                <DialogDescription>
-                                    Create a new branch or hub location.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="code">Branch Code</Label>
-                                        <Input id="code" placeholder="e.g. BLR" required className="uppercase" />
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={fetchBranches} disabled={loading} title="Refresh">
+                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                    </Button>
+                    <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) setForm(defaultForm); }}>
+                        <DialogTrigger asChild>
+                            <Button className="gap-2 shadow-sm">
+                                <Plus className="h-4 w-4" />
+                                Add Branch
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[500px]">
+                            <form onSubmit={handleAddBranch}>
+                                <DialogHeader>
+                                    <DialogTitle>Add New Branch</DialogTitle>
+                                    <DialogDescription>
+                                        Create a new branch or hub location.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="code">Branch Code</Label>
+                                            <Input
+                                                id="code"
+                                                placeholder="e.g. BLR"
+                                                required
+                                                className="uppercase"
+                                                value={form.code}
+                                                onChange={(e) => handleFormChange('code', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="type">Type</Label>
+                                            <Select
+                                                value={form.type}
+                                                onValueChange={(val) => handleFormChange('type', val)}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select type" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Hub">Hub</SelectItem>
+                                                    <SelectItem value="Branch">Branch</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="type">Type</Label>
-                                        <Select defaultValue="branch">
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select type" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="hub">Hub</SelectItem>
-                                                <SelectItem value="branch">Branch</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Label htmlFor="name">Branch Name</Label>
+                                        <Input
+                                            id="name"
+                                            placeholder="e.g. Bangalore Central"
+                                            required
+                                            value={form.name}
+                                            onChange={(e) => handleFormChange('name', e.target.value)}
+                                        />
                                     </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Branch Name</Label>
-                                    <Input id="name" placeholder="e.g. Bangalore Central" required />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="city">City</Label>
+                                            <Input
+                                                id="city"
+                                                placeholder="City"
+                                                required
+                                                value={form.city}
+                                                onChange={(e) => handleFormChange('city', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="state">State</Label>
+                                            <Input
+                                                id="state"
+                                                placeholder="State"
+                                                required
+                                                value={form.state}
+                                                onChange={(e) => handleFormChange('state', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="city">City</Label>
-                                        <Input id="city" placeholder="City" required />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="state">State</Label>
-                                        <Input id="state" placeholder="State" required />
+                                        <Label htmlFor="phone">Contact Phone <span className="text-muted-foreground">(optional)</span></Label>
+                                        <Input
+                                            id="phone"
+                                            placeholder="+91-..."
+                                            value={form.phone}
+                                            onChange={(e) => handleFormChange('phone', e.target.value)}
+                                        />
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="phone">Contact Phone</Label>
-                                    <Input id="phone" placeholder="+91-..." />
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                                <Button type="submit">Create Branch</Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} disabled={submitting}>Cancel</Button>
+                                    <Button type="submit" disabled={submitting}>
+                                        {submitting ? 'Creating...' : 'Create Branch'}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
 
             {/* Filter Bar */}
@@ -154,7 +248,13 @@ export default function BranchManagementPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filteredBranches.length > 0 ? (
+                        {loading ? (
+                            <TableRow>
+                                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                    Loading branches...
+                                </TableCell>
+                            </TableRow>
+                        ) : filteredBranches.length > 0 ? (
                             filteredBranches.map((branch) => (
                                 <TableRow key={branch.id} className="hover:bg-slate-50/50">
                                     <TableCell className="font-mono font-medium">{branch.code}</TableCell>
@@ -180,11 +280,11 @@ export default function BranchManagementPage() {
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="outline" className={
-                                            branch.status === 'Active'
+                                            branch.is_active
                                                 ? "bg-green-50 text-green-700 border-green-200"
                                                 : "bg-red-50 text-red-700 border-red-200"
                                         }>
-                                            {branch.status}
+                                            {branch.is_active ? 'Active' : 'Inactive'}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">

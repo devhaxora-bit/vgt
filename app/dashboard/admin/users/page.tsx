@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Plus, Search, User, Mail, Shield, MoreHorizontal, Building2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Plus, Search, User, Mail, Shield, MoreHorizontal, Building2, Pencil, KeyRound, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -31,8 +31,6 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-
-import { useEffect } from 'react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -41,32 +39,80 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Pencil, KeyRound, Ban } from 'lucide-react';
+
+type ApiUser = {
+    id: string;
+    employee_code: string;
+    full_name: string;
+    role: 'admin' | 'employee' | 'agent';
+    department: string | null;
+    phone: string | null;
+    is_active: boolean;
+};
+
+type UiUser = {
+    id: string;
+    code: string;
+    name: string;
+    email: string;
+    role: ApiUser['role'];
+    department: string;
+    phone: string;
+    status: 'Active' | 'Inactive';
+};
+
+const branches = [
+    { code: 'MRG', name: 'Margao Hub' },
+    { code: 'PNJ', name: 'Panjim Branch' },
+    { code: 'VZG', name: 'Vasco Branch' },
+    { code: 'MAP', name: 'Mapusa Hub' },
+    { code: 'HO', name: 'Head Office' },
+];
+
+function getBranchNameFromEmployeeCode(employeeCode: string): string {
+    const branch = branches.find((b) => employeeCode.startsWith(`${b.code}-`) || employeeCode.startsWith(b.code));
+    return branch?.name || 'Unassigned';
+}
+
+function normalizeUser(user: ApiUser): UiUser {
+    const emailLocalPart = user.employee_code ? user.employee_code.toLowerCase() : 'unknown';
+    return {
+        id: user.id,
+        code: user.employee_code,
+        name: user.full_name,
+        email: `${emailLocalPart}@vgt.com`,
+        role: user.role,
+        department: user.department || '',
+        phone: user.phone || '',
+        status: user.is_active ? 'Active' : 'Inactive',
+    };
+}
 
 export default function UserManagementPage() {
-    const [users, setUsers] = useState<any[]>([]);
+    const [users, setUsers] = useState<UiUser[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
 
-    // Form States
     const [mode, setMode] = useState<'create' | 'edit'>('create');
     const [selectedBranch, setSelectedBranch] = useState('');
-    const [selectedRole, setSelectedRole] = useState('employee');
+    const [selectedRole, setSelectedRole] = useState<'admin' | 'employee' | 'agent'>('employee');
     const [generatedCode, setGeneratedCode] = useState('');
 
-    // Edit State
-    const [editingUser, setEditingUser] = useState<any>(null);
+    const [editingUser, setEditingUser] = useState<UiUser | null>(null);
+    const [editName, setEditName] = useState('');
+    const [editDepartment, setEditDepartment] = useState('');
+    const [editPhone, setEditPhone] = useState('');
 
-    // Fetch users
     const fetchUsers = async () => {
         setIsLoading(true);
         try {
             const res = await fetch('/api/admin/users');
-            if (res.ok) {
-                const data = await res.json();
-                setUsers(data);
+            if (!res.ok) {
+                throw new Error('Failed to fetch users');
             }
+            const data: ApiUser[] = await res.json();
+            setUsers(data.map(normalizeUser));
         } catch (error) {
             console.error('Failed to fetch users:', error);
             toast.error('Failed to load users');
@@ -79,78 +125,29 @@ export default function UserManagementPage() {
         fetchUsers();
     }, []);
 
-    // Dummy branches for dropdown
-    const branches = [
-        { code: 'MRG', name: 'Margao Hub' },
-        { code: 'PNJ', name: 'Panjim Branch' },
-        { code: 'VZG', name: 'Vasco Branch' },
-        { code: 'MAP', name: 'Mapusa Hub' },
-        { code: 'HO', name: 'Head Office' },
-    ];
-
-    // Filter users
-    const filteredUsers = users.filter(user =>
-        user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.employee_code?.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredUsers = users.filter((user) =>
+        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const generateCode = (branchCode: string, role: string) => {
         if (!branchCode) return '';
-
         const rolePrefix = role === 'admin' ? 'ADM' : role === 'agent' ? 'AGT' : 'EMP';
-        const randomNum = Math.floor(100 + Math.random() * 900); // 3 digit random
+        const randomNum = Math.floor(100 + Math.random() * 900);
         return `${branchCode}-${rolePrefix}-${randomNum}`;
     };
 
     const handleBranchChange = (value: string) => {
         setSelectedBranch(value);
-        const code = generateCode(value, selectedRole);
-        setGeneratedCode(code);
+        setGeneratedCode(generateCode(value, selectedRole));
     };
 
-    const handleRoleChange = (value: string) => {
+    const handleRoleChange = (value: 'admin' | 'employee' | 'agent') => {
         setSelectedRole(value);
         if (selectedBranch) {
-            const code = generateCode(selectedBranch, value);
-            setGeneratedCode(code);
+            setGeneratedCode(generateCode(selectedBranch, value));
         }
-    };
-
-    const handleAddUser = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (mode === 'edit' && editingUser) {
-            try {
-                const formData = new FormData(e.target as HTMLFormElement);
-                const data = {
-                    id: editingUser.id,
-                    full_name: formData.get('name') as string,
-                    department: formData.get('dept') as string,
-                    phone: formData.get('phone') as string,
-                };
-
-                const res = await fetch('/api/admin/users', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data),
-                });
-
-                if (res.ok) {
-                    toast.success('User updated successfully');
-                    fetchUsers();
-                    setIsAddOpen(false);
-                } else {
-                    const err = await res.json();
-                    toast.error(err.error || 'Failed to update user');
-                }
-            } catch (error) {
-                toast.error('An error occurred while updating');
-            }
-        } else {
-            toast.info('Create functionality is currently limited to seed scripts');
-            setIsAddOpen(false);
-        }
-        resetForm();
     };
 
     const resetForm = () => {
@@ -158,19 +155,62 @@ export default function UserManagementPage() {
         setSelectedRole('employee');
         setGeneratedCode('');
         setEditingUser(null);
+        setEditName('');
+        setEditDepartment('');
+        setEditPhone('');
         setMode('create');
     };
 
-    const openEditModel = (user: any) => {
+    const openEditModel = (user: UiUser) => {
         setMode('edit');
         setEditingUser(user);
-
-        // Match branch if possible from department/code
-        const branchMatch = branches.find(b => user.employee_code?.startsWith(b.code))?.code || 'HO';
+        const branchMatch = branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code || 'HO';
         setSelectedBranch(branchMatch);
         setSelectedRole(user.role);
-        setGeneratedCode(user.employee_code);
+        setGeneratedCode(user.code);
+        setEditName(user.name);
+        setEditDepartment(user.department);
+        setEditPhone(user.phone);
         setIsAddOpen(true);
+    };
+
+    const handleAddUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (mode === 'edit' && editingUser) {
+            try {
+                const payload = {
+                    id: editingUser.id,
+                    full_name: editName.trim(),
+                    department: editDepartment || null,
+                    phone: editPhone.trim() || null,
+                };
+
+                const res = await fetch('/api/admin/users', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to update user');
+                }
+
+                toast.success('User updated successfully');
+                await fetchUsers();
+                setIsAddOpen(false);
+            } catch (error) {
+                toast.error(error instanceof Error ? error.message : 'An error occurred while updating');
+            } finally {
+                resetForm();
+            }
+            return;
+        }
+
+        toast.info('Create functionality is currently limited to seed scripts');
+        setIsAddOpen(false);
+        resetForm();
     };
 
     const handlePasswordReset = () => {
@@ -205,20 +245,19 @@ export default function UserManagementPage() {
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
-                                {/* Only show Branch/Role/Code fields if Creating or if needed for Edit context (usually read-only in edit) */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="branch">Branch</Label>
                                         <Select
                                             onValueChange={handleBranchChange}
                                             value={selectedBranch}
-                                            disabled={mode === 'edit'} // Lock branch on edit for now
+                                            disabled={mode === 'edit'}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select Branch" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {branches.map(b => (
+                                                {branches.map((b) => (
                                                     <SelectItem key={b.code} value={b.code}>
                                                         {b.name} ({b.code})
                                                     </SelectItem>
@@ -230,8 +269,8 @@ export default function UserManagementPage() {
                                         <Label htmlFor="role">Role</Label>
                                         <Select
                                             value={selectedRole}
-                                            onValueChange={handleRoleChange}
-                                            disabled={mode === 'edit'} // Lock role on edit for now
+                                            onValueChange={(value) => handleRoleChange(value as 'admin' | 'employee' | 'agent')}
+                                            disabled={mode === 'edit'}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select role" />
@@ -263,9 +302,11 @@ export default function UserManagementPage() {
                                     <Label htmlFor="name">Full Name</Label>
                                     <Input
                                         id="name"
+                                        name="name"
                                         placeholder="John Doe"
                                         required
-                                        defaultValue={editingUser?.name}
+                                        value={editName}
+                                        onChange={(e) => setEditName(e.target.value)}
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -275,13 +316,15 @@ export default function UserManagementPage() {
                                         type="email"
                                         placeholder="john@company.com"
                                         required
-                                        defaultValue={editingUser?.email}
+                                        value={editingUser?.email ?? ''}
+                                        readOnly={mode === 'edit'}
+                                        onChange={() => undefined}
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="dept">Department</Label>
-                                        <Select defaultValue={editingUser?.dept?.toLowerCase() || undefined}>
+                                        <Select value={editDepartment.toLowerCase()} onValueChange={setEditDepartment}>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select dept" />
                                             </SelectTrigger>
@@ -295,7 +338,13 @@ export default function UserManagementPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="phone">Phone</Label>
-                                        <Input id="phone" placeholder="+91-..." />
+                                        <Input
+                                            id="phone"
+                                            name="phone"
+                                            placeholder="+91-..."
+                                            value={editPhone}
+                                            onChange={(e) => setEditPhone(e.target.value)}
+                                        />
                                     </div>
                                 </div>
 
@@ -333,7 +382,6 @@ export default function UserManagementPage() {
                 </Dialog>
             </div>
 
-            {/* Filter Bar */}
             <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm max-w-md">
                 <Search className="h-4 w-4 text-muted-foreground ml-2" />
                 <Input
@@ -344,7 +392,6 @@ export default function UserManagementPage() {
                 />
             </div>
 
-            {/* Table */}
             <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
                 <Table>
                     <TableHeader>
@@ -385,21 +432,18 @@ export default function UserManagementPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        {/* Mocking Branch display based on ID/Code for now since data is static */}
                                         <div className="flex items-center gap-1.5">
                                             <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                            <span className="text-sm">
-                                                {user.dept === 'IT' ? 'Head Office' : 'Margao Hub'}
-                                            </span>
+                                            <span className="text-sm">{getBranchNameFromEmployeeCode(user.code)}</span>
                                         </div>
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="secondary" className={
                                             user.role === 'admin'
-                                                ? "bg-purple-50 text-purple-700 border-purple-100"
+                                                ? 'bg-purple-50 text-purple-700 border-purple-100'
                                                 : user.role === 'employee'
-                                                    ? "bg-blue-50 text-blue-700 border-blue-100"
-                                                    : "bg-orange-50 text-orange-700 border-orange-100"
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                                    : 'bg-orange-50 text-orange-700 border-orange-100'
                                         }>
                                             <Shield className="h-3 w-3 mr-1" />
                                             {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
@@ -408,8 +452,8 @@ export default function UserManagementPage() {
                                     <TableCell>
                                         <Badge variant="outline" className={
                                             user.status === 'Active'
-                                                ? "bg-green-50 text-green-700 border-green-200"
-                                                : "bg-gray-50 text-gray-700 border-gray-200"
+                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                : 'bg-gray-50 text-gray-700 border-gray-200'
                                         }>
                                             {user.status}
                                         </Badge>

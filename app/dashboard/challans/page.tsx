@@ -24,16 +24,21 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { ChallanDetailsDialog } from '@/components/features/challans/ChallanDetailsDialog';
+import { Printer, Eye } from 'lucide-react';
 
 interface Challan {
     id: string;
     challan_no: string;
     owner_type?: string;
     date_from: string;
+    date_to?: string;
     origin_branch: { name: string; city: string };
     destination_branch: { name: string; city: string };
     challan_type: string;
     vehicle_no: string;
+    driver_name?: string;
+    driver_mobile?: string;
     total_hire_amount: number;
     extra_hire_amount: number;
     advance_amount: number;
@@ -48,6 +53,10 @@ export default function ChallanListPage() {
     const [typeFilter, setTypeFilter] = useState('ALL');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+
+    // State for Details Dialog
+    const [selectedChallan, setSelectedChallan] = useState<Challan | null>(null);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
     useEffect(() => {
         fetchChallans();
@@ -72,6 +81,11 @@ export default function ChallanListPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleViewDetails = (challan: Challan) => {
+        setSelectedChallan(challan);
+        setIsDetailsOpen(true);
     };
 
     return (
@@ -158,12 +172,13 @@ export default function ChallanListPage() {
                             <TableHead className="text-right">Extra Hire</TableHead>
                             <TableHead className="text-right">Advance Paid</TableHead>
                             <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={10} className="h-24 text-center">
+                                <TableCell colSpan={12} className="h-24 text-center">
                                     <div className="flex items-center justify-center gap-2 text-muted-foreground">
                                         Loading...
                                     </div>
@@ -193,11 +208,24 @@ export default function ChallanListPage() {
                                             {challan.status}
                                         </Badge>
                                     </TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="flex justify-end gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                                onClick={() => handleViewDetails(challan)}
+                                                title="View & Print"
+                                            >
+                                                <Printer className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={12} className="h-24 text-center text-muted-foreground">
                                     No challans found matching your search.
                                 </TableCell>
                             </TableRow>
@@ -208,6 +236,12 @@ export default function ChallanListPage() {
                     Showing {challans.length} entries
                 </div>
             </div>
+
+            <ChallanDetailsDialog
+                isOpen={isDetailsOpen}
+                onClose={() => setIsDetailsOpen(false)}
+                challan={selectedChallan}
+            />
         </div>
     );
 }

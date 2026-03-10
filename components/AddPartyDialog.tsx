@@ -17,7 +17,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Party, PartyType } from '@/lib/types/party.types';
+import { Party, PartyType, PartyInput } from '@/lib/types/party.types';
+import { createParty } from '@/lib/services/party.service';
+import { Loader2 } from 'lucide-react';
 
 interface AddPartyDialogProps {
     open: boolean;
@@ -36,6 +38,8 @@ export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', d
     const [pincode, setPincode] = React.useState('');
     const [phone, setPhone] = React.useState('');
     const [email, setEmail] = React.useState('');
+    const [isSaving, setIsSaving] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         if (open) {
@@ -51,26 +55,42 @@ export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', d
         }
     }, [open, initialName, defaultType]);
 
-    const handleSave = () => {
-        // Validation logic here if needed
-        const newParty: Party = {
-            id: Math.random().toString(36).substr(2, 9),
-            name,
-            code,
-            type: type,
-            gstin,
-            address,
-            pincode,
-            city: '', // Inferred or added if we had a city field
-            state: '',
-            phone,
-            email,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        };
-        onSave(newParty);
-        onOpenChange(false);
+    const handleSave = async () => {
+        if (!name) {
+            setError('Name is required');
+            return;
+        }
+        if (code.length !== 6) {
+            setError('Code must be exactly 6 digits');
+            return;
+        }
+
+        setIsSaving(true);
+        setError(null);
+        try {
+            const partyInput: PartyInput = {
+                name,
+                code,
+                type: type,
+                gstin: gstin || null,
+                address: address || null,
+                pincode: pincode || null,
+                phone: phone || null,
+                email: email || null,
+                is_active: true,
+                city: null, // Basic fields
+                state: null,
+            };
+
+            const savedParty = await createParty(partyInput);
+            onSave(savedParty);
+            onOpenChange(false);
+        } catch (err: any) {
+            console.error('Failed to save party:', err);
+            setError(err.message || 'Failed to save party');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -126,9 +146,13 @@ export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', d
                         <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
                     </div>
                 </div>
+                {error && <p className="text-xs text-destructive px-1">{error}</p>}
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button onClick={handleSave}>Save Party</Button>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
+                    <Button onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        {isSaving ? 'Saving...' : 'Save Party'}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

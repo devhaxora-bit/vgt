@@ -24,3 +24,26 @@ export async function GET(request: Request) {
 
     return NextResponse.json(data);
 }
+
+export async function POST(request: Request) {
+    const supabase = await createClient();
+
+    const body = await request.json();
+    const { code, name, type, city, state, phone } = body;
+
+    if (!code || !name || !type || !city || !state) {
+        return NextResponse.json({ error: 'Missing required fields: code, name, type, city, state' }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+        .from('branches')
+        .insert([{ code: code.toUpperCase(), name, type, city, state, phone: phone || null }])
+        .select()
+        .single();
+
+    if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data, { status: 201 });
+}

@@ -1,0 +1,43 @@
+-- Seed data for consignments table
+INSERT INTO consignments (
+    cn_no, bkg_date, booking_branch, dest_branch, delivery_type, 
+    bkg_basis, no_of_pkg, actual_weight, total_freight,
+    consignor_name, consignor_address, consignor_gst,
+    consignee_name, consignee_address, consignee_gst,
+    status
+) VALUES 
+(
+    'K3000731229', '2026-01-17', 'VERNA GOA', 'PTLG - PATALGANGA', 'DDLY-WITH CC', 
+    'TO BE BILLED', 13, 260, 2405,
+    'SIEMENS LTD', 'VERNA INDUSTRIAL ESTATE, GOA', '30AAAAA0000A1Z5',
+    'RELIANCE INDUSTRIES LTD', 'PATALGANGA, MAHARASHTRA', '27BBBBB1111B1Z2',
+    'BOOKED'
+),
+(
+    'K3000731230', '2026-01-17', 'VERNA GOA', 'PTLG - PATALGANGA', 'DDLY-WITH CC', 
+    'TO BE BILLED', 1, 60, 1264,
+    'SIEMENS LTD', 'VERNA INDUSTRIAL ESTATE, GOA', '30AAAAA0000A1Z5',
+    'RELIANCE INDUSTRIES LTD', 'PATALGANGA, MAHARASHTRA', '27BBBBB1111B1Z2',
+    'BOOKED'
+),
+(
+    'K3000731248', '2026-01-17', 'VERNA GOA', 'NSK - NASHIK', 'DDLY-WITH CC', 
+    'TOPAY', 5, 354, 4164,
+    'ABB INDIA LTD', 'MUMBAI, MAHARASHTRA', '27CCCCCC2222C1Z3',
+    'TATA MOTORS', 'PUNE, MAHARASHTRA', '27DDDDD3333D1Z4',
+    'BOOKED'
+),
+(
+    'K3000731247', '2026-01-17', 'VERNA GOA', 'JGN - JALGAON', 'DDLY-WITH CC', 
+    'TOPAY', 1, 120, 2085,
+    'L&T CONSTRUCTION', 'CHENNAI, TAMIL NADU', '33EEEEE4444E1Z5',
+    'JINDAL STEEL', 'BELLARY, KARNATAKA', '29FFFFF5555F1Z6',
+    'BOOKED'
+),
+(
+    'S3000801908', '2026-01-17', 'VERNA GOA', 'BDVT - BHADRAVATI', 'DDLY-WITH CC', 
+    'TOPAY', 15, 945, 4954,
+    'VEDANTA LTD', 'PANAJI, GOA', '30GGGGG6666G1Z7',
+    'VISVESVARAYA IRON AND STEEL', 'BHADRAVATI, KARNATAKA', '29HHHHH7777H1Z8',
+    'BOOKED'
+);

@@ -15,7 +15,8 @@ import {
     Building2,
     Package,
     Truck,
-    Hash
+    Hash,
+    Printer
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,14 +45,38 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
-import consignmentsData from '@/lib/data/consignments.json';
 import { ConsignmentDetailsDialog } from '@/components/features/consignments/ConsignmentDetailsDialog';
 
 export default function ConsignmentsPage() {
+    const [consignments, setConsignments] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    
     const [searchTerm, setSearchTerm] = useState('');
     const [cnNoFilter, setCnNoFilter] = useState('');
     const [selectedConsignment, setSelectedConsignment] = useState<any>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+    // Fetch consignments on mount
+    const fetchConsignments = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const res = await fetch('/api/consignments');
+            if (!res.ok) throw new Error('Failed to fetch consignments');
+            const data = await res.json();
+            setConsignments(data);
+        } catch (err: any) {
+            console.error(err);
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    React.useEffect(() => {
+        fetchConsignments();
+    }, []);
 
     // New Filters from Image
     const [bkgBranch, setBkgBranch] = useState<string>('all');
@@ -68,13 +93,13 @@ export default function ConsignmentsPage() {
         deliveryBranch: 'all',
         bookingType: 'all',
         deliveryType: 'all',
-        dateFrom: new Date('2026-01-17'),
-        dateTo: new Date('2026-01-19')
+        dateFrom: new Date('2025-01-01'), // Broader range
+        dateTo: new Date('2026-12-31')    // Broader range
     });
 
     // Filtering logic
     const filteredData = useMemo(() => {
-        return consignmentsData.filter(item => {
+        return (consignments || []).filter((item: any) => {
             // Table Search (Live)
             const matchesSearch =
                 item.cn_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -83,8 +108,8 @@ export default function ConsignmentsPage() {
             // Form Filters (Applied on Click)
             const { cnNo, bkgBranch: ab, deliveryBranch: ad, bookingType: at, deliveryType: adt, dateFrom: df, dateTo: dt } = appliedFilters;
 
-            const matchesCn = cnNo === '' || item.cn_no.toLowerCase().includes(cnNo.toLowerCase());
-            const matchesBkgBranch = ab === 'all' || item.bkg_branch === ab;
+            const matchesCn = cnNo === '' || item.cn_no?.toLowerCase().includes(cnNo.toLowerCase());
+            const matchesBkgBranch = ab === 'all' || item.booking_branch === ab;
             const matchesDestBranch = ad === 'all' || item.dest_branch.includes(ad);
             const matchesBkgBasis = at === 'all' || item.bkg_basis === at;
             const matchesDelType = adt === 'all' || item.delivery_type === adt;
@@ -100,7 +125,7 @@ export default function ConsignmentsPage() {
             return matchesSearch && matchesCn && matchesBkgBranch && matchesDestBranch &&
                 matchesBkgBasis && matchesDelType && matchesDateFrom && matchesDateTo;
         });
-    }, [searchTerm, appliedFilters]);
+    }, [searchTerm, appliedFilters, consignments]);
 
     const handleSearch = () => {
         setAppliedFilters({
@@ -336,8 +361,8 @@ export default function ConsignmentsPage() {
                             <TableBody>
                                 {filteredData.length > 0 ? (
                                     filteredData.map((item) => (
-                                        <TableRow key={item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
-                                            <TableCell className="text-[12px] font-medium text-muted-foreground">{item.bkg_branch}</TableCell>
+                                        <TableRow key={item.id || item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
+                                            <TableCell className="text-[12px] font-medium text-muted-foreground">{item.booking_branch}</TableCell>
                                             <TableCell>
                                                 <button
                                                     onClick={() => {
@@ -374,7 +399,19 @@ export default function ConsignmentsPage() {
                                                     <span className="text-muted-foreground/30">---</span>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1">
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="h-8 w-8 text-primary hover:bg-primary/10 hover:text-primary"
+                                                    onClick={() => {
+                                                        setSelectedConsignment(item);
+                                                        setIsDetailsOpen(true);
+                                                    }}
+                                                    title="View & Print"
+                                                >
+                                                    <Printer className="h-4 w-4" />
+                                                </Button>
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 hover:text-primary">
                                                     <MoreHorizontal className="h-4 w-4" />
                                                 </Button>
@@ -399,7 +436,7 @@ export default function ConsignmentsPage() {
                     {/* Enhanced Pagination */}
                     <div className="px-6 py-4 flex items-center justify-between border-t bg-muted/5">
                         <div className="flex items-center gap-4 text-xs text-muted-foreground font-medium">
-                            <span>Showing <strong>{filteredData.length}</strong> of <strong>{consignmentsData.length}</strong> entries</span>
+                            <span>Showing <strong>{filteredData.length}</strong> of <strong>{consignments.length}</strong> entries</span>
                             <div className="h-4 w-[1px] bg-border" />
                             <div className="flex items-center gap-2">
                                 <span>Show</span>
