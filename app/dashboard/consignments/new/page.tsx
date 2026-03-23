@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ArrowLeft,
     Save,
@@ -38,6 +38,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { toast } from 'sonner';
 
 import { PartyAutocomplete } from "@/components/PartyAutocomplete";
 import { AddPartyDialog } from "@/components/AddPartyDialog";
@@ -49,13 +50,34 @@ interface PackageItem {
     qty: number;
 }
 
+const BRANCH_OPTIONS = [
+    { value: "mrg", label: "MRG - MARGAO" },
+    { value: "pnj", label: "PNJ - PANAJI" },
+];
+
+const getBranchLabel = (branchCode: string) => {
+    const normalizedCode = branchCode.trim().toLowerCase();
+    const match = BRANCH_OPTIONS.find((branch) => branch.value === normalizedCode);
+    return match?.label || branchCode.toUpperCase();
+};
+
 export default function NewConsignmentPage() {
+    const MANUAL_BILLING_CODE = 'PERSONAL DELIVERY';
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const editId = searchParams.get('edit');
+    const isEditMode = Boolean(editId);
     const [isOwnersRisk, setIsOwnersRisk] = useState(true);
     const [isCancelCn, setIsCancelCn] = useState(false);
     const [consignor, setConsignor] = useState<Party | null>(null);
     const [consignee, setConsignee] = useState<Party | null>(null);
     const [billingParty, setBillingParty] = useState<Party | null>(null);
-    const [billingBranch, setBillingBranch] = useState("mrg");
+    const [billingBranch, setBillingBranch] = useState("");
+    const [billingMode, setBillingMode] = useState<'party' | 'manual'>('party');
+    const [manualBillingName, setManualBillingName] = useState("");
+    const [manualBillingAddress, setManualBillingAddress] = useState("");
+    const [manualBillingGst, setManualBillingGst] = useState("");
+    const [manualBillingStation, setManualBillingStation] = useState("");
 
     // Add Party Dialog State
     const [isAddPartyDialogOpen, setIsAddPartyDialogOpen] = useState(false);
@@ -87,8 +109,8 @@ export default function NewConsignmentPage() {
     });
 
     // General fields state
-    const [bookingBranchCode, setBookingBranchCode] = useState("mrg");
-    const [cnNo, setCnNo] = useState("801191");
+    const [bookingBranchCode, setBookingBranchCode] = useState("");
+    const [cnNo, setCnNo] = useState("");
     const [cnDate, setCnDate] = useState(new Date().toLocaleDateString('en-GB'));
     const [deliveryType, setDeliveryType] = useState("");
     const [isDoorCollection, setIsDoorCollection] = useState(false);
@@ -139,6 +161,48 @@ export default function NewConsignmentPage() {
     // Saving state
     const [isSaving, setIsSaving] = useState(false);
 
+    const formatDateForUi = (value?: string | null) => {
+        if (!value) return "";
+        if (value.includes('/')) return value;
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return value;
+        const day = String(parsed.getDate()).padStart(2, '0');
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const year = parsed.getFullYear();
+        return `${day}/${month}/${year}`;
+    };
+
+    const buildPartyFromConsignment = (
+        type: PartyType,
+        details: {
+            name?: string | null;
+            code?: string | null;
+            gstin?: string | null;
+            address?: string | null;
+            phone?: string | null;
+            email?: string | null;
+        }
+    ): Party | null => {
+        if (!details.name && !details.address && !details.gstin) return null;
+
+        return {
+            id: `${type}-${details.code || details.name || 'manual'}`,
+            name: details.name || '',
+            code: details.code || '',
+            type,
+            gstin: details.gstin || '',
+            address: details.address || '',
+            city: '',
+            pincode: '',
+            state: '',
+            phone: details.phone || '',
+            email: details.email || '',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        };
+    };
+
     // Fetch next CN no when branch changes
     React.useEffect(() => {
         const fetchNextCN = async () => {
@@ -153,13 +217,144 @@ export default function NewConsignmentPage() {
             }
         };
 
-        if (bookingBranchCode) {
+        if (bookingBranchCode && !isEditMode) {
             fetchNextCN();
         }
-    }, [bookingBranchCode]);
+    }, [bookingBranchCode, isEditMode]);
 
-    // Router for redirect
-    const router = useRouter();
+    React.useEffect(() => {
+        if (billingMode !== 'party') return;
+        if (!bookingBranchCode) return;
+        if (billingBranch) return;
+
+        setBillingBranch(bookingBranchCode);
+    }, [billingBranch, billingMode, bookingBranchCode]);
+
+    React.useEffect(() => {
+        const loadConsignmentForEdit = async () => {
+            if (!editId) return;
+
+            try {
+                const authResponse = await fetch('/api/auth/me');
+                const authResult = await authResponse.json();
+                if (authResult?.data?.role !== 'admin') {
+                    toast.error('Admin access required');
+                    router.replace('/dashboard/consignments');
+                    return;
+                }
+
+                const response = await fetch(`/api/consignments/${editId}`);
+                if (!response.ok) {
+                    throw new Error('Failed to load consignment');
+                }
+
+                const data = await response.json();
+
+                setBookingBranchCode(data.booking_branch || "");
+                setCnNo(data.cn_no || "");
+                setCnDate(formatDateForUi(data.bkg_date) || new Date().toLocaleDateString('en-GB'));
+                setDeliveryType(
+                    data.delivery_type === 'Door Delivery'
+                        ? 'dd'
+                        : data.delivery_type === 'Godown Delivery'
+                            ? 'gd'
+                            : (data.delivery_type || "")
+                );
+                setIsOwnersRisk(data.owner_risk ?? true);
+                setIsDoorCollection(data.door_collection ?? false);
+                setIsCancelCn(data.cancel_cn ?? false);
+                setBkgBasis(
+                    data.bkg_basis === 'TOPAY'
+                        ? 'topay'
+                        : data.bkg_basis === 'PAID'
+                            ? 'paid'
+                            : data.bkg_basis === 'TO BE BILLED'
+                                ? 'tbb'
+                                : (data.bkg_basis || "")
+                );
+                setDestBranch(data.dest_branch || "");
+
+                setConsignor(buildPartyFromConsignment('consignor', {
+                    name: data.consignor_name,
+                    code: data.consignor_code,
+                    gstin: data.consignor_gst,
+                    address: data.consignor_address,
+                    phone: data.consignor_mobile,
+                    email: data.consignor_email,
+                }));
+                setConsignee(buildPartyFromConsignment('consignee', {
+                    name: data.consignee_name,
+                    code: data.consignee_code,
+                    gstin: data.consignee_gst,
+                    address: data.consignee_address,
+                    phone: data.consignee_mobile,
+                    email: data.consignee_email,
+                }));
+
+                if (data.billing_party_code === MANUAL_BILLING_CODE) {
+                    setBillingMode('manual');
+                    setBillingParty(null);
+                    setManualBillingName(data.billing_party || "");
+                    setManualBillingGst(data.billing_party_gst || "");
+                    setManualBillingAddress(data.billing_party_address || "");
+                    setManualBillingStation(data.billing_branch || "");
+                    setBillingBranch("");
+                } else {
+                    setBillingMode('party');
+                    setBillingParty(buildPartyFromConsignment('billing', {
+                        name: data.billing_party,
+                        code: data.billing_party_code,
+                        gstin: data.billing_party_gst,
+                        address: data.billing_party_address,
+                    }));
+                    setBillingBranch(data.billing_branch || "");
+                    setManualBillingName("");
+                    setManualBillingGst("");
+                    setManualBillingAddress("");
+                    setManualBillingStation("");
+                }
+
+                setIsLoose(data.is_loose ?? false);
+                setPackages(Array.isArray(data.packages) ? data.packages : []);
+                setGoodsValue(String(data.goods_value ?? ""));
+                setHsnDesc(data.hsn_desc || "");
+                setChargedWeight(String(data.charged_weight ?? ""));
+                setActualWeight(String(data.actual_weight ?? ""));
+                setLoadUnit((data.load_unit || "mt").toLowerCase());
+                setDimL(String(data.dimension_l ?? ""));
+                setDimW(String(data.dimension_w ?? ""));
+                setDimH(String(data.dimension_h ?? ""));
+                setVolume(String(data.volume ?? ""));
+                setPrivateMark(data.private_mark || "");
+                setIsFreightPending(data.freight_pending ?? false);
+                setFreightRate(String(data.freight_rate ?? ""));
+                setBasicFreight(String(data.basic_freight ?? ""));
+                setCharges({
+                    unloading: String(data.unload_charges ?? ""),
+                    detention: String(data.retention_charges ?? ""),
+                    extraKm: String(data.extra_km_charges ?? ""),
+                    loading: String(data.mhc_charges ?? ""),
+                    doorColl: String(data.door_coll_charges ?? ""),
+                    doorDel: String(data.door_del_charges ?? ""),
+                    other: String(data.other_charges ?? "")
+                });
+                setAdvanceAmount(String(data.advance_amount ?? ""));
+                setInvoiceNo(data.invoice_no || "");
+                setInvoiceDate(formatDateForUi(data.invoice_date));
+                setInvoiceAmt(String(data.invoice_amount ?? ""));
+                setEwayBill(data.eway_bill || "");
+                setEwayFrom(formatDateForUi(data.eway_from_date));
+                setEwayTo(formatDateForUi(data.eway_to_date));
+                setRemarks(data.remarks || "");
+            } catch (error) {
+                console.error('Failed to load consignment for edit:', error);
+                toast.error(error instanceof Error ? error.message : 'Failed to load consignment');
+                router.replace('/dashboard/consignments');
+            }
+        };
+
+        void loadConsignmentForEdit();
+    }, [editId, router]);
 
     const handleAddPackage = () => {
         if (isLoose) {
@@ -238,6 +433,16 @@ export default function NewConsignmentPage() {
         try {
             const totalFrt = calculateFreight();
             const adv = parseFloat(advanceAmount) || 0;
+            const billingName = billingMode === 'manual' ? manualBillingName.trim() : (billingParty?.name || '');
+            const billingCode = billingMode === 'manual' ? MANUAL_BILLING_CODE : (billingParty?.code || '');
+            const billingGstValue = billingMode === 'manual' ? manualBillingGst.trim() : (billingParty?.gstin || '');
+            const billingAddressValue = billingMode === 'manual' ? manualBillingAddress.trim() : (billingParty?.address || '');
+            const billingStationValue = billingMode === 'manual' ? manualBillingStation.trim() : billingBranch.toUpperCase();
+
+            if (bkgBasis === 'tbb' && billingMode === 'manual' && (!billingName || !billingAddressValue)) {
+                alert('Manual billing requires name and address.');
+                return;
+            }
 
             const basicFrt = freightType === 'fixed' 
                 ? (parseFloat(basicFreight) || 0) 
@@ -270,11 +475,11 @@ export default function NewConsignmentPage() {
                 consignee_mobile: consignee?.phone,
                 consignee_email: consignee?.email,
 
-                billing_party: billingParty?.name,
-                billing_party_code: billingParty?.code,
-                billing_party_gst: billingParty?.gstin,
-                billing_party_address: billingParty?.address,
-                billing_branch: billingBranch.toUpperCase(),
+                billing_party: billingName,
+                billing_party_code: billingCode,
+                billing_party_gst: billingGstValue,
+                billing_party_address: billingAddressValue,
+                billing_branch: billingStationValue,
 
                 no_of_pkg: packages.length,
                 total_qty: isLoose ? packages.length : totalQty,
@@ -328,8 +533,11 @@ export default function NewConsignmentPage() {
                 remarks: remarks,
             };
 
-            const res = await fetch('/api/consignments', {
-                method: 'POST',
+            const endpoint = isEditMode ? `/api/consignments/${editId}` : '/api/consignments';
+            const method = isEditMode ? 'PATCH' : 'POST';
+
+            const res = await fetch(endpoint, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
@@ -339,9 +547,10 @@ export default function NewConsignmentPage() {
                 throw new Error(err.error || 'Failed to save consignment');
             }
 
-            alert(`Consignment ${fullCnNo} saved successfully!`);
+            alert(`Consignment ${fullCnNo} ${isEditMode ? 'updated' : 'saved'} successfully!`);
 
             router.push('/dashboard/consignments');
+            router.refresh();
         } catch (error: unknown) {
             console.error('Save error:', error);
             alert((error as Error).message || 'Failed to save consignment');
@@ -365,7 +574,11 @@ export default function NewConsignmentPage() {
                         <div>
                             <h1 className="text-xl font-bold tracking-tight">CNS Entry</h1>
                             <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-                                Last entered: <span className="text-primary">801191</span> on 17/01/2026
+                                {isEditMode ? (
+                                    <>Editing CNS: <span className="text-primary">{cnNo || '---'}</span></>
+                                ) : (
+                                    <>Last entered: <span className="text-primary">801191</span> on 17/01/2026</>
+                                )}
                             </p>
                         </div>
                     </div>
@@ -374,7 +587,7 @@ export default function NewConsignmentPage() {
                             <RotateCcw className="h-4 w-4" /> Reset Form
                         </Button>
                         <Button className="gap-2 h-9 shadow-lg shadow-primary/20" onClick={handleSave} disabled={isSaving}>
-                            <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : 'Save Consignment'}
+                            <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : (isEditMode ? 'Update Consignment' : 'Save Consignment')}
                         </Button>
                     </div>
                 </div>
@@ -811,54 +1024,131 @@ export default function NewConsignmentPage() {
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Bill For (Branch)</Label>
-                                                    <Select value={billingBranch} onValueChange={setBillingBranch}>
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Destination</Label>
+                                                    <Select
+                                                        value={billingMode}
+                                                        onValueChange={(value: 'party' | 'manual') => {
+                                                            setBillingMode(value);
+                                                            if (value === 'party') {
+                                                                setManualBillingName("");
+                                                                setManualBillingAddress("");
+                                                                setManualBillingGst("");
+                                                                setManualBillingStation("");
+                                                                setBillingBranch((current) => current || bookingBranchCode);
+                                                            } else {
+                                                                setBillingParty(null);
+                                                                setBillingBranch("");
+                                                            }
+                                                        }}
+                                                    >
                                                         <SelectTrigger className="h-9">
-                                                            <SelectValue placeholder="Select Branch" />
+                                                            <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="mrg">MRG - MARGAO</SelectItem>
-                                                            <SelectItem value="pnj">PNJ - PANAJI</SelectItem>
+                                                            <SelectItem value="party">Saved Billing Party</SelectItem>
+                                                            <SelectItem value="manual">Personal Delivery</SelectItem>
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Code Station Name</Label>
-                                                    <Input className="h-9 bg-slate-50 font-bold" value={billingBranch.toUpperCase()} readOnly />
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Bill For (Branch)</Label>
+                                                    {billingMode === 'party' ? (
+                                                        <Select value={billingBranch} onValueChange={setBillingBranch}>
+                                                            <SelectTrigger className="h-9">
+                                                                <SelectValue placeholder="Select Branch" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {BRANCH_OPTIONS.map((branch) => (
+                                                                    <SelectItem key={branch.value} value={branch.value}>
+                                                                        {branch.label}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    ) : (
+                                                        <Input
+                                                            className="h-9"
+                                                            placeholder="Enter station / location"
+                                                            value={manualBillingStation}
+                                                            onChange={(e) => setManualBillingStation(e.target.value)}
+                                                        />
+                                                    )}
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party</Label>
-                                                    <PartyAutocomplete
-                                                        type="billing"
-                                                        onSelect={(p) => {
-                                                            if (p?.id === 'new') {
-                                                                setPendingPartyName(p.name);
-                                                                setPendingPartyType('billing');
-                                                                setIsAddPartyDialogOpen(true);
-                                                            } else {
-                                                                setBillingParty(p);
-                                                            }
-                                                        }}
-                                                        value={billingParty?.name}
-                                                        placeholder="Select Billing Party"
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Code Station Name</Label>
+                                                    <Input
+                                                        className="h-9 bg-slate-50 font-bold"
+                                                        value={billingMode === 'manual' ? manualBillingStation.toUpperCase() : getBranchLabel(billingBranch)}
+                                                        readOnly
                                                     />
                                                 </div>
 
                                                 <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">
+                                                        {billingMode === 'manual' ? 'Delivery Name' : 'Billing Party'}
+                                                    </Label>
+                                                    {billingMode === 'party' ? (
+                                                        <PartyAutocomplete
+                                                            type="billing"
+                                                            onSelect={(p) => {
+                                                                if (p?.id === 'new') {
+                                                                    setPendingPartyName(p.name);
+                                                                    setPendingPartyType('billing');
+                                                                    setIsAddPartyDialogOpen(true);
+                                                                } else {
+                                                                    setBillingParty(p);
+                                                                }
+                                                            }}
+                                                            value={billingParty?.name}
+                                                            placeholder="Select Billing Party"
+                                                        />
+                                                    ) : (
+                                                        <Input
+                                                            className="h-9"
+                                                            placeholder="Enter personal delivery name"
+                                                            value={manualBillingName}
+                                                            onChange={(e) => setManualBillingName(e.target.value)}
+                                                        />
+                                                    )}
+                                                </div>
+
+                                                <div className="space-y-1">
                                                     <Label className="text-[10px] font-bold uppercase text-muted-foreground">Party Code</Label>
-                                                    <Input className="h-9 bg-yellow-50/30" value={billingParty?.code || ''} readOnly />
+                                                    <Input
+                                                        className="h-9 bg-yellow-50/30"
+                                                        value={billingMode === 'manual' ? MANUAL_BILLING_CODE : (billingParty?.code || '')}
+                                                        readOnly
+                                                    />
                                                 </div>
 
                                                 <div className="space-y-1">
                                                     <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party GST</Label>
-                                                    <Input className="h-9 font-mono bg-yellow-50/30" value={billingParty?.gstin || ''} readOnly />
+                                                    <Input
+                                                        className="h-9 font-mono bg-yellow-50/30"
+                                                        value={billingMode === 'manual' ? manualBillingGst : (billingParty?.gstin || '')}
+                                                        onChange={(e) => {
+                                                            if (billingMode === 'manual') {
+                                                                setManualBillingGst(e.target.value);
+                                                            }
+                                                        }}
+                                                        readOnly={billingMode === 'party'}
+                                                    />
                                                 </div>
 
                                                 <div className="space-y-1 lg:col-span-2">
                                                     <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
-                                                    <Input className="h-9 bg-yellow-50/30" value={billingParty?.address || ''} readOnly />
+                                                    <Input
+                                                        className="h-9 bg-yellow-50/30"
+                                                        value={billingMode === 'manual' ? manualBillingAddress : (billingParty?.address || '')}
+                                                        onChange={(e) => {
+                                                            if (billingMode === 'manual') {
+                                                                setManualBillingAddress(e.target.value);
+                                                            }
+                                                        }}
+                                                        readOnly={billingMode === 'party'}
+                                                    />
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -1138,7 +1428,7 @@ export default function NewConsignmentPage() {
                             </Card>
 
                             <Button className="w-full h-12 text-lg font-bold shadow-xl shadow-primary/20" onClick={handleSave} disabled={isSaving}>
-                                <Save className="mr-2" /> {isSaving ? 'Saving...' : 'Finalize Booking'}
+                                <Save className="mr-2" /> {isSaving ? 'Saving...' : (isEditMode ? 'Update Booking' : 'Finalize Booking')}
                             </Button>
                         </div>
                     </div>

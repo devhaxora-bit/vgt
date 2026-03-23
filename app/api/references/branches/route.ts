@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const supabase = await createClient();
 
     const body = await request.json();
-    const { code, name, type, city, state, phone } = body;
+    const { code, name, type, city, state, phone, next_cn_no, next_challan_no } = body;
 
     if (!code || !name || !type || !city || !state) {
         return NextResponse.json({ error: 'Missing required fields: code, name, type, city, state' }, { status: 400 });
@@ -37,7 +37,16 @@ export async function POST(request: Request) {
 
     const { data, error } = await supabase
         .from('branches')
-        .insert([{ code: code.toUpperCase(), name, type, city, state, phone: phone || null }])
+        .insert([{ 
+            code: code.toUpperCase(), 
+            name, 
+            type, 
+            city, 
+            state, 
+            phone: phone || null,
+            next_cn_no: next_cn_no ? parseInt(next_cn_no) : 800001,
+            next_challan_no: next_challan_no ? parseInt(next_challan_no) : 300066955
+        }])
         .select()
         .single();
 

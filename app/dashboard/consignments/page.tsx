@@ -16,7 +16,8 @@ import {
     Package,
     Truck,
     Hash,
-    Printer
+    Printer,
+    Pencil
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,7 @@ export default function ConsignmentsPage() {
     const [consignments, setConsignments] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isAdmin, setIsAdmin] = useState(false);
     
     const [searchTerm, setSearchTerm] = useState('');
     const [cnNoFilter, setCnNoFilter] = useState('');
@@ -91,6 +93,21 @@ export default function ConsignmentsPage() {
 
     React.useEffect(() => {
         fetchConsignments();
+    }, []);
+
+    React.useEffect(() => {
+        const loadCurrentUser = async () => {
+            try {
+                const response = await fetch('/api/auth/me');
+                if (!response.ok) return;
+                const result = await response.json();
+                setIsAdmin(result?.data?.role === 'admin');
+            } catch (err) {
+                console.error('Failed to load current user', err);
+            }
+        };
+
+        void loadCurrentUser();
     }, []);
 
     // New Filters from Image
@@ -427,6 +444,18 @@ export default function ConsignmentsPage() {
                                                 >
                                                     <Printer className="h-4 w-4" />
                                                 </Button>
+                                                {isAdmin && (
+                                                    <Link href={`/dashboard/consignments/new?edit=${item.id}`}>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                                                            title="Edit CNS"
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Button>
+                                                    </Link>
+                                                )}
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 hover:text-primary">
                                                     <MoreHorizontal className="h-4 w-4" />
                                                 </Button>
@@ -485,6 +514,7 @@ export default function ConsignmentsPage() {
                 isOpen={isDetailsOpen}
                 onClose={() => setIsDetailsOpen(false)}
                 consignment={selectedConsignment}
+                isAdmin={isAdmin}
             />
         </div>
     );

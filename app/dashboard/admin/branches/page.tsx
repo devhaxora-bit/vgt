@@ -49,6 +49,8 @@ const defaultForm = {
     city: '',
     state: '',
     phone: '',
+    next_cn_no: '',
+    next_challan_no: '',
 };
 
 export default function BranchManagementPage() {
@@ -198,6 +200,28 @@ export default function BranchManagementPage() {
                                                 required
                                                 value={form.state}
                                                 onChange={(e) => handleFormChange('state', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="next_cn_no">Starting CN No. <span className="text-muted-foreground">(opt)</span></Label>
+                                            <Input
+                                                id="next_cn_no"
+                                                type="number"
+                                                placeholder="e.g. 800001"
+                                                value={form.next_cn_no}
+                                                onChange={(e) => handleFormChange('next_cn_no', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="next_challan_no">Starting Challan No. <span className="text-muted-foreground">(opt)</span></Label>
+                                            <Input
+                                                id="next_challan_no"
+                                                type="number"
+                                                placeholder="e.g. 300066955"
+                                                value={form.next_challan_no}
+                                                onChange={(e) => handleFormChange('next_challan_no', e.target.value)}
                                             />
                                         </div>
                                     </div>

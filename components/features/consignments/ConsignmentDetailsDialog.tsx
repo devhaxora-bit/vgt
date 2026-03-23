@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
+import Link from 'next/link';
 import {
     X,
     User,
@@ -13,7 +14,8 @@ import {
     Hash,
     MapPin,
     FileText,
-    Printer
+    Printer,
+    Pencil
 } from 'lucide-react';
 import {
     Dialog,
@@ -34,6 +36,7 @@ interface ConsignmentDetailsDialogProps {
     isOpen: boolean;
     onClose: () => void;
     consignment: any;
+    isAdmin?: boolean;
 }
 
 type CopyType = 'consigner' | 'consignee' | 'lorry' | 'office';
@@ -60,7 +63,7 @@ const getFullBranchName = (code?: string) => {
     return BRANCH_MAP[upperCode] || upperCode;
 };
 
-export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: ConsignmentDetailsDialogProps) {
+export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin = false }: ConsignmentDetailsDialogProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [copyType, setCopyType] = React.useState<CopyType>('consignee');
     const [issuingOfficerName, setIssuingOfficerName] = React.useState('---');
@@ -678,6 +681,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         <InfoItem label="Party GST" value={billing.billing_party_gst} />
                                         <InfoItem label="Sector / DCC" value={billing.sector_dcc} />
                                         <InfoItem label="Bill Station" value={billing.bill_for_station} />
+                                        <InfoItem label="Billing Address" value={billing.address} />
                                         <InfoItem label="Consignee Type" value={billing.cnee_type} />
                                     </CardContent>
                                 </Card>
@@ -887,6 +891,14 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                             <FileText className="h-4 w-4" />
                             Download PDF
                         </Button>
+                        {isAdmin && c.id && (
+                            <Button size="sm" variant="outline" asChild className="gap-2">
+                                <Link href={`/dashboard/consignments/new?edit=${c.id}`}>
+                                    <Pencil className="h-4 w-4" />
+                                    Edit CNS
+                                </Link>
+                            </Button>
+                        )}
                         <Button size="sm" onClick={onClose} className="bg-slate-900 text-white hover:bg-slate-800">Close</Button>
                     </div>
                 </div>

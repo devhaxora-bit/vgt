@@ -3,7 +3,6 @@
 import * as React from "react"
 import { Check, ChevronsUpDown, Loader2, Plus } from "lucide-react"
 
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -38,7 +37,7 @@ export function PartyAutocomplete({
         setInputValue(value)
     }, [value])
 
-    const fetchParties = async (search: string) => {
+    const fetchParties = React.useCallback(async (search: string) => {
         setLoading(true)
         try {
             const data = await getParties(type, search)
@@ -48,13 +47,18 @@ export function PartyAutocomplete({
         } finally {
             setLoading(false)
         }
-    }
+    }, [type])
 
     React.useEffect(() => {
         if (open) {
             fetchParties("")
         }
-    }, [open, type])
+    }, [fetchParties, open])
+
+    const normalizedInputValue = inputValue.trim().toLowerCase()
+    const hasExactMatch = parties.some(
+        (party) => party.name.trim().toLowerCase() === normalizedInputValue
+    )
 
     const handleSelect = (party: Party) => {
         onSelect(party)
@@ -157,7 +161,7 @@ export function PartyAutocomplete({
                     </div>
 
                     {/* Add New Party Button */}
-                    {!loading && inputValue && (
+                    {!loading && normalizedInputValue && !hasExactMatch && (
                         <div className="border-t p-1">
                             <Button
                                 variant="ghost"
@@ -165,7 +169,7 @@ export function PartyAutocomplete({
                                 onClick={handleAddNewParty}
                             >
                                 <Plus className="mr-2 h-4 w-4" />
-                                Add "{inputValue}" as new party
+                                Add &quot;{inputValue}&quot; as new party
                             </Button>
                         </div>
                     )}
