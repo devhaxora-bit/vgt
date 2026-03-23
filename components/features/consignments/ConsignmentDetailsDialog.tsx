@@ -63,6 +63,31 @@ const getFullBranchName = (code?: string) => {
 export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: ConsignmentDetailsDialogProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [copyType, setCopyType] = React.useState<CopyType>('consignee');
+    const [issuingOfficerName, setIssuingOfficerName] = React.useState('---');
+
+    React.useEffect(() => {
+        let isMounted = true;
+
+        const loadCurrentUser = async () => {
+            try {
+                const response = await fetch('/api/auth/me');
+                if (!response.ok) return;
+                const result = await response.json();
+                const fullName = result?.data?.full_name;
+                if (isMounted && fullName) {
+                    setIssuingOfficerName(fullName);
+                }
+            } catch (error) {
+                console.error('Failed to load issuing officer name:', error);
+            }
+        };
+
+        loadCurrentUser();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     if (!consignment) return null;
 
@@ -156,7 +181,8 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
         const totalFreight = Number(freight.total_freight || c.total_freight || 0);
         const truckNo = c.vehicle_no || c.truck_no || '---';
         const issuingOffice = getFullBranchName(c.booking_branch || c.bkg_branch);
-        const logoUrl = `${window.location.origin}/vgt_logo.jpeg`;
+        const officerName = toUpperValue(issuingOfficerName);
+        const logoUrl = `${window.location.origin}/vgt_logo.png`;
         const consignorName = toUpperValue(consignor.name);
         const consignorAddress = toUpperValue(consignor.address);
         const consigneeName = toUpperValue(consignee.name);
@@ -171,7 +197,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
 @page { size: A4 landscape; margin: 4mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; }
-.page { border: 2px solid #1d2f7a; background: ${config.paperTint}; width: 289mm; min-height: 202mm; margin: 0 auto; }
+.page { border: 2px solid #1d2f7a; background: ${config.paperTint}; width: 279mm; min-height: 194mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; }
 .row { display: flex; width: 100%; }
 .box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
 .tiny { font-size: 11px; line-height: 1.25; }
@@ -181,8 +207,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .head-blue { color: #17308b; font-weight: 800; }
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 44px; letter-spacing: 1px; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
-.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 10px; }
-.logo-box { width: 86px; height: 54px; border: 2px solid #1d2f7a; border-radius: 6px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#fff; }
+.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
+.logo-box { width: 86px; height: 54px; border: 2px solid #1d2f7a; border-radius: 6px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:transparent; }
 .logo-box img { width: 100%; height: 100%; object-fit: contain; display:block; }
 .top-grid { display: grid; grid-template-columns: 1.22fr 1.1fr 1.02fr 0.72fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
 .mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
@@ -191,6 +217,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .main-table { width:100%; border-collapse: collapse; }
 .main-table th, .main-table td { border:1px solid #1d2f7a; padding: 4px 6px; vertical-align: top; }
 .main-table th { background: rgba(255,255,255,0.65); color:#122d7a; font-size: 12px; }
+.main-table th:last-child, .main-table td:last-child { border-right: 1px solid #1d2f7a !important; }
 .charges-list { font-size: 12px; line-height: 1.4; }
 .footer { display:flex; justify-content:space-between; padding:10px 12px; align-items:flex-end; }
 .copy-title { text-align:center; font-size: 24px; font-weight: 800; color:#163082; letter-spacing: 1px; border-bottom: 1px solid #1d2f7a; padding: 0 0 6px; margin: -4px -6px 6px; }
@@ -220,8 +247,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="row" style="gap:10px; align-items:center;">
             <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
             <div style="flex:1; text-align:center;">
-                <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:4px;">Visakha Golden Transport</div>
-                <div class="strong" style="font-size:18px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
+                <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:20px;">Visakha Golden Transport</div>
+                <div class="strong" style="font-size:18px; margin-bottom:6px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
                 <div style="font-size:16px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
         </div>
@@ -365,7 +392,10 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 
     <div class="footer">
         <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${goodsValue.toLocaleString('en-IN')}</span></div>
-        <div style="font-size:19px; font-weight:700;">Signature of the Issuing Officer .......................................</div>
+        <div style="font-size:19px; font-weight:700; text-align:center;">
+            <div class="ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
+            <div>Signature of the Issuing Officer .......................................</div>
+        </div>
     </div>
 </div>
 </body>
@@ -426,7 +456,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             compress: true,
         });
 
-        pdf.addImage(imageData, 'JPEG', 0, 0, 297, 210, undefined, 'FAST');
+        pdf.addImage(imageData, 'JPEG', 2, 2, 293, 206, undefined, 'FAST');
         const safeCopyLabel = config.label.toLowerCase().replace(/\s+/g, '-');
         const safeCn = String(c.cn_no || 'cns').replace(/[^a-zA-Z0-9-_]/g, '');
         pdf.save(`${safeCn}-${safeCopyLabel}.pdf`);

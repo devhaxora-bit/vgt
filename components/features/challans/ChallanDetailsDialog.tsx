@@ -61,7 +61,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
 .header { display: flex; align-items: center; border-bottom: 2px solid #000; padding: 10px 15px; }
 .header-logo { font-size: 36px; font-weight: 900; color: #1a3764; border: 3px solid #1a3764; border-radius: 8px; padding: 4px 10px; margin-right: 15px; line-height: 1; }
 .header-text { flex: 1; }
-.header-text h1 { font-size: 26px; font-weight: 900; color: #1a3764; letter-spacing: 1px; }
+.header-text h1 { font-size: 26px; font-weight: 900; color: #1a3764; letter-spacing: 1px; margin-bottom: 40px; }
 .header-text p { font-size: 9px; color: #333; margin-top: 2px; }
 .header-right { text-align: right; font-size: 9px; line-height: 1.6; }
 .header-right .pan { font-weight: 700; font-size: 10px; }
@@ -195,24 +195,24 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
         <div class="charges-grid">
             <div class="charge-cell">
                 <div class="charge-lbl">Total Hire Amt</div>
-                <div class="charge-val">₹ ${Number(c.total_hire_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                <div class="charge-val">₹ ${Number(c.total_hire_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
             </div>
             <div class="charge-cell">
                 <div class="charge-lbl">Extra Hire Amt</div>
-                <div class="charge-val">₹ ${Number(c.extra_hire_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                <div class="charge-val">₹ ${Number(c.extra_hire_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
             </div>
             <div class="charge-cell">
                 <div class="charge-lbl">Advance Paid</div>
-                <div class="charge-val" style="color: #c00;">- ₹ ${Number(c.advance_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                <div class="charge-val" style="color: #c00;">- ₹ ${Number(c.advance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
             </div>
             <div class="charge-cell">
                 <div class="charge-lbl">Balance Amount</div>
-                <div class="charge-val" style="font-weight:900; color:#1a3764;">₹ ${balance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                <div class="charge-val" style="font-weight:900; color:#1a3764;">₹ ${balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
             </div>
         </div>
         <div class="total-row">
             <div class="total-lbl">Balance Payable</div>
-            <div class="total-val">₹ ${balance.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+            <div class="total-val">₹ ${balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
         </div>
     </div>
 
