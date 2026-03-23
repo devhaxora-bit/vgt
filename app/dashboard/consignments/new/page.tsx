@@ -70,15 +70,17 @@ export default function NewConsignmentPage() {
 
     // Freight State
     const [isFreightPending, setIsFreightPending] = useState(false);
+    const [freightType, setFreightType] = useState("per_tone"); // 'fixed' or 'per_tone'
     const [freightRate, setFreightRate] = useState("");
+    const [basicFreight, setBasicFreight] = useState("");
     const [chargedWeight, setChargedWeight] = useState("");
 
     // Freight Charges
     const [charges, setCharges] = useState({
-        unload: "",
-        retention: "",
+        unloading: "",
+        detention: "",
         extraKm: "",
-        mhc: "",
+        loading: "",
         doorColl: "",
         doorDel: "",
         other: ""
@@ -89,18 +91,14 @@ export default function NewConsignmentPage() {
     const [cnNo, setCnNo] = useState("801191");
     const [cnDate, setCnDate] = useState(new Date().toLocaleDateString('en-GB'));
     const [deliveryType, setDeliveryType] = useState("");
-    const [distance, setDistance] = useState("");
     const [isDoorCollection, setIsDoorCollection] = useState(false);
     const [bkgBasis, setBkgBasis] = useState("");
     const [destBranch, setDestBranch] = useState("");
-    const [cnPrefix, setCnPrefix] = useState("S"); // State for CN prefix
+    const [docType, setDocType] = useState("physical"); // 'physical' or 'electronic'
 
     // Goods fields
-    const [goodsClass, setGoodsClass] = useState("");
     const [goodsValue, setGoodsValue] = useState("");
-    const [goodsDesc, setGoodsDesc] = useState("");
     const [hsnDesc, setHsnDesc] = useState("");
-    const [codAmount, setCodAmount] = useState("");
     const [actualWeight, setActualWeight] = useState("");
     const [loadUnit, setLoadUnit] = useState("mt");
     const [dimL, setDimL] = useState("");
@@ -113,8 +111,6 @@ export default function NewConsignmentPage() {
     const [invoiceNo, setInvoiceNo] = useState("");
     const [invoiceDate, setInvoiceDate] = useState("");
     const [invoiceAmt, setInvoiceAmt] = useState("");
-    const [indentNo, setIndentNo] = useState("");
-    const [indentDate, setIndentDate] = useState("");
     const [ewayBill, setEwayBill] = useState("");
     const [ewayFrom, setEwayFrom] = useState("");
     const [ewayTo, setEwayTo] = useState("");
@@ -150,7 +146,6 @@ export default function NewConsignmentPage() {
                 const response = await fetch(`/api/branches/next-cn?branch=${bookingBranchCode}`);
                 if (response.ok) {
                     const data = await response.json();
-                    setCnPrefix(data.prefix);
                     setCnNo(data.nextNo.toString());
                 }
             } catch (error) {
@@ -196,9 +191,20 @@ export default function NewConsignmentPage() {
 
     const calculateFreight = () => {
         if (isFreightPending) return 0;
-        const rate = parseFloat(freightRate) || 0;
-        const weight = parseFloat(chargedWeight) || 0;
-        const basic = rate * weight;
+        let basic = 0;
+        if (freightType === 'fixed') {
+            basic = parseFloat(basicFreight) || 0;
+        } else {
+            const rate = parseFloat(freightRate) || 0;
+            const weight = parseFloat(chargedWeight) || 0;
+            // If weight is in KG and rate is per tonne, basic = (weight / 1000) * rate
+            // Assuming the system implies weight is KG when loadUnit is KG.
+            if (loadUnit.toLowerCase() === 'kg') {
+                basic = (weight / 1000) * rate;
+            } else {
+                basic = rate * weight; // If already MT or ODC
+            }
+        }
 
         const extra = Object.values(charges).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
         return basic + extra;
@@ -215,10 +221,17 @@ export default function NewConsignmentPage() {
     const handleSave = async () => {
         if (isSaving) return;
 
-        const fullCnNo = `S${cnNo}`;
+        const fullCnNo = cnNo;
         if (!cnNo) {
             alert('CN No. is required.');
             return;
+        }
+
+        if (docType === 'electronic') {
+            if (!dimL || !dimW || !dimH) {
+                alert('Length, Width, and Height are required when Document Type is Electronic.');
+                return;
+            }
         }
 
         setIsSaving(true);
@@ -226,13 +239,18 @@ export default function NewConsignmentPage() {
             const totalFrt = calculateFreight();
             const adv = parseFloat(advanceAmount) || 0;
 
+            const basicFrt = freightType === 'fixed' 
+                ? (parseFloat(basicFreight) || 0) 
+                : (loadUnit.toLowerCase() === 'kg' 
+                    ? ((parseFloat(chargedWeight) || 0) / 1000) * (parseFloat(freightRate) || 0)
+                    : (parseFloat(chargedWeight) || 0) * (parseFloat(freightRate) || 0));
+
             const body = {
-                cn_no: `${cnPrefix}${cnNo}`,
+                cn_no: cnNo,
                 bkg_date: cnDate.split('/').reverse().join('-'), // DD/MM/YYYY to YYYY-MM-DD
                 booking_branch: bookingBranchCode.toUpperCase(),
                 dest_branch: destBranch,
                 delivery_type: deliveryType === 'dd' ? 'Door Delivery' : deliveryType === 'gd' ? 'Godown Delivery' : deliveryType,
-                distance_km: distance,
                 owner_risk: isOwnersRisk,
                 door_collection: isDoorCollection,
                 cancel_cn: isCancelCn,
@@ -262,11 +280,8 @@ export default function NewConsignmentPage() {
                 total_qty: isLoose ? packages.length : totalQty,
                 is_loose: isLoose,
                 packages: packages,
-                goods_class: goodsClass === 'general' ? 'General Goods' : goodsClass === 'hazardous' ? 'Hazardous' : goodsClass,
                 goods_value: goodsValue,
-                goods_desc: goodsDesc,
                 hsn_desc: hsnDesc,
-                cod_amount: codAmount,
                 actual_weight: actualWeight,
                 charged_weight: chargedWeight,
                 load_unit: loadUnit.toUpperCase(),
@@ -278,11 +293,11 @@ export default function NewConsignmentPage() {
 
                 freight_pending: isFreightPending,
                 freight_rate: freightRate,
-                basic_freight: ((parseFloat(freightRate) || 0) * (parseFloat(chargedWeight) || 0)).toFixed(2),
-                unload_charges: charges.unload,
-                retention_charges: charges.retention,
+                basic_freight: basicFrt.toFixed(2),
+                unload_charges: charges.unloading,
+                retention_charges: charges.detention,
                 extra_km_charges: charges.extraKm,
-                mhc_charges: charges.mhc,
+                mhc_charges: charges.loading,
                 door_coll_charges: charges.doorColl,
                 door_del_charges: charges.doorDel,
                 other_charges: charges.other,
@@ -293,8 +308,6 @@ export default function NewConsignmentPage() {
                 invoice_no: invoiceNo,
                 invoice_date: parseDateForDB(invoiceDate),
                 invoice_amount: invoiceAmt,
-                indent_no: indentNo,
-                indent_date: parseDateForDB(indentDate),
                 eway_bill: ewayBill,
                 eway_from_date: parseDateForDB(ewayFrom),
                 eway_to_date: parseDateForDB(ewayTo),
@@ -329,9 +342,9 @@ export default function NewConsignmentPage() {
             alert(`Consignment ${fullCnNo} saved successfully!`);
 
             router.push('/dashboard/consignments');
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Save error:', error);
-            alert(error.message || 'Failed to save consignment');
+            alert((error as Error).message || 'Failed to save consignment');
         } finally {
             setIsSaving(false);
         }
@@ -352,7 +365,7 @@ export default function NewConsignmentPage() {
                         <div>
                             <h1 className="text-xl font-bold tracking-tight">CNS Entry</h1>
                             <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
-                                Last entered: <span className="text-primary">S801191</span> on 17/01/2026
+                                Last entered: <span className="text-primary">801191</span> on 17/01/2026
                             </p>
                         </div>
                     </div>
@@ -377,7 +390,7 @@ export default function NewConsignmentPage() {
                         <div className="flex flex-wrap gap-8 px-4 py-2 bg-card rounded-lg border shadow-sm">
                             <div className="flex items-center space-x-2">
                                 <Switch id="owners-risk" checked={isOwnersRisk} onCheckedChange={setIsOwnersRisk} />
-                                <Label htmlFor="owners-risk" className="text-sm font-bold cursor-pointer">Owner's Risk</Label>
+                                <Label htmlFor="owners-risk" className="text-sm font-bold cursor-pointer">Owner&apos;s Risk</Label>
                             </div>
                             <div className="flex items-center space-x-2">
                                 <Checkbox id="door-collection" checked={isDoorCollection} onCheckedChange={(c) => setIsDoorCollection(!!c)} />
@@ -424,8 +437,7 @@ export default function NewConsignmentPage() {
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">CN No & Date</Label>
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
-                                                <span className="absolute left-3 top-2 text-xs font-bold text-muted-foreground select-none">{cnPrefix}</span>
-                                                <Input className="pl-8 h-9 font-mono font-bold" value={cnNo} onChange={(e) => setCnNo(e.target.value)} />
+                                                <Input className="h-9 font-mono font-bold" value={cnNo} onChange={(e) => setCnNo(e.target.value)} />
                                             </div>
                                             <Input type="text" className="w-32 h-9 text-center" value={cnDate} onChange={(e) => setCnDate(e.target.value)} />
                                         </div>
@@ -445,10 +457,16 @@ export default function NewConsignmentPage() {
                                     </div>
 
                                     <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Distance</Label>
-                                        <div className="flex gap-2">
-                                            <Input placeholder="Distance in KM" className="w-full h-9 bg-yellow-50/50" value={distance} onChange={(e) => setDistance(e.target.value)} />
-                                        </div>
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Document Type</Label>
+                                        <Select value={docType} onValueChange={setDocType}>
+                                            <SelectTrigger className="h-9">
+                                                <SelectValue placeholder="Select Doc Type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="physical">Physical</SelectItem>
+                                                <SelectItem value="electronic">Electronic (Doc Elect)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
                             </CardContent>
@@ -607,267 +625,244 @@ export default function NewConsignmentPage() {
                             </Card>
                         </div>
 
-                        {/* Section 3: Billing Details (Moved out of tabs) */}
-                        <Card className="border-none shadow-md bg-white">
-                            <CardHeader className="bg-orange-50/50 py-3 px-6 border-b">
-                                <CardTitle className="text-sm font-bold flex items-center gap-2 text-orange-800">
-                                    <Calculator className="h-4 w-4" /> Billing Details
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Booking Basis</Label>
-                                        <Select value={bkgBasis} onValueChange={setBkgBasis}>
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue placeholder="Select Basis" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="topay">TOPAY</SelectItem>
-                                                <SelectItem value="paid">PAID</SelectItem>
-                                                <SelectItem value="tbb">TO BE BILLED</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+
+
+                        {/* Section 3: Package & Goods Details */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Package Details */}
+                            <Card className="border-none shadow-md bg-white h-full">
+                                <CardHeader className="py-3 px-4 bg-slate-50 border-b">
+                                    <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Package Details</CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-4 space-y-4">
+                                    <div className="flex items-center space-x-2 bg-yellow-50 p-2 rounded border border-yellow-100">
+                                        <Checkbox id="loose" checked={isLoose} onCheckedChange={(c) => setIsLoose(!!c)} />
+                                        <Label htmlFor="loose" className="text-xs font-bold cursor-pointer text-yellow-800">LOOSE</Label>
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Bill For (Branch)</Label>
-                                        <Select value={billingBranch} onValueChange={setBillingBranch}>
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue placeholder="Select Branch" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="mrg">MRG - MARGAO</SelectItem>
-                                                <SelectItem value="pnj">PNJ - PANAJI</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                    <div className="grid grid-cols-12 gap-2 items-end">
+                                        <div className="col-span-5 space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Package Method</Label>
+                                            <Select value={currentPackageMethod} onValueChange={setCurrentPackageMethod} disabled={isLoose}>
+                                                <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue placeholder="Select Method" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="box">Box</SelectItem>
+                                                    <SelectItem value="bag">Bag</SelectItem>
+                                                    <SelectItem value="drum">Drum</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="col-span-3 space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Qty</Label>
+                                            <Input type="number" className="h-8 text-xs" value={currentPackageQty} onChange={(e) => setCurrentPackageQty(e.target.value)} />
+                                        </div>
+                                        <div className="col-span-4">
+                                            <Button size="sm" className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-xs" onClick={handleAddPackage}>Add More</Button>
+                                        </div>
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Code Station Name</Label>
-                                        <Input className="h-9 bg-slate-50 font-bold" value={billingBranch.toUpperCase()} readOnly />
+                                    {/* Mini Table for Packages */}
+                                    <div className="border rounded-md overflow-hidden bg-slate-50">
+                                        <div className="grid grid-cols-12 bg-slate-100 p-2 text-[10px] font-bold text-muted-foreground uppercase border-b">
+                                            <div className="col-span-2 text-center">Sr.No.</div>
+                                            <div className="col-span-6">Package Method</div>
+                                            <div className="col-span-2 text-center">Qty</div>
+                                            <div className="col-span-2 text-center">Action</div>
+                                        </div>
+                                        {packages.length === 0 ? (
+                                            <div className="p-4 text-center text-xs text-muted-foreground italic">
+                                                No packages added
+                                            </div>
+                                        ) : (
+                                            <div className="max-h-32 overflow-y-auto">
+                                                {packages.map((pkg, idx) => (
+                                                    <div key={pkg.id} className="grid grid-cols-12 p-2 text-xs border-b last:border-0 hover:bg-slate-100">
+                                                        <div className="col-span-2 text-center">{idx + 1}</div>
+                                                        <div className="col-span-6">{pkg.method}</div>
+                                                        <div className="col-span-2 text-center">{pkg.qty}</div>
+                                                        <div className="col-span-2 text-center text-destructive cursor-pointer hover:underline" onClick={() => setPackages(packages.filter(p => p.id !== pkg.id))}>X</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party</Label>
-                                        <PartyAutocomplete
-                                            type="billing"
-                                            onSelect={(p) => {
-                                                if (p?.id === 'new') {
-                                                    setPendingPartyName(p.name);
-                                                    setPendingPartyType('billing');
-                                                    setIsAddPartyDialogOpen(true);
-                                                } else {
-                                                    setBillingParty(p);
-                                                }
-                                            }}
-                                            value={billingParty?.name}
-                                            placeholder="Select Billing Party"
-                                        />
+                                    <div className="grid grid-cols-2 gap-4 pt-2">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Total Qty</Label>
+                                            <Input className="h-8 text-xs font-bold bg-slate-50" readOnly value={isLoose ? packages.length : totalQty} />
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Goods Details */}
+                            <Card className="border-none shadow-md bg-white h-full">
+                                <CardHeader className="py-3 px-4 bg-slate-50 border-b">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Goods Details</CardTitle>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox id="unloading" />
+                                            <Label htmlFor="unloading" className="text-[10px] font-bold cursor-pointer uppercase">Unloading By Cnee</Label>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-4 space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Value Of Goods</Label>
+                                            <Input className="h-8 text-xs" value={goodsValue} onChange={(e) => setGoodsValue(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">HSN Description</Label>
+                                            <Input className="h-8 text-xs" placeholder="AUTO EXTENDER" value={hsnDesc} onChange={(e) => setHsnDesc(e.target.value)} />
+                                        </div>
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Party Code</Label>
-                                        <Input className="h-9 bg-yellow-50/30" value={billingParty?.code || ''} readOnly />
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Charged Wt (kg)</Label>
+                                            <Input className="h-8 text-xs bg-yellow-50/50" value={chargedWeight} onChange={(e) => setChargedWeight(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Actual Weight (kg)</Label>
+                                            <Input className="h-8 text-xs" value={actualWeight} onChange={(e) => setActualWeight(e.target.value)} />
+                                        </div>
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party GST</Label>
-                                        <Input className="h-9 font-mono bg-yellow-50/30" value={billingParty?.gstin || ''} readOnly />
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Load Unit</Label>
+                                            <Select value={loadUnit} onValueChange={(val) => setLoadUnit(val)}>
+                                                <SelectTrigger className="h-8 text-xs">
+                                                    <SelectValue placeholder="Unit" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="mt">MT</SelectItem>
+                                                    <SelectItem value="kg">KG</SelectItem>
+                                                    <SelectItem value="odc">ODC</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">
+                                                L x W x H (inch) {docType === 'electronic' && <span className="text-red-500">*</span>}
+                                            </Label>
+                                            <div className="flex gap-1">
+                                                <Input className="h-8 text-xs px-1 text-center" placeholder="L" value={dimL} onChange={(e) => setDimL(e.target.value)} required={docType === 'electronic'} />
+                                                <Input className="h-8 text-xs px-1 text-center" placeholder="W" value={dimW} onChange={(e) => setDimW(e.target.value)} required={docType === 'electronic'} />
+                                                <Input className="h-8 text-xs px-1 text-center" placeholder="H" value={dimH} onChange={(e) => setDimH(e.target.value)} required={docType === 'electronic'} />
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
-                                        <Input className="h-9 bg-yellow-50/30" value={billingParty?.address || ''} readOnly />
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Private Mark</Label>
+                                            <Input className="h-8 text-xs" value={privateMark} onChange={(e) => setPrivateMark(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground">Volume</Label>
+                                            <Input className="h-8 text-xs bg-yellow-50/50" value={volume} onChange={(e) => setVolume(e.target.value)} />
+                                        </div>
                                     </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
+                                </CardContent>
+                            </Card>
+                        </div>
 
                         {/* Section 4: Secondary Tabs */}
-                        <Tabs defaultValue="package" className="w-full">
+                        <Tabs defaultValue="billing" className="w-full">
                             <TabsList className="w-full justify-start h-10 bg-slate-100 p-1 rounded-lg">
-                                <TabsTrigger value="package" className="gap-2 px-6 h-8 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
-                                    <Package className="h-3.5 w-3.5" /> Package & Goods
-                                </TabsTrigger>
-                                <TabsTrigger value="insurance" className="gap-2 px-6 h-8 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
-                                    <Truck className="h-3.5 w-3.5" /> Insurance & PO
+                                <TabsTrigger value="billing" className="gap-2 px-6 h-8 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                                    <Calculator className="h-3.5 w-3.5" /> Billing Details
                                 </TabsTrigger>
                                 <TabsTrigger value="invoice" className="gap-2 px-6 h-8 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
                                     <ChevronRight className="h-3.5 w-3.5" /> Invoice & Others
                                 </TabsTrigger>
+                                <TabsTrigger value="insurance" className="gap-2 px-6 h-8 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                                    <Truck className="h-3.5 w-3.5" /> Insurance & PO
+                                </TabsTrigger>
                             </TabsList>
 
                             <div className="mt-4">
-                                <TabsContent value="package">
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        {/* Package Details */}
-                                        <Card className="border-none shadow-md bg-white h-full">
-                                            <CardHeader className="py-3 px-4 bg-slate-50 border-b">
-                                                <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Package Details</CardTitle>
-                                            </CardHeader>
-                                            <CardContent className="p-4 space-y-4">
-                                                <div className="flex items-center space-x-2 bg-yellow-50 p-2 rounded border border-yellow-100">
-                                                    <Checkbox id="loose" checked={isLoose} onCheckedChange={(c) => setIsLoose(!!c)} />
-                                                    <Label htmlFor="loose" className="text-xs font-bold cursor-pointer text-yellow-800">LOOSE</Label>
-                                                </div>
-
-                                                <div className="grid grid-cols-12 gap-2 items-end">
-                                                    <div className="col-span-5 space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Package Method</Label>
-                                                        <Select value={currentPackageMethod} onValueChange={setCurrentPackageMethod} disabled={isLoose}>
-                                                            <SelectTrigger className="h-8 text-xs">
-                                                                <SelectValue placeholder="Select Method" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="box">Box</SelectItem>
-                                                                <SelectItem value="bag">Bag</SelectItem>
-                                                                <SelectItem value="drum">Drum</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    <div className="col-span-3 space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Qty</Label>
-                                                        <Input type="number" className="h-8 text-xs" disabled={isLoose} value={currentPackageQty} onChange={(e) => setCurrentPackageQty(e.target.value)} />
-                                                    </div>
-                                                    <div className="col-span-4">
-                                                        <Button size="sm" className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-xs" onClick={handleAddPackage}>Add More</Button>
-                                                    </div>
-                                                </div>
-
-                                                {/* Mini Table for Packages */}
-                                                <div className="border rounded-md overflow-hidden bg-slate-50">
-                                                    <div className="grid grid-cols-12 bg-slate-100 p-2 text-[10px] font-bold text-muted-foreground uppercase border-b">
-                                                        <div className="col-span-2 text-center">Sr.No.</div>
-                                                        <div className="col-span-6">Package Method</div>
-                                                        <div className="col-span-2 text-center">Qty</div>
-                                                        <div className="col-span-2 text-center">Action</div>
-                                                    </div>
-                                                    {packages.length === 0 ? (
-                                                        <div className="p-4 text-center text-xs text-muted-foreground italic">
-                                                            No packages added
-                                                        </div>
-                                                    ) : (
-                                                        <div className="max-h-32 overflow-y-auto">
-                                                            {packages.map((pkg, idx) => (
-                                                                <div key={pkg.id} className="grid grid-cols-12 p-2 text-xs border-b last:border-0 hover:bg-slate-100">
-                                                                    <div className="col-span-2 text-center">{idx + 1}</div>
-                                                                    <div className="col-span-6">{pkg.method}</div>
-                                                                    <div className="col-span-2 text-center">{pkg.qty}</div>
-                                                                    <div className="col-span-2 text-center text-destructive cursor-pointer hover:underline" onClick={() => setPackages(packages.filter(p => p.id !== pkg.id))}>X</div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-4 pt-2">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Total Packages</Label>
-                                                        <Input className="h-8 text-xs font-bold bg-slate-50" readOnly value={packages.length} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Total Qty</Label>
-                                                        <Input className="h-8 text-xs font-bold bg-slate-50" readOnly value={isLoose ? packages.length : totalQty} />
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-
-                                        {/* Goods Details */}
-                                        <Card className="border-none shadow-md bg-white h-full">
-                                            <CardHeader className="py-3 px-4 bg-slate-50 border-b">
-                                                <div className="flex items-center justify-between">
-                                                    <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Goods Details</CardTitle>
-                                                    <div className="flex items-center space-x-2">
-                                                        <Checkbox id="unloading" />
-                                                        <Label htmlFor="unloading" className="text-[10px] font-bold cursor-pointer uppercase">Unloading By Cnee</Label>
-                                                    </div>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent className="p-4 space-y-3">
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Goods Class</Label>
-                                                        <Select>
-                                                            <SelectTrigger className="h-8 text-xs">
-                                                                <SelectValue placeholder="Select Class" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="general">General Goods</SelectItem>
-                                                                <SelectItem value="hazardous">Hazardous</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Value Of Goods</Label>
-                                                        <Input className="h-8 text-xs" value={goodsValue} onChange={(e) => setGoodsValue(e.target.value)} />
-                                                    </div>
+                                <TabsContent value="billing">
+                                    <Card className="border-none shadow-md bg-white">
+                                        <CardHeader className="bg-orange-50/50 py-3 px-6 border-b">
+                                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-orange-800">
+                                                <Calculator className="h-4 w-4" /> Billing Details
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="p-6">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Booking Basis</Label>
+                                                    <Select value={bkgBasis} onValueChange={setBkgBasis}>
+                                                        <SelectTrigger className="h-9">
+                                                            <SelectValue placeholder="Select Basis" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="topay">TOPAY</SelectItem>
+                                                            <SelectItem value="paid">PAID</SelectItem>
+                                                            <SelectItem value="tbb">TO BE BILLED</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <Label className="text-[10px] font-bold text-muted-foreground">Goods Description</Label>
-                                                    <Input className="h-8 text-xs" value={goodsDesc} onChange={(e) => setGoodsDesc(e.target.value)} />
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Bill For (Branch)</Label>
+                                                    <Select value={billingBranch} onValueChange={setBillingBranch}>
+                                                        <SelectTrigger className="h-9">
+                                                            <SelectValue placeholder="Select Branch" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="mrg">MRG - MARGAO</SelectItem>
+                                                            <SelectItem value="pnj">PNJ - PANAJI</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
 
-                                                <div className="grid grid-cols-3 gap-3">
-                                                    <div className="col-span-2 space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">HSN Description</Label>
-                                                        <Input className="h-8 text-xs" placeholder="AUTO EXTENDER" value={hsnDesc} onChange={(e) => setHsnDesc(e.target.value)} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">COD Amount</Label>
-                                                        <Input className="h-8 text-xs bg-yellow-50/50" value={codAmount} onChange={(e) => setCodAmount(e.target.value)} />
-                                                    </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Code Station Name</Label>
+                                                    <Input className="h-9 bg-slate-50 font-bold" value={billingBranch.toUpperCase()} readOnly />
                                                 </div>
 
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Actual Weight (kg)</Label>
-                                                        <Input className="h-8 text-xs" value={actualWeight} onChange={(e) => setActualWeight(e.target.value)} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Load Unit</Label>
-                                                        <Select>
-                                                            <SelectTrigger className="h-8 text-xs">
-                                                                <SelectValue placeholder="Unit" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="mt">MT</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party</Label>
+                                                    <PartyAutocomplete
+                                                        type="billing"
+                                                        onSelect={(p) => {
+                                                            if (p?.id === 'new') {
+                                                                setPendingPartyName(p.name);
+                                                                setPendingPartyType('billing');
+                                                                setIsAddPartyDialogOpen(true);
+                                                            } else {
+                                                                setBillingParty(p);
+                                                            }
+                                                        }}
+                                                        value={billingParty?.name}
+                                                        placeholder="Select Billing Party"
+                                                    />
                                                 </div>
 
-                                                <div className="grid grid-cols-4 gap-2">
-                                                    <div className="col-span-2 space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">L x W x H (inch)</Label>
-                                                        <div className="flex gap-1">
-                                                            <Input className="h-8 text-xs px-1 text-center" placeholder="L" />
-                                                            <Input className="h-8 text-xs px-1 text-center" placeholder="W" />
-                                                            <Input className="h-8 text-xs px-1 text-center" placeholder="H" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Charged Wt</Label>
-                                                        <Input className="h-8 text-xs bg-yellow-50/50" value={chargedWeight} onChange={(e) => setChargedWeight(e.target.value)} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Volume</Label>
-                                                        <Input className="h-8 text-xs bg-yellow-50/50" />
-                                                    </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Party Code</Label>
+                                                    <Input className="h-9 bg-yellow-50/30" value={billingParty?.code || ''} readOnly />
                                                 </div>
 
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Private Mark</Label>
-                                                        <Input className="h-8 text-xs" />
-                                                    </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party GST</Label>
+                                                    <Input className="h-9 font-mono bg-yellow-50/30" value={billingParty?.gstin || ''} readOnly />
                                                 </div>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
+
+                                                <div className="space-y-1 lg:col-span-2">
+                                                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Address</Label>
+                                                    <Input className="h-9 bg-yellow-50/30" value={billingParty?.address || ''} readOnly />
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
                                 </TabsContent>
 
                                 <TabsContent value="insurance">
@@ -949,35 +944,27 @@ export default function NewConsignmentPage() {
                                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Invoice No</Label>
-                                                        <Input className="h-8 text-xs" />
+                                                        <Input className="h-8 text-xs" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Invoice Date</Label>
-                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" />
+                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Invoice Amt</Label>
-                                                        <Input className="h-8 text-xs" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Indent No</Label>
-                                                        <Input className="h-8 text-xs" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Indent Date</Label>
-                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" />
+                                                        <Input className="h-8 text-xs" value={invoiceAmt} onChange={(e) => setInvoiceAmt(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">eWay Bill</Label>
-                                                        <Input className="h-8 text-xs" />
+                                                        <Input className="h-8 text-xs" value={ewayBill} onChange={(e) => setEwayBill(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">eWay From Date</Label>
-                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" />
+                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" value={ewayFrom} onChange={(e) => setEwayFrom(e.target.value)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">eWay To Date</Label>
-                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" />
+                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" value={ewayTo} onChange={(e) => setEwayTo(e.target.value)} />
                                                     </div>
                                                 </div>
                                             </CardContent>
@@ -1055,10 +1042,22 @@ export default function NewConsignmentPage() {
                                 <CardContent className="p-0">
                                     <ScrollArea className="h-[calc(100vh-250px)] px-6 py-4">
                                         <div className="space-y-3 pb-6">
-                                            <div className="flex flex-col space-y-2">
-                                                <div className="flex items-center space-x-2 pb-2">
+                                            <div className="flex flex-col space-y-2 pb-2 border-b border-primary/10">
+                                                <div className="flex items-center space-x-2">
                                                     <Checkbox id="freight-pending" checked={isFreightPending} onCheckedChange={(c) => setIsFreightPending(!!c)} />
                                                     <Label htmlFor="freight-pending" className="text-xs font-bold cursor-pointer">Freight Pending</Label>
+                                                </div>
+                                                <div className="flex items-center justify-between gap-4 pt-2">
+                                                    <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Freight Type</Label>
+                                                    <Select value={freightType} onValueChange={setFreightType} disabled={isFreightPending}>
+                                                        <SelectTrigger className="h-7 w-32 text-xs font-mono">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="per_tone">Per Tonne/Unit</SelectItem>
+                                                            <SelectItem value="fixed">Fixed</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                             </div>
 
@@ -1067,7 +1066,7 @@ export default function NewConsignmentPage() {
                                                 <Input
                                                     type="text"
                                                     className="h-7 w-28 text-right font-mono text-xs"
-                                                    disabled={isFreightPending}
+                                                    disabled={isFreightPending || freightType === 'fixed'}
                                                     value={isFreightPending ? "0" : freightRate}
                                                     onChange={(e) => setFreightRate(e.target.value)}
                                                 />
@@ -1076,17 +1075,19 @@ export default function NewConsignmentPage() {
                                                 <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Basic Freight</Label>
                                                 <Input
                                                     type="text"
-                                                    className="h-7 w-28 text-right font-mono text-xs bg-primary/5 border-primary/20 font-bold"
-                                                    value={isFreightPending ? "0.00" : (parseFloat(freightRate || "0") * parseFloat(chargedWeight || "0")).toFixed(2)}
-                                                    readOnly
+                                                    className={`h-7 w-28 text-right font-mono text-xs ${freightType === 'fixed' ? '' : 'bg-primary/5 border-primary/20 font-bold'}`}
+                                                    readOnly={freightType !== 'fixed'}
+                                                    disabled={isFreightPending}
+                                                    value={isFreightPending ? "0.00" : (freightType === 'fixed' ? basicFreight : (loadUnit.toLowerCase() === 'kg' ? (((parseFloat(chargedWeight) || 0) / 1000) * (parseFloat(freightRate) || 0)).toFixed(2) : ((parseFloat(freightRate) || 0) * parseFloat(chargedWeight || "0")).toFixed(2)))}
+                                                    onChange={(e) => setBasicFreight(e.target.value)}
                                                 />
                                             </div>
 
                                             {[
-                                                { key: 'unload', label: "Unload Charges" },
-                                                { key: 'retention', label: "Retention Charges" },
+                                                { key: 'unloading', label: "Unloading Charges" },
+                                                { key: 'detention', label: "Detention Charges" },
                                                 { key: 'extraKm', label: "Extra KM Charges" },
-                                                { key: 'mhc', label: "MHC Charges" },
+                                                { key: 'loading', label: "Loading Charges" },
                                                 { key: 'doorColl', label: "Door Coll Charges" },
                                                 { key: 'doorDel', label: "Door Del Charges" },
                                                 { key: 'other', label: "Other Charges" },

@@ -45,6 +45,21 @@ const COPY_CONFIG: Record<CopyType, { label: string; paperTint: string }> = {
     office: { label: 'OFFICE COPY', paperTint: '#cdefff' },
 };
 
+const BRANCH_MAP: Record<string, string> = {
+    'MRG': 'MRG - VERNA GOA',
+    'PNJ': 'PNJ - PANAJI',
+    'PTLG': 'PTLG - PATALGANGA',
+    'NSK': 'NSK - NASHIK',
+    'JGN': 'JGN - JALGAON',
+    'TPR': 'TPR - TIRUPUR',
+};
+
+const getFullBranchName = (code?: string) => {
+    if (!code) return '---';
+    const upperCode = code.toUpperCase();
+    return BRANCH_MAP[upperCode] || upperCode;
+};
+
 export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: ConsignmentDetailsDialogProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [copyType, setCopyType] = React.useState<CopyType>('consignee');
@@ -74,6 +89,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
         gst: c.consignee_gst || c.consignee?.gst || '---',
         mobile: c.consignee_mobile || c.consignee?.mobile || '---',
         email: c.consignee_email || c.consignee?.email || '---',
+        state: c.consignee_state || c.consignee?.state || '',
     };
     const billing = {
         billing_party: c.billing_party || c.billing_details?.billing_party || '---',
@@ -121,6 +137,11 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
             return `${day}/${month}/${year}`;
         };
 
+        const toUpperValue = (value: unknown) => {
+            const normalized = String(value ?? '').trim();
+            return normalized ? normalized.toUpperCase() : '---';
+        };
+
         const invoiceNo = c.invoice_no || c.invoice_details?.invoices?.[0]?.invoice_no || '---';
         const invoiceDate = formatDate(c.invoice_date || c.invoice_details?.invoices?.[0]?.date);
         const ewayNo = c.eway_bill || c.invoice_details?.invoices?.[0]?.eway_bill || '---';
@@ -130,11 +151,17 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
         const actualWeight = c.actual_weight || c.goods_details?.actual_weight || '---';
         const chargedWeight = c.charged_weight || c.goods_details?.charged_weight || '---';
         const packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
-        const goodsDescription = c.goods_desc || c.goods_details?.goods_desc || '---';
+        const goodsDescription = c.hsn_desc || c.goods_details?.hsn_desc || '---';
         const topayLabel = c.bkg_basis || 'TOPAY';
         const totalFreight = Number(freight.total_freight || c.total_freight || 0);
         const truckNo = c.vehicle_no || c.truck_no || '---';
-        const issuingOffice = c.booking_branch || c.bkg_branch || '---';
+        const issuingOffice = getFullBranchName(c.booking_branch || c.bkg_branch);
+        const logoUrl = `${window.location.origin}/vgt_logo.jpeg`;
+        const consignorName = toUpperValue(consignor.name);
+        const consignorAddress = toUpperValue(consignor.address);
+        const consigneeName = toUpperValue(consignee.name);
+        const consigneeAddress = toUpperValue(consignee.address);
+        const consigneeLocation = toUpperValue(`${getFullBranchName(c.dest_branch)} ${consignee.state || ''}`.trim());
 
         const html = `<!DOCTYPE html>
 <html>
@@ -143,7 +170,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment }: Consi
 <style>
 @page { size: A4 landscape; margin: 4mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; }
+body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; }
 .page { border: 2px solid #1d2f7a; background: ${config.paperTint}; width: 289mm; min-height: 202mm; margin: 0 auto; }
 .row { display: flex; width: 100%; }
 .box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
@@ -154,32 +181,50 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
 .head-blue { color: #17308b; font-weight: 800; }
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 44px; letter-spacing: 1px; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
-.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 6px; }
-.logo-box { width: 86px; height: 54px; border: 2px solid #1d2f7a; border-radius: 6px; display:flex; align-items:center; justify-content:center; font-size: 26px; color:#1d2f7a; font-weight: 900; }
-.top-grid { display: grid; grid-template-columns: 1.2fr 1.2fr 1.2fr 0.95fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
-.name-grid { display:grid; grid-template-columns: 1.4fr 0.45fr 0.65fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
-.right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 5px 6px; min-height: 32px; }
+.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 10px; }
+.logo-box { width: 86px; height: 54px; border: 2px solid #1d2f7a; border-radius: 6px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#fff; }
+.logo-box img { width: 100%; height: 100%; object-fit: contain; display:block; }
+.top-grid { display: grid; grid-template-columns: 1.22fr 1.1fr 1.02fr 0.72fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
+.mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
+.right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }
 .right-stack > div:last-child { border-bottom: none; }
 .main-table { width:100%; border-collapse: collapse; }
 .main-table th, .main-table td { border:1px solid #1d2f7a; padding: 4px 6px; vertical-align: top; }
-.main-table th { background: rgba(255,255,255,0.65); color:#122d7a; font-size: 13px; }
-.charges-list { font-size: 13px; line-height: 1.45; }
+.main-table th { background: rgba(255,255,255,0.65); color:#122d7a; font-size: 12px; }
+.charges-list { font-size: 12px; line-height: 1.4; }
 .footer { display:flex; justify-content:space-between; padding:10px 12px; align-items:flex-end; }
-.copy-chip { text-align:center; border:1px solid #1d2f7a; border-radius:6px; font-size: 30px; font-weight: 800; color:#163082; letter-spacing: 1px; margin-top:4px; }
+.copy-title { text-align:center; font-size: 24px; font-weight: 800; color:#163082; letter-spacing: 1px; border-bottom: 1px solid #1d2f7a; padding: 0 0 6px; margin: -4px -6px 6px; }
+.address-wrap { padding-top: 2px; }
+.address-line { border-bottom: 1px solid #1d2f7a; min-height: 40px; padding: 5px 8px 10px; display:flex; align-items:flex-end; flex-wrap:wrap; line-height: 1.12; overflow: visible; }
+.address-line.tall { min-height: 50px; padding-top: 7px; padding-bottom: 12px; align-items:center; }
+.address-label { font-size: 13px; color: #1d2f7a; margin-right: 8px; flex: 0 0 auto; }
+.address-value { font-size: 21px; font-weight: 700; letter-spacing: 0.2px; white-space: normal; word-break: break-word; flex: 1; color: #132b94; }
+.address-value.small { font-size: 17px; color: #132b94; }
+.route-box .line { min-height: 54px; padding: 6px; font-size: 18px; font-weight: 700; align-items: center; }
+.consignment-note-box { padding: 0; overflow: hidden; }
+.consignment-note-box .note-head { text-align:center; font-size: 15px; font-weight: 700; color:#17308b; padding: 4px 0; border-bottom: 1px solid #1d2f7a; }
+.consignment-note-box .note-row { display:flex; align-items:flex-end; gap:8px; padding: 8px 8px 4px; min-height: 58px; }
+.consignment-note-box .note-date { border-top: 1px dotted #1d2f7a; margin: 4px 8px 8px; padding-top: 6px; font-size: 16px; }
+.top-label { font-size: 10px; color:#1d2f7a; }
+.subhead-cell { text-align:center; font-size: 11px; }
+.amount-box { text-align:center; }
+.amount-total { margin-top: 18px; font-weight: 700; }
+.top-grid .right-stack .lbl { font-size: 8.5px; line-height: 1.05; }
+.top-grid .right-stack .strong { font-size: 9.5px; line-height: 1.1; }
+.ink { font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", cursive; color: #132b94; font-weight: 700; letter-spacing: 0.35px; }
 </style>
 </head>
 <body>
 <div class="page">
     <div class="hdr">
         <div class="row" style="gap:10px; align-items:center;">
-            <div class="logo-box">VGT</div>
+            <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
             <div style="flex:1; text-align:center;">
                 <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:4px;">Visakha Golden Transport</div>
                 <div class="strong" style="font-size:18px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
                 <div style="font-size:16px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
         </div>
-        <div class="copy-chip">${config.label}</div>
     </div>
 
     <div class="top-grid">
@@ -196,21 +241,13 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
 
         <div>
             <div class="box tiny" style="margin-bottom:6px;">
-                <div class="lbl" style="text-align:center; font-size:22px;">AT/CARRIER'S RISK/OWNER'S RISK</div>
+                <div class="copy-title">${config.label}</div>
+                <div class="lbl" style="text-align:center; font-size:19px;">AT/CARRIER'S RISK/OWNER'S RISK</div>
                 <div class="lbl" style="text-align:center; font-size:22px;">INSURANCE</div>
-                <div class="line">The consignor has stated that he has not insured the consignment</div>
-                <div class="line">OR he has insured the consignment</div>
-                <div class="line">Company ..................... Policy No ............. Date .............</div>
+                <div class="line" style="padding:0 6px;">The consignor has stated that he has not insured the consignment</div>
+                <div class="line" style="padding:0 6px;">OR he has insured the consignment</div>
+                <div class="line" style="padding:0 6px;">Company ..................... Policy No ............. Date .............</div>
                 <div>Amount ..................... Risk .............</div>
-            </div>
-
-            <div class="box tiny">
-                <div class="lbl" style="text-align:center; font-size:24px;">CONSIGNMENT NOTE</div>
-                <div class="row" style="align-items:center; gap:8px; margin-top:3px;">
-                    <span class="strong">No.</span>
-                    <span class="lr-red">${c.cn_no || '---'}</span>
-                </div>
-                <div class="line"><span class="strong">Date</span>&nbsp;&nbsp;<span style="font-size:18px; font-weight:700;">${cnDate}</span></div>
             </div>
         </div>
 
@@ -223,11 +260,13 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
                 <div class="line">&nbsp;</div>
             </div>
 
-            <div class="box tiny">
-                <div class="lbl">From</div>
-                <div class="line strong" style="font-size:18px;">${c.booking_branch || c.bkg_branch || '---'}</div>
-                <div class="lbl">To</div>
-                <div class="line strong" style="font-size:18px;">${c.dest_branch || '---'}</div>
+            <div class="box tiny consignment-note-box">
+                <div class="note-head">CONSIGNMENT NOTE</div>
+                <div class="note-row">
+                    <span class="strong" style="font-size:16px;">No.</span>
+                    <span class="lr-red">${c.cn_no || '---'}</span>
+                </div>
+                <div class="note-date"><span class="strong">Date</span>&nbsp;&nbsp;<span class="ink" style="font-size:18px;">${cnDate}</span></div>
             </div>
         </div>
 
@@ -235,61 +274,72 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
             <div><span class="lbl">PAN NO : </span><span class="strong">AAWFV7670H</span></div>
             <div><span class="lbl">GSTIN : </span><span class="strong">37AAWFV7670H1Z8</span></div>
             <div><span class="lbl">E-Way Bill No. : </span><span class="strong">${ewayNo}</span><br/><span class="lbl">valid upto : </span><span class="strong">${ewayValidUpto}</span></div>
-            <div><span class="lbl">Address of issuing office / agent</span><br/><span class="strong">${issuingOffice}</span></div>
-            <div><span class="lbl">Truck No.</span><br/><span class="strong" style="font-size:20px;">${truckNo}</span></div>
-            <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong">${consignor.gst || '---'}</span></div>
-            <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong">${consignee.gst || '---'}</span></div>
-            <div><span class="lbl">GST payable by</span><br/><span class="strong">Consignor / Consignee</span></div>
         </div>
     </div>
 
-    <div class="name-grid">
-        <div>
-            <div class="line"><span class="lbl">Consignor's Name & Address</span>&nbsp;&nbsp;<span class="strong" style="font-size:17px;">${consignor.name || '---'}</span></div>
-            <div class="line strong" style="font-size:16px;">${consignor.address || '---'}</div>
-            <div class="line"><span class="lbl">Consignee's Name & Address</span>&nbsp;&nbsp;<span class="strong" style="font-size:17px;">${consignee.name || '---'}</span></div>
-            <div class="line strong" style="font-size:16px;">${consignee.address || '---'}</div>
+    <div class="mid-grid">
+        <div class="address-wrap">
+            <div class="address-line">
+                <span class="address-label">Consignor's Name & Address</span>
+                <span class="address-value ink">${consignorName}</span>
+            </div>
+            <div class="address-line tall">
+                <span class="address-value small ink">${consignorAddress}</span>
+            </div>
+            <div class="address-line">
+                <span class="address-label">Consignee's Name & Address</span>
+                <span class="address-value ink">${consigneeName}</span>
+            </div>
+            <div class="address-line tall">
+                <span class="address-value small ink">${consigneeAddress}</span>
+            </div>
+            <div class="address-line" style="justify-content:center;">
+                <span class="address-value small ink" style="text-align:center;">${consigneeLocation}</span>
+            </div>
         </div>
-        <div class="box tiny">
-            <div class="lbl">Mode</div>
-            <div class="line">${c.transport_mode || 'BY ROAD'}</div>
-            <div class="lbl">Risk</div>
-            <div class="line">${c.owner_risk ? 'OWNER RISK' : 'CARRIER RISK'}</div>
-            <div class="lbl">Basis</div>
-            <div class="line">${topayLabel}</div>
+
+        <div class="box tiny route-box">
+            <div class="lbl">From</div>
+            <div class="line ink">${toUpperValue(getFullBranchName(c.booking_branch || c.bkg_branch))}</div>
+            <div class="lbl">To</div>
+            <div class="line ink">${toUpperValue(getFullBranchName(c.dest_branch))}</div>
         </div>
-        <div class="box tiny">
-            <div class="lbl">Billing Party</div>
-            <div class="line strong">${billing.billing_party || '---'}</div>
-            <div class="lbl">Branch</div>
-            <div class="line">${billing.bill_for_station || '---'}</div>
-            <div class="lbl">Code</div>
-            <div class="line">${billing.party_code_unit || '---'}</div>
+
+        <div class="box right-stack tiny">
+            <div><span class="lbl">Address of issuing office or name and address of agenta</span><br/><span class="strong ink">${toUpperValue(issuingOffice)}</span></div>
+            <div><span class="lbl">Truck No.</span><br/><span class="strong ink" style="font-size:20px;">${toUpperValue(truckNo)}</span></div>
+            <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong ink">${toUpperValue(consignor.gst || '---')}</span></div>
+            <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong ink">${toUpperValue(consignee.gst || '---')}</span></div>
+            <div><span class="lbl">GST payable by</span><br/><span class="strong">Consignor / Consignee</span></div>
         </div>
     </div>
 
     <table class="main-table">
         <thead>
             <tr>
-                <th style="width:9%;">Packages</th>
-                <th style="width:29%;">Description (Said to Contain)</th>
-                <th style="width:9%;">Weight<br/>Actual</th>
-                <th style="width:9%;">Weight<br/>Charged</th>
-                <th style="width:10%;">Rate</th>
-                <th style="width:20%;">Amount to pay / paid</th>
-                <th style="width:14%;">Details</th>
+                <th rowspan="2" style="width:11%;">Packages</th>
+                <th rowspan="2" style="width:36%;">Description (Said to Contain)</th>
+                <th colspan="2" style="width:16%;">Weight</th>
+                <th rowspan="2" style="width:12%;">Rate</th>
+                <th colspan="2" style="width:25%;">Amount to pay / paid</th>
+            </tr>
+            <tr>
+                <th class="subhead-cell">Actual</th>
+                <th class="subhead-cell">Charged</th>
+                <th class="subhead-cell">Rs.</th>
+                <th class="subhead-cell">P</th>
             </tr>
         </thead>
         <tbody>
-            <tr style="height:146px;">
-                <td class="strong" style="font-size:30px; text-align:center;">${packageText}</td>
+            <tr style="height:162px;">
+                <td class="strong ink" style="font-size:26px; text-align:center;">${packageText}</td>
                 <td>
-                    <div class="strong" style="font-size:24px;">${goodsDescription}</div>
-                    <div style="margin-top:34px; font-size:18px;">Invoice No. <span class="strong">${invoiceNo}</span></div>
-                    <div style="margin-top:8px; font-size:18px;">Invoice Date . <span class="strong">${invoiceDate}</span></div>
+                    <div class="strong ink" style="font-size:23px; line-height:1.15;">${toUpperValue(goodsDescription)}</div>
+                    <div style="margin-top:42px; font-size:16px;">Invoice No. <span class="strong ink">${invoiceNo}</span></div>
+                    <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
                 </td>
-                <td class="strong" style="text-align:center; font-size:26px;">${actualWeight}</td>
-                <td class="strong" style="text-align:center; font-size:26px;">${chargedWeight}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(actualWeight)}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}</td>
                 <td class="charges-list">
                     Hamali<br/>
                     Hire charges<br/>
@@ -299,26 +349,22 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
                     Risk Charge<br/><br/>
                     <span class="strong">TOTAL</span>
                 </td>
-                <td class="charges-list">
+                <td class="charges-list amount-box ink">
                     Rs. ${(freight.basic_freight || 0).toFixed(2)}<br/>
                     Rs. ${(freight.mhc_charges || 0).toFixed(2)}<br/>
                     Rs. ${(freight.statistical_charges || 0).toFixed(2)}<br/>
                     Rs. ${(c.other_charges || 0).toFixed(2)}<br/>
                     Rs. ${(freight.misc_charges || 0).toFixed(2)}<br/>
                     Rs. ${(freight.fov_charges || 0).toFixed(2)}<br/><br/>
-                    <span class="strong">Rs. ${totalFreight.toFixed(2)}</span>
+                    <span class="strong amount-total ink">Rs. ${totalFreight.toFixed(2)}</span>
                 </td>
-                <td class="tiny">
-                    <div><span class="lbl">LR No.</span> <span class="lr-red" style="font-size:24px;">${c.cn_no || '---'}</span></div>
-                    <div style="margin-top:10px;"><span class="lbl">E-Way</span> ${ewayNo}</div>
-                    <div><span class="lbl">Valid</span> ${ewayValidUpto}</div>
-                </td>
+                <td class="charges-list amount-box">&nbsp;</td>
             </tr>
         </tbody>
     </table>
 
     <div class="footer">
-        <div style="font-size:19px; font-weight:700;">Value . ${goodsValue.toLocaleString('en-IN')}</div>
+        <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${goodsValue.toLocaleString('en-IN')}</span></div>
         <div style="font-size:19px; font-weight:700;">Signature of the Issuing Officer .......................................</div>
     </div>
 </div>
@@ -333,6 +379,18 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
         doc.open();
         doc.write(html);
         doc.close();
+
+        await Promise.all(
+            Array.from(doc.images).map((image) => {
+                if (image.complete) {
+                    return Promise.resolve();
+                }
+                return new Promise<void>((resolve) => {
+                    image.onload = () => resolve();
+                    image.onerror = () => resolve();
+                });
+            })
+        );
 
         await new Promise((resolve) => setTimeout(resolve, 400));
 
@@ -433,14 +491,13 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                                        <InfoItem label="Booking Branch" value={c.booking_branch} />
+                                        <InfoItem label="Booking Branch" value={getFullBranchName(c.booking_branch)} />
                                         <InfoItem label="CN Date" value={c.bkg_date} />
-                                        <InfoItem label="Destination" value={c.dest_branch} />
+                                        <InfoItem label="Destination" value={getFullBranchName(c.dest_branch)} />
                                         <InfoItem label="Delivery Type" value={c.delivery_type} />
                                         <InfoItem label="Packages" value={`${c.no_of_pkg} ${c.package_method}`} />
                                         <InfoItem label="Actual Weight" value={`${c.actual_weight} KG`} />
                                         <InfoItem label="Charged Weight" value={`${c.charged_weight} KG`} />
-                                        <InfoItem label="Distance" value={`${c.distance_km} KM`} />
                                         <InfoItem label="Delivery Location" value={c.delivery_drop_location} />
                                         <InfoItem label="Landmark" value={c.del_loc_landmark} />
                                         <InfoItem label="Risk Type" value={c.owner_risk ? "OWNER RISK" : "CARRIER RISK"} />
@@ -560,13 +617,8 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-4">
                                             <div className="grid grid-cols-2 gap-4">
-                                                <InfoItem label="Goods Class" value={c.goods_details?.goods_class} />
-                                                <InfoItem label="Value of Goods" value={`₹ ${c.goods_details?.value_of_goods?.toLocaleString()}`} />
-                                            </div>
-                                            <InfoItem label="Goods Description" value={c.goods_details?.goods_desc} />
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <InfoItem label="HSN Description" value={c.goods_details?.hsn_desc} />
-                                                <InfoItem label="COD Amount" value={`₹ ${c.goods_details?.cod_amount}`} />
+                                                <InfoItem label="Value of Goods" value={`₹ ${(c.goods_details?.value_of_goods || c.goods_value || 0).toLocaleString()}`} />
+                                                <InfoItem label="HSN Description" value={c.hsn_desc || c.goods_details?.hsn_desc} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <InfoItem label="Dimensions (LxWxH)" value={c.goods_details?.dimensions ? `${c.goods_details.dimensions.l} x ${c.goods_details.dimensions.w} x ${c.goods_details.dimensions.h}` : '---'} />
@@ -725,8 +777,6 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; 
                                             <div className="p-4 text-center text-xs text-muted-foreground italic">No invoices listed</div>
                                         )}
                                         <div className="p-3 bg-slate-50 border-t flex gap-8">
-                                            <InfoItem label="Indent No" value={c.invoice_details?.indent_no} />
-                                            <InfoItem label="Indent Date" value={c.invoice_details?.indent_date} />
                                         </div>
                                     </CardContent>
                                 </Card>

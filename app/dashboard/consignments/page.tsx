@@ -47,6 +47,21 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { ConsignmentDetailsDialog } from '@/components/features/consignments/ConsignmentDetailsDialog';
 
+const BRANCH_MAP: Record<string, string> = {
+    'MRG': 'MRG - VERNA GOA',
+    'PNJ': 'PNJ - PANAJI',
+    'PTLG': 'PTLG - PATALGANGA',
+    'NSK': 'NSK - NASHIK',
+    'JGN': 'JGN - JALGAON',
+    'TPR': 'TPR - TIRUPUR',
+};
+
+const getFullBranchName = (code?: string) => {
+    if (!code) return '---';
+    const upperCode = code.toUpperCase();
+    return BRANCH_MAP[upperCode] || upperCode;
+};
+
 export default function ConsignmentsPage() {
     const [consignments, setConsignments] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -362,7 +377,7 @@ export default function ConsignmentsPage() {
                                 {filteredData.length > 0 ? (
                                     filteredData.map((item) => (
                                         <TableRow key={item.id || item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
-                                            <TableCell className="text-[12px] font-medium text-muted-foreground">{item.booking_branch}</TableCell>
+                                            <TableCell className="text-[12px] font-medium text-muted-foreground">{getFullBranchName(item.booking_branch)}</TableCell>
                                             <TableCell>
                                                 <button
                                                     onClick={() => {
@@ -375,7 +390,7 @@ export default function ConsignmentsPage() {
                                                 </button>
                                             </TableCell>
                                             <TableCell className="text-xs font-medium text-foreground/80">{item.bkg_date}</TableCell>
-                                            <TableCell className="text-xs font-bold text-foreground/90">{item.dest_branch}</TableCell>
+                                            <TableCell className="text-xs font-bold text-foreground/90">{getFullBranchName(item.dest_branch)}</TableCell>
                                             <TableCell className="text-center">
                                                 <Badge variant="outline" className="font-bold bg-background shadow-sm border-muted/50 text-foreground/70">
                                                     {item.no_of_pkg}
