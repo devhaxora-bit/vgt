@@ -50,14 +50,10 @@ interface PackageItem {
     qty: number;
 }
 
-const BRANCH_OPTIONS = [
-    { value: "mrg", label: "MRG - MARGAO" },
-    { value: "pnj", label: "PNJ - PANAJI" },
-];
-
-const getBranchLabel = (branchCode: string) => {
+// We fetch branch options dynamically now, so just a helper if we ever need it static
+const getBranchLabel = (branchCode: string, options: {value: string, label: string}[]) => {
     const normalizedCode = branchCode.trim().toLowerCase();
-    const match = BRANCH_OPTIONS.find((branch) => branch.value === normalizedCode);
+    const match = options.find((branch) => branch.value === normalizedCode);
     return match?.label || branchCode.toUpperCase();
 };
 
@@ -116,6 +112,28 @@ export default function NewConsignmentPage() {
     const [isDoorCollection, setIsDoorCollection] = useState(false);
     const [bkgBasis, setBkgBasis] = useState("");
     const [destBranch, setDestBranch] = useState("");
+    
+    // Dynamic branch fetching
+    const [branchOptions, setBranchOptions] = useState<{value: string, label: string}[]>([]);
+
+    React.useEffect(() => {
+        const fetchBranches = async () => {
+            try {
+                const res = await fetch('/api/references/branches');
+                if (res.ok) {
+                    const data = await res.json();
+                    const options = data.map((b: { code: string; name: string }) => ({
+                        value: b.code.toLowerCase(),
+                        label: `${b.code} - ${b.name}`.toUpperCase()
+                    }));
+                    setBranchOptions(options);
+                }
+            } catch (err) {
+                console.error('Failed to fetch branches:', err);
+            }
+        };
+        fetchBranches();
+    }, []);
     const [docType, setDocType] = useState("physical"); // 'physical' or 'electronic'
 
     // Goods fields
@@ -637,11 +655,26 @@ export default function NewConsignmentPage() {
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Booking Branch</Label>
                                         <Select value={bookingBranchCode} onValueChange={setBookingBranchCode}>
                                             <SelectTrigger className="h-9 bg-slate-50">
-                                                <SelectValue />
+                                                <SelectValue placeholder="Select Branch" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="mrg">MRG - VERNA GOA</SelectItem>
-                                                <SelectItem value="pnj">PNJ - PANAJI</SelectItem>
+                                                {branchOptions.map(branch => (
+                                                    <SelectItem key={branch.value} value={branch.value}>{branch.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery Branch</Label>
+                                        <Select value={destBranch} onValueChange={setDestBranch}>
+                                            <SelectTrigger className="h-9 bg-slate-50">
+                                                <SelectValue placeholder="Select Branch" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {branchOptions.map(branch => (
+                                                    <SelectItem key={branch.value} value={branch.value}>{branch.label}</SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -1059,7 +1092,7 @@ export default function NewConsignmentPage() {
                                                                 <SelectValue placeholder="Select Branch" />
                                                             </SelectTrigger>
                                                             <SelectContent>
-                                                                {BRANCH_OPTIONS.map((branch) => (
+                                                                {branchOptions.map((branch) => (
                                                                     <SelectItem key={branch.value} value={branch.value}>
                                                                         {branch.label}
                                                                     </SelectItem>
@@ -1080,7 +1113,7 @@ export default function NewConsignmentPage() {
                                                     <Label className="text-[10px] font-bold uppercase text-muted-foreground">Code Station Name</Label>
                                                     <Input
                                                         className="h-9 bg-slate-50 font-bold"
-                                                        value={billingMode === 'manual' ? manualBillingStation.toUpperCase() : getBranchLabel(billingBranch)}
+                                                        value={billingMode === 'manual' ? manualBillingStation.toUpperCase() : getBranchLabel(billingBranch, branchOptions)}
                                                         readOnly
                                                     />
                                                 </div>
