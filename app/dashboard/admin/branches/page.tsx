@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Building2, MoreHorizontal, RefreshCw } from 'lucide-react';
+import { Plus, Search, Building2, MoreHorizontal, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -28,6 +28,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -39,7 +45,10 @@ type Branch = {
     type: string;
     city: string;
     state: string;
+    phone: string | null;
     is_active: boolean;
+    next_cn_no?: number;
+    next_challan_no?: number;
 };
 
 const defaultForm = {
@@ -59,6 +68,7 @@ export default function BranchManagementPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
     const [form, setForm] = useState(defaultForm);
 
     const fetchBranches = async () => {
@@ -93,8 +103,13 @@ export default function BranchManagementPage() {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const res = await fetch('/api/references/branches', {
-                method: 'POST',
+            const url = selectedBranchId 
+                ? `/api/references/branches?id=${selectedBranchId}` 
+                : '/api/references/branches';
+            const method = selectedBranchId ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(form),
             });
@@ -102,17 +117,53 @@ export default function BranchManagementPage() {
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.error || 'Failed to add branch');
+                throw new Error(data.error || `Failed to ${selectedBranchId ? 'update' : 'add'} branch`);
             }
 
-            toast.success(`Branch "${data.name}" added successfully`);
+            toast.success(`Branch "${data.name}" ${selectedBranchId ? 'updated' : 'added'} successfully`);
             setIsAddOpen(false);
+            setSelectedBranchId(null);
             setForm(defaultForm);
             fetchBranches(); // Refresh list
         } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Failed to add branch');
+            toast.error(err instanceof Error ? err.message : `Failed to ${selectedBranchId ? 'update' : 'add'} branch`);
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleEditBranch = (branch: Branch) => {
+        setSelectedBranchId(branch.id);
+        setForm({
+            code: branch.code,
+            name: branch.name,
+            type: branch.type,
+            city: branch.city,
+            state: branch.state,
+            phone: branch.phone || '',
+            next_cn_no: branch.next_cn_no ? branch.next_cn_no.toString() : '',
+            next_challan_no: branch.next_challan_no ? branch.next_challan_no.toString() : '',
+        });
+        setIsAddOpen(true);
+    };
+
+    const handleDeleteBranch = async (id: string, name: string) => {
+        if (!confirm(`Are you sure you want to delete the branch "${name}"?`)) return;
+        
+        try {
+            const res = await fetch(`/api/references/branches?id=${id}`, {
+                method: 'DELETE',
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to delete branch');
+            }
+
+            toast.success(`Branch "${name}" deleted successfully`);
+            fetchBranches(); // Refresh list
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to delete branch');
         }
     };
 
@@ -127,9 +178,15 @@ export default function BranchManagementPage() {
                     <Button variant="outline" size="icon" onClick={fetchBranches} disabled={loading} title="Refresh">
                         <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     </Button>
-                    <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) setForm(defaultForm); }}>
+                    <Dialog open={isAddOpen} onOpenChange={(open) => { 
+                        setIsAddOpen(open); 
+                        if (!open) {
+                            setForm(defaultForm);
+                            setSelectedBranchId(null);
+                        }
+                    }}>
                         <DialogTrigger asChild>
-                            <Button className="gap-2 shadow-sm">
+                            <Button className="gap-2 shadow-sm" onClick={() => { setForm(defaultForm); setSelectedBranchId(null); }}>
                                 <Plus className="h-4 w-4" />
                                 Add Branch
                             </Button>
@@ -137,9 +194,9 @@ export default function BranchManagementPage() {
                         <DialogContent className="sm:max-w-[500px]">
                             <form onSubmit={handleAddBranch}>
                                 <DialogHeader>
-                                    <DialogTitle>Add New Branch</DialogTitle>
+                                    <DialogTitle>{selectedBranchId ? 'Edit Branch' : 'Add New Branch'}</DialogTitle>
                                     <DialogDescription>
-                                        Create a new branch or hub location.
+                                        {selectedBranchId ? 'Update the branch details below.' : 'Create a new branch or hub location.'}
                                     </DialogDescription>
                                 </DialogHeader>
                                 <div className="grid gap-4 py-4">
@@ -152,6 +209,7 @@ export default function BranchManagementPage() {
                                                 required
                                                 className="uppercase"
                                                 value={form.code}
+                                                disabled={!!selectedBranchId}
                                                 onChange={(e) => handleFormChange('code', e.target.value)}
                                             />
                                         </div>
@@ -236,9 +294,9 @@ export default function BranchManagementPage() {
                                     </div>
                                 </div>
                                 <DialogFooter>
-                                    <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} disabled={submitting}>Cancel</Button>
+                                    <Button type="button" variant="outline" onClick={() => { setIsAddOpen(false); setSelectedBranchId(null); }} disabled={submitting}>Cancel</Button>
                                     <Button type="submit" disabled={submitting}>
-                                        {submitting ? 'Creating...' : 'Create Branch'}
+                                        {submitting ? (selectedBranchId ? 'Updating...' : 'Creating...') : (selectedBranchId ? 'Update Branch' : 'Create Branch')}
                                     </Button>
                                 </DialogFooter>
                             </form>
@@ -312,9 +370,26 @@ export default function BranchManagementPage() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                                            <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                    <MoreHorizontal className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={() => handleEditBranch(branch)}>
+                                                    <Pencil className="mr-2 h-4 w-4" />
+                                                    Edit Branch
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem 
+                                                    className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                                                    onClick={() => handleDeleteBranch(branch.id, branch.name)}
+                                                >
+                                                    <Trash2 className="mr-2 h-4 w-4" />
+                                                    Delete
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </TableCell>
                                 </TableRow>
                             ))

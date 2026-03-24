@@ -56,3 +56,60 @@ export async function POST(request: Request) {
 
     return NextResponse.json(data, { status: 201 });
 }
+
+export async function PUT(request: Request) {
+    const supabase = await createClient();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+        return NextResponse.json({ error: 'Missing branch id' }, { status: 400 });
+    }
+
+    const body = await request.json();
+    const { name, type, city, state, phone, next_cn_no, next_challan_no } = body;
+
+    const updateData = {
+        name,
+        type,
+        city,
+        state,
+        phone: phone || null,
+        next_cn_no: next_cn_no ? parseInt(next_cn_no) : 800001,
+        next_challan_no: next_challan_no ? parseInt(next_challan_no) : 300066955
+    };
+
+    const { data, error } = await supabase
+        .from('branches')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data, { status: 200 });
+}
+
+export async function DELETE(request: Request) {
+    const supabase = await createClient();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+        return NextResponse.json({ error: 'Missing branch id' }, { status: 400 });
+    }
+
+    const { error } = await supabase
+        .from('branches')
+        .update({ is_active: false })
+        .eq('id', id);
+
+    if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+}
