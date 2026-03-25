@@ -119,6 +119,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         code: c.consignor_code || c.consignor?.code || '---',
         unit: c.consignor_unit || c.consignor?.unit || '---',
         address: c.consignor_address || c.consignor?.address || '---',
+        pincode: c.consignor_pincode || c.consignor?.pincode || '',
         gst: c.consignor_gst || c.consignor?.gst || '---',
         mobile: c.consignor_mobile || c.consignor?.mobile || '---',
         email: c.consignor_email || c.consignor?.email || '---',
@@ -130,6 +131,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         code: c.consignee_code || c.consignee?.code || '---',
         unit: c.consignee_unit || c.consignee?.unit || '---',
         address: c.consignee_address || c.consignee?.address || '---',
+        pincode: c.consignee_pincode || c.consignee?.pincode || '',
         gst: c.consignee_gst || c.consignee?.gst || '---',
         mobile: c.consignee_mobile || c.consignee?.mobile || '---',
         email: c.consignee_email || c.consignee?.email || '---',
@@ -194,7 +196,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const goodsValue = Number(c.goods_value || c.goods_details?.value_of_goods || 0);
         const actualWeight = c.actual_weight || c.goods_details?.actual_weight || '---';
         const chargedWeight = c.charged_weight || c.goods_details?.charged_weight || '---';
-        
+
         let packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
         let packageDetailsStr = '';
         if (Array.isArray(c.packages) && c.packages.length > 0) {
@@ -211,6 +213,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const packagesList = packageDetailsStr || packageText;
 
         const goodsDescription = c.hsn_desc || c.goods_details?.hsn_desc || '---';
+        const invoiceDescription = c.goods_desc || c.goods_details?.goods_desc || '';
         const topayLabel = c.bkg_basis || 'TOPAY';
         const totalFreight = Number(freight.total_freight || c.total_freight || 0);
         const truckNo = c.vehicle_no || c.truck_no || '---';
@@ -218,10 +221,10 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const officerName = toUpperValue(issuingOfficerName);
         const logoUrl = logoBase64 || `${window.location.origin}/vgt_logo.png`;
         const consignorName = toUpperValue(consignor.name);
-        const consignorAddress = toUpperValue(consignor.address);
+        const consignorAddress = toUpperValue(`${consignor.address}${consignor.pincode ? ', ' + consignor.pincode : ''}`);
         const consigneeName = toUpperValue(consignee.name);
-        const consigneeAddress = toUpperValue(consignee.address);
-        const consigneeLocation = toUpperValue(`${getFullBranchName(c.dest_branch)} ${consignee.state || ''}`.trim());
+        const consigneeAddress = toUpperValue(`${consignee.address}${consignee.pincode ? ', ' + consignee.pincode : ''}`);
+        const consigneeLocation = toUpperValue(`${toUpperValue(c.delivery_point || getFullBranchName(c.dest_branch))} ${consignee.state || ''}`.trim());
 
         const html = `<!DOCTYPE html>
 <html>
@@ -267,7 +270,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .consignment-note-box .note-row { display:flex; align-items:flex-end; gap:8px; padding: 8px 8px 4px; min-height: 58px; }
 .consignment-note-box .note-date { border-top: 1px dotted #1d2f7a; margin: 4px 8px 8px; padding-top: 6px; font-size: 16px; }
 .top-label { font-size: 10px; color:#1d2f7a; }
-.subhead-cell { text-align:center; font-size: 11px; }
+.subhead-cell { text-align:center; font-size: 11px; padding-bottom:10px; }
 .amount-box { text-align:center; }
 .amount-total { margin-top: 18px; font-weight: 700; }
 .top-grid .right-stack .lbl { font-size: 8.5px; line-height: 1.05; }
@@ -332,9 +335,11 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </div>
 
         <div class="box right-stack tiny">
-            <div><span class="lbl">PAN NO : </span><span class="strong">AAWFV7670H</span></div>
-            <div><span class="lbl">GSTIN : </span><span class="strong">37AAWFV7670H1Z8</span></div>
-            <div><span class="lbl">E-Way Bill No. : </span><span class="strong">${ewayNo}</span><br/><span class="lbl">valid upto : </span><span class="strong">${ewayValidUpto}</span></div>
+            <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">PAN NO : </span><span class="strong" style="font-size:15px;" >AAWFV7670H</span></div>
+            <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">GSTIN : </span><span class="strong" style="font-size:15px;">37AAWFV7670H1Z8</span></div>
+            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">E-Way Bill No. : </span><span class="strong" style="font-size:15px;">${ewayNo}</span><br/><span class="lbl" style="font-size:13px;">valid upto : </span><span class="strong">${ewayValidUpto}</span></div>
+            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">HSN Desc : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(goodsDescription)}</span></div>
+            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">Vehicle No. : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(c.vehicle_no || truckNo)}</span></div>
         </div>
     </div>
 
@@ -369,8 +374,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="box right-stack tiny">
             <div><span class="lbl">Address of issuing office or name and address of agenta</span><br/><span class="strong ink">${toUpperValue(issuingOffice)}</span></div>
             <div><span class="lbl">Truck No.</span><br/><span class="strong ink" style="font-size:20px;">${toUpperValue(truckNo)}</span></div>
-            <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong ink">${toUpperValue(consignor.gst || '---')}</span></div>
-            <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong ink">${toUpperValue(consignee.gst || '---')}</span></div>
+            <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignor.gst || '---')}</span></div>
+            <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignee.gst || '---')}</span></div>
             <div><span class="lbl">GST payable by</span><br/><span class="strong">Consignor / Consignee</span></div>
         </div>
     </div>
@@ -395,12 +400,12 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <tr style="height:162px;">
                 <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}</td>
                 <td>
-                    <div class="strong ink" style="font-size:23px; line-height:1.15;">${toUpperValue(goodsDescription)}</div>
-                    <div style="margin-top:42px; font-size:16px;">Invoice No. <span class="strong ink">${invoiceNo}</span></div>
+                    ${invoiceDescription ? `<div class="strong ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
+                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink">${invoiceNo}</span></div>
                     <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
                 </td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(actualWeight)}</td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(actualWeight)}MT</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}MT</td>
                 <td class="charges-list">
                     Hamali<br/>
                     Hire charges<br/>

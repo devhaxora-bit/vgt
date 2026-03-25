@@ -52,8 +52,8 @@ interface PackageItem {
 
 // We fetch branch options dynamically now, so just a helper if we ever need it static
 const getBranchLabel = (branchCode: string, options: {value: string, label: string}[]) => {
-    const normalizedCode = branchCode.trim().toLowerCase();
-    const match = options.find((branch) => branch.value === normalizedCode);
+    const normalizedCode = branchCode.trim().toUpperCase();
+    const match = options.find((branch) => branch.value.toUpperCase() === normalizedCode);
     return match?.label || branchCode.toUpperCase();
 };
 
@@ -73,6 +73,7 @@ function NewConsignmentForm() {
     const isEditMode = Boolean(editId);
     const [isOwnersRisk, setIsOwnersRisk] = useState(true);
     const [isCancelCn, setIsCancelCn] = useState(false);
+    const [loggedInUserName, setLoggedInUserName] = useState('');
     const [consignor, setConsignor] = useState<Party | null>(null);
     const [consignee, setConsignee] = useState<Party | null>(null);
     const [billingParty, setBillingParty] = useState<Party | null>(null);
@@ -113,6 +114,20 @@ function NewConsignmentForm() {
     });
 
     // General fields state
+    React.useEffect(() => {
+        // Load logged-in user on mount
+        const loadLoggedInUser = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (res.ok) {
+                    const result = await res.json();
+                    const name = result?.data?.full_name || result?.data?.username || '';
+                    if (name) setLoggedInUserName(name);
+                }
+            } catch { /* ignore */ }
+        };
+        void loadLoggedInUser();
+    }, []);
     const [bookingBranchCode, setBookingBranchCode] = useState("");
     const [cnNo, setCnNo] = useState("");
     const [cnDate, setCnDate] = useState(new Date().toLocaleDateString('en-GB'));
@@ -143,9 +158,11 @@ function NewConsignmentForm() {
         fetchBranches();
     }, []);
     const [deliveryPoint, setDeliveryPoint] = useState("");
+    const [vehicleNo, setVehicleNo] = useState("");
     // Goods fields
     const [goodsValue, setGoodsValue] = useState("");
     const [hsnDesc, setHsnDesc] = useState("");
+    const [goodsDesc, setGoodsDesc] = useState("");
     const [actualWeight, setActualWeight] = useState("");
     const [loadUnit, setLoadUnit] = useState("mt");
     const [dimL, setDimL] = useState("");
@@ -343,6 +360,7 @@ function NewConsignmentForm() {
                 setPackages(Array.isArray(data.packages) ? data.packages : []);
                 setGoodsValue(String(data.goods_value ?? ""));
                 setHsnDesc(data.hsn_desc || "");
+                setGoodsDesc(data.goods_desc || "");
                 setChargedWeight(String(data.charged_weight ?? ""));
                 setActualWeight(String(data.actual_weight ?? ""));
                 setLoadUnit((data.load_unit || "mt").toLowerCase());
@@ -476,6 +494,7 @@ function NewConsignmentForm() {
                 booking_branch: bookingBranchCode.toUpperCase(),
 
                 delivery_point: deliveryPoint,
+                vehicle_no: vehicleNo.trim().toUpperCase(),
                 delivery_type: deliveryType === 'dd' ? 'Door Delivery' : deliveryType === 'gd' ? 'Godown Delivery' : deliveryType,
                 owner_risk: isOwnersRisk,
                 door_collection: isDoorCollection,
@@ -508,6 +527,7 @@ function NewConsignmentForm() {
                 packages: packages,
                 goods_value: goodsValue,
                 hsn_desc: hsnDesc,
+                goods_desc: goodsDesc,
                 actual_weight: actualWeight,
                 charged_weight: chargedWeight,
                 load_unit: loadUnit.toUpperCase(),
@@ -696,6 +716,11 @@ function NewConsignmentForm() {
                                     <div className="space-y-1 lg:col-span-2">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery Point</Label>
                                         <Input className="h-9" placeholder="Enter Delivery Point" value={deliveryPoint} onChange={(e) => setDeliveryPoint(e.target.value)} />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Vehicle Number</Label>
+                                        <Input className="h-9 font-mono uppercase" placeholder="Vehicle No" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value.toUpperCase())} />
                                     </div>
                                 </div>
                             </CardContent>
@@ -946,9 +971,14 @@ function NewConsignmentForm() {
                                             <Input className="h-8 text-xs" value={goodsValue} onChange={(e) => setGoodsValue(e.target.value)} />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className="text-[10px] font-bold text-muted-foreground">HSN Description</Label>
+                                            <Label className="text-[10px] font-bold text-muted-foreground">HSN Code</Label>
                                             <Input className="h-8 text-xs" placeholder="AUTO EXTENDER" value={hsnDesc} onChange={(e) => setHsnDesc(e.target.value)} />
                                         </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px] font-bold text-muted-foreground">Goods Description</Label>
+                                        <Input className="h-8 text-xs" placeholder="Description of goods (shown in invoice)" value={goodsDesc} onChange={(e) => setGoodsDesc(e.target.value)} />
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
@@ -1143,11 +1173,11 @@ function NewConsignmentForm() {
                                                 <div className="space-y-1">
                                                     <Label className="text-[10px] font-bold uppercase text-muted-foreground">Billing Party GST</Label>
                                                     <Input
-                                                        className="h-9 font-mono bg-yellow-50/30"
+                                                        className="h-9 font-mono bg-yellow-50/30 uppercase"
                                                         value={billingMode === 'manual' ? manualBillingGst : (billingParty?.gstin || '')}
                                                         onChange={(e) => {
                                                             if (billingMode === 'manual') {
-                                                                setManualBillingGst(e.target.value);
+                                                                setManualBillingGst(e.target.value.toUpperCase());
                                                             }
                                                         }}
                                                         readOnly={billingMode === 'party'}
@@ -1314,14 +1344,11 @@ function NewConsignmentForm() {
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Doc Prepared By</Label>
-                                                        <Select defaultValue="amit">
-                                                            <SelectTrigger className="h-8 text-xs">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="amit">AMIT PANDEY [A8644]</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
+                                                        <Input
+                                                            className="h-8 text-xs bg-slate-50"
+                                                            value={loggedInUserName}
+                                                            readOnly
+                                                        />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Remarks</Label>
