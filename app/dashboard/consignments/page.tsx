@@ -57,9 +57,11 @@ const BRANCH_MAP: Record<string, string> = {
     'TPR': 'TPR - TIRUPUR',
 };
 
-const getFullBranchName = (code?: string) => {
+const getFullBranchName = (code?: string, options: {value: string; label: string}[] = []) => {
     if (!code) return '---';
     const upperCode = code.toUpperCase();
+    const match = options.find(o => o.value === upperCode);
+    if (match) return match.label;
     return BRANCH_MAP[upperCode] || upperCode;
 };
 
@@ -108,6 +110,27 @@ export default function ConsignmentsPage() {
         };
 
         void loadCurrentUser();
+    }, []);
+
+    const [branchOptions, setBranchOptions] = useState<{value: string, label: string}[]>([]);
+
+    React.useEffect(() => {
+        const fetchBranches = async () => {
+            try {
+                const res = await fetch('/api/references/branches');
+                if (res.ok) {
+                    const data = await res.json();
+                    const options = data.map((b: { code: string; name: string }) => ({
+                        value: b.code.toUpperCase(),
+                        label: `${b.code} - ${b.name}`.toUpperCase()
+                    }));
+                    setBranchOptions(options);
+                }
+            } catch (err) {
+                console.error('Failed to fetch branches:', err);
+            }
+        };
+        fetchBranches();
     }, []);
 
     // New Filters from Image
@@ -245,8 +268,9 @@ export default function ConsignmentsPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Branches</SelectItem>
-                                    <SelectItem value="VERNA GOA">VERNA GOA</SelectItem>
-                                    <SelectItem value="MRG - VERNA GOA">MRG - VERNA GOA</SelectItem>
+                                    {branchOptions.map(b => (
+                                        <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -304,10 +328,9 @@ export default function ConsignmentsPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Branches</SelectItem>
-                                    <SelectItem value="PTLG">PTLG - PATALGANGA</SelectItem>
-                                    <SelectItem value="NSK">NSK - NASHIK</SelectItem>
-                                    <SelectItem value="JGN">JGN - JALGAON</SelectItem>
-                                    <SelectItem value="TPR">TPR - TIRUPUR</SelectItem>
+                                    {branchOptions.map(b => (
+                                        <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -394,7 +417,7 @@ export default function ConsignmentsPage() {
                                 {filteredData.length > 0 ? (
                                     filteredData.map((item) => (
                                         <TableRow key={item.id || item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
-                                            <TableCell className="text-[12px] font-medium text-muted-foreground">{getFullBranchName(item.booking_branch)}</TableCell>
+                                            <TableCell className="text-[12px] font-medium text-muted-foreground">{getFullBranchName(item.booking_branch, branchOptions)}</TableCell>
                                             <TableCell>
                                                 <button
                                                     onClick={() => {
@@ -407,7 +430,7 @@ export default function ConsignmentsPage() {
                                                 </button>
                                             </TableCell>
                                             <TableCell className="text-xs font-medium text-foreground/80">{item.bkg_date}</TableCell>
-                                            <TableCell className="text-xs font-bold text-foreground/90">{getFullBranchName(item.dest_branch)}</TableCell>
+                                            <TableCell className="text-xs font-bold text-foreground/90">{getFullBranchName(item.dest_branch, branchOptions)}</TableCell>
                                             <TableCell className="text-center">
                                                 <Badge variant="outline" className="font-bold bg-background shadow-sm border-muted/50 text-foreground/70">
                                                     {item.no_of_pkg}

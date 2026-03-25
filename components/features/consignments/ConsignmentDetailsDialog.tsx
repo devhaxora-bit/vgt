@@ -67,6 +67,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [copyType, setCopyType] = React.useState<CopyType>('consignee');
     const [issuingOfficerName, setIssuingOfficerName] = React.useState('---');
+    const [logoBase64, setLogoBase64] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         let isMounted = true;
@@ -85,7 +86,22 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
             }
         };
 
+        const loadLogo = async () => {
+            try {
+                const res = await fetch('/vgt_logo.png');
+                const blob = await res.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    if (isMounted) setLogoBase64(String(reader.result));
+                };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                console.error('Failed to load logo base64:', err);
+            }
+        };
+
         loadCurrentUser();
+        loadLogo();
 
         return () => {
             isMounted = false;
@@ -178,14 +194,29 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const goodsValue = Number(c.goods_value || c.goods_details?.value_of_goods || 0);
         const actualWeight = c.actual_weight || c.goods_details?.actual_weight || '---';
         const chargedWeight = c.charged_weight || c.goods_details?.charged_weight || '---';
-        const packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
+        
+        let packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
+        let packageDetailsStr = '';
+        if (Array.isArray(c.packages) && c.packages.length > 0) {
+            packageDetailsStr = c.packages.map((p: any) => {
+                const method = String(p.method || '').charAt(0).toUpperCase() + String(p.method || '').slice(1).toLowerCase();
+                return `${method} (Qty: ${p.qty || 0})`;
+            }).join('<br/>');
+        } else if (c.package_details?.packages && Array.isArray(c.package_details.packages) && c.package_details.packages.length > 0) {
+            packageDetailsStr = c.package_details.packages.map((p: any) => {
+                const method = String(p.method || '').charAt(0).toUpperCase() + String(p.method || '').slice(1).toLowerCase();
+                return `${method} (Qty: ${p.qty || 0})`;
+            }).join('<br/>');
+        }
+        const packagesList = packageDetailsStr || packageText;
+
         const goodsDescription = c.hsn_desc || c.goods_details?.hsn_desc || '---';
         const topayLabel = c.bkg_basis || 'TOPAY';
         const totalFreight = Number(freight.total_freight || c.total_freight || 0);
         const truckNo = c.vehicle_no || c.truck_no || '---';
         const issuingOffice = getFullBranchName(c.booking_branch || c.bkg_branch);
         const officerName = toUpperValue(issuingOfficerName);
-        const logoUrl = `${window.location.origin}/vgt_logo.png`;
+        const logoUrl = logoBase64 || `${window.location.origin}/vgt_logo.png`;
         const consignorName = toUpperValue(consignor.name);
         const consignorAddress = toUpperValue(consignor.address);
         const consigneeName = toUpperValue(consignee.name);
@@ -211,7 +242,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 44px; letter-spacing: 1px; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
-.logo-box { width: 86px; height: 54px; border: 2px solid #1d2f7a; border-radius: 6px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:transparent; }
+.logo-box { width: 90px; height: 60px; display:flex; align-items:center; justify-content:center; background:transparent; }
 .logo-box img { width: 100%; height: 100%; object-fit: contain; display:block; }
 .top-grid { display: grid; grid-template-columns: 1.22fr 1.1fr 1.02fr 0.72fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
 .mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
@@ -241,7 +272,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .amount-total { margin-top: 18px; font-weight: 700; }
 .top-grid .right-stack .lbl { font-size: 8.5px; line-height: 1.05; }
 .top-grid .right-stack .strong { font-size: 9.5px; line-height: 1.1; }
-.ink { font-family: "Comic Sans MS", "Bradley Hand", "Segoe Print", cursive; color: #132b94; font-weight: 700; letter-spacing: 0.35px; }
+.ink { font-family: Arial, Helvetica, sans-serif; color: #132b94; font-weight: 700; letter-spacing: 0.2px; }
 </style>
 </head>
 <body>
@@ -332,7 +363,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div class="lbl">From</div>
             <div class="line ink">${toUpperValue(getFullBranchName(c.booking_branch || c.bkg_branch))}</div>
             <div class="lbl">To</div>
-            <div class="line ink">${toUpperValue(getFullBranchName(c.dest_branch))}</div>
+            <div class="line ink">${toUpperValue(c.delivery_point || getFullBranchName(c.dest_branch))}</div>
         </div>
 
         <div class="box right-stack tiny">
@@ -362,7 +393,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </thead>
         <tbody>
             <tr style="height:162px;">
-                <td class="strong ink" style="font-size:26px; text-align:center;">${packageText}</td>
+                <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}</td>
                 <td>
                     <div class="strong ink" style="font-size:23px; line-height:1.15;">${toUpperValue(goodsDescription)}</div>
                     <div style="margin-top:42px; font-size:16px;">Invoice No. <span class="strong ink">${invoiceNo}</span></div>
@@ -451,7 +482,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             windowHeight: page.scrollHeight,
         });
 
-        const imageData = canvas.toDataURL('image/jpeg', 1);
+        const imageData = canvas.toDataURL('image/png');
         const pdf = new jsPDF({
             orientation: 'landscape',
             unit: 'mm',
@@ -459,7 +490,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             compress: true,
         });
 
-        pdf.addImage(imageData, 'JPEG', 2, 2, 293, 206, undefined, 'FAST');
+        pdf.addImage(imageData, 'PNG', 2, 2, 293, 206, undefined, 'FAST');
         const safeCopyLabel = config.label.toLowerCase().replace(/\s+/g, '-');
         const safeCn = String(c.cn_no || 'cns').replace(/[^a-zA-Z0-9-_]/g, '');
         pdf.save(`${safeCn}-${safeCopyLabel}.pdf`);

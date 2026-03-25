@@ -119,7 +119,7 @@ function NewConsignmentForm() {
     const [deliveryType, setDeliveryType] = useState("");
     const [isDoorCollection, setIsDoorCollection] = useState(false);
     const [bkgBasis, setBkgBasis] = useState("");
-    const [destBranch, setDestBranch] = useState("");
+
     
     // Dynamic branch fetching
     const [branchOptions, setBranchOptions] = useState<{value: string, label: string}[]>([]);
@@ -142,8 +142,7 @@ function NewConsignmentForm() {
         };
         fetchBranches();
     }, []);
-    const [docType, setDocType] = useState("physical"); // 'physical' or 'electronic'
-
+    const [deliveryPoint, setDeliveryPoint] = useState("");
     // Goods fields
     const [goodsValue, setGoodsValue] = useState("");
     const [hsnDesc, setHsnDesc] = useState("");
@@ -298,7 +297,7 @@ function NewConsignmentForm() {
                                 ? 'tbb'
                                 : (data.bkg_basis || "")
                 );
-                setDestBranch(data.dest_branch || "");
+
 
                 setConsignor(buildPartyFromConsignment('consignor', {
                     name: data.consignor_name,
@@ -448,12 +447,7 @@ function NewConsignmentForm() {
             return;
         }
 
-        if (docType === 'electronic') {
-            if (!dimL || !dimW || !dimH) {
-                alert('Length, Width, and Height are required when Document Type is Electronic.');
-                return;
-            }
-        }
+
 
         setIsSaving(true);
         try {
@@ -480,7 +474,8 @@ function NewConsignmentForm() {
                 cn_no: cnNo,
                 bkg_date: cnDate.split('/').reverse().join('-'), // DD/MM/YYYY to YYYY-MM-DD
                 booking_branch: bookingBranchCode.toUpperCase(),
-                dest_branch: destBranch,
+
+                delivery_point: deliveryPoint,
                 delivery_type: deliveryType === 'dd' ? 'Door Delivery' : deliveryType === 'gd' ? 'Godown Delivery' : deliveryType,
                 owner_risk: isOwnersRisk,
                 door_collection: isDoorCollection,
@@ -673,19 +668,7 @@ function NewConsignmentForm() {
                                         </Select>
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery Branch</Label>
-                                        <Select value={destBranch} onValueChange={setDestBranch}>
-                                            <SelectTrigger className="h-9 bg-slate-50">
-                                                <SelectValue placeholder="Select Branch" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {branchOptions.map(branch => (
-                                                    <SelectItem key={branch.value} value={branch.value}>{branch.label}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+
 
                                     <div className="space-y-1 lg:col-span-2">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">CN No & Date</Label>
@@ -711,16 +694,8 @@ function NewConsignmentForm() {
                                     </div>
 
                                     <div className="space-y-1 lg:col-span-2">
-                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Document Type</Label>
-                                        <Select value={docType} onValueChange={setDocType}>
-                                            <SelectTrigger className="h-9">
-                                                <SelectValue placeholder="Select Doc Type" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="physical">Physical</SelectItem>
-                                                <SelectItem value="electronic">Electronic (Doc Elect)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery Point</Label>
+                                        <Input className="h-9" placeholder="Enter Delivery Point" value={deliveryPoint} onChange={(e) => setDeliveryPoint(e.target.value)} />
                                     </div>
                                 </div>
                             </CardContent>
@@ -905,6 +880,7 @@ function NewConsignmentForm() {
                                                     <SelectItem value="box">Box</SelectItem>
                                                     <SelectItem value="bag">Bag</SelectItem>
                                                     <SelectItem value="drum">Drum</SelectItem>
+                                                    <SelectItem value="loose">Loose</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -1002,12 +978,12 @@ function NewConsignmentForm() {
                                         </div>
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">
-                                                L x W x H (inch) {docType === 'electronic' && <span className="text-red-500">*</span>}
+                                                L x W x H (inch)
                                             </Label>
                                             <div className="flex gap-1">
-                                                <Input className="h-8 text-xs px-1 text-center" placeholder="L" value={dimL} onChange={(e) => setDimL(e.target.value)} required={docType === 'electronic'} />
-                                                <Input className="h-8 text-xs px-1 text-center" placeholder="W" value={dimW} onChange={(e) => setDimW(e.target.value)} required={docType === 'electronic'} />
-                                                <Input className="h-8 text-xs px-1 text-center" placeholder="H" value={dimH} onChange={(e) => setDimH(e.target.value)} required={docType === 'electronic'} />
+                                                <Input className="h-8 text-xs px-1 text-center" placeholder="L" value={dimL} onChange={(e) => setDimL(e.target.value)} />
+                                                <Input className="h-8 text-xs px-1 text-center" placeholder="W" value={dimW} onChange={(e) => setDimW(e.target.value)} />
+                                                <Input className="h-8 text-xs px-1 text-center" placeholder="H" value={dimH} onChange={(e) => setDimH(e.target.value)} />
                                             </div>
                                         </div>
                                     </div>

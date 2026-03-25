@@ -88,6 +88,7 @@ export async function PATCH(
             bkg_date: normalizeDate(body.bkg_date),
             booking_branch: body.booking_branch,
             dest_branch: body.dest_branch,
+            delivery_point: body.delivery_point,
             delivery_type: body.delivery_type,
             distance_km: parseInteger(body.distance_km),
             owner_risk: body.owner_risk ?? true,
