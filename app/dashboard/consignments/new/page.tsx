@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ArrowLeft,
@@ -58,6 +58,14 @@ const getBranchLabel = (branchCode: string, options: {value: string, label: stri
 };
 
 export default function NewConsignmentPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <NewConsignmentForm />
+        </Suspense>
+    );
+}
+
+function NewConsignmentForm() {
     const MANUAL_BILLING_CODE = 'PERSONAL DELIVERY';
     const router = useRouter();
     const searchParams = useSearchParams();
