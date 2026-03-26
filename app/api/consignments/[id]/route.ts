@@ -158,7 +158,6 @@ export async function PATCH(
             transport_mode: body.transport_mode || "BY ROAD",
             doc_prepared_by: body.doc_prepared_by,
             vehicle_no: body.vehicle_no,
-            truck_no: body.vehicle_no,
             remarks: body.remarks,
         };
 
