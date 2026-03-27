@@ -373,7 +373,6 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 
         <div class="box right-stack tiny">
             <div><span class="lbl">Address of issuing office or name and address of agenta</span><br/><span class="strong ink">${toUpperValue(issuingOffice)}</span></div>
-            <div><span class="lbl">Truck No.</span><br/><span class="strong ink" style="font-size:20px;">${toUpperValue(truckNo)}</span></div>
             <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignor.gst || '---')}</span></div>
             <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignee.gst || '---')}</span></div>
             <div><span class="lbl">GST payable by</span><br/><span class="strong">Consignor / Consignee</span></div>
@@ -407,22 +406,26 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(actualWeight)}MT</td>
                 <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}MT</td>
                 <td class="charges-list">
-                    Hamali<br/>
-                    Hire charges<br/>
-                    St. Ch.<br/>
-                    Sur Ch. ${topayLabel}<br/>
-                    Service Ch.<br/>
-                    Risk Charge<br/><br/>
-                    <span class="strong">TOTAL</span>
+                    <span style="font-size:16px;">Basic Freight</span><br/>
+                    ${Number(c.unload_charges||0) > 0 ? `<span style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
+                    ${Number(c.retention_charges||0) > 0 ? `<span style="font-size:16px;">Detention Ch.</span><br/>` : ''}
+                    ${Number(c.extra_km_charges||0) > 0 ? `<span style="font-size:16px;">Extra KM Ch.</span><br/>` : ''}
+                    ${Number(c.mhc_charges||0) > 0 ? `<span style="font-size:16px;">Loading Ch.</span><br/>` : ''}
+                    ${Number(c.door_coll_charges||0) > 0 ? `<span style="font-size:16px;">Door Coll. Ch.</span><br/>` : ''}
+                    ${Number(c.door_del_charges||0) > 0 ? `<span style="font-size:16px;">Door Del. Ch.</span><br/>` : ''}
+                    ${Number(c.other_charges||0) > 0 ? `<span style="font-size:16px;">Other Ch. ${topayLabel}</span><br/>` : ''}
+                    <br/><span class="strong" style="font-size:16px;">TOTAL</span>
                 </td>
                 <td class="charges-list amount-box ink">
-                    Rs. ${(freight.basic_freight || 0).toFixed(2)}<br/>
-                    Rs. ${(freight.mhc_charges || 0).toFixed(2)}<br/>
-                    Rs. ${(freight.statistical_charges || 0).toFixed(2)}<br/>
-                    Rs. ${(c.other_charges || 0).toFixed(2)}<br/>
-                    Rs. ${(freight.misc_charges || 0).toFixed(2)}<br/>
-                    Rs. ${(freight.fov_charges || 0).toFixed(2)}<br/><br/>
-                    <span class="strong amount-total ink">Rs. ${totalFreight.toFixed(2)}</span>
+                    <span style="font-size:16px;">Rs. ${Number(c.basic_freight || 0).toFixed(2)}</span><br/>
+                    ${Number(c.unload_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.unload_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.retention_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.retention_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.extra_km_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.extra_km_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.mhc_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.mhc_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.door_coll_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_coll_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.door_del_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_del_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.other_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.other_charges).toFixed(2)}</span><br/>` : ''}
+                    <br/><span class="strong amount-total ink" style="font-size:16px;">Rs. ${totalFreight.toFixed(2)}</span>
                 </td>
                 <td class="charges-list amount-box">&nbsp;</td>
             </tr>
@@ -431,7 +434,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 
     <div class="footer">
         <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${goodsValue.toLocaleString('en-IN')}</span></div>
-        <div style="font-size:19px; font-weight:700; text-align:center;">
+        <div style="font-size:19px; font-weight:700; text-align:center; margin-left:50px;">
             <div class="ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
             <div>Signature of the Issuing Officer .......................................</div>
         </div>
