@@ -42,8 +42,8 @@ interface ConsignmentDetailsDialogProps {
 type CopyType = 'consigner' | 'consignee' | 'lorry' | 'office';
 
 const COPY_CONFIG: Record<CopyType, { label: string; paperTint: string }> = {
-    consigner: { label: 'CONSIGNER COPY', paperTint: '#ffffff' },
-    consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffd9df' },
+    consigner: { label: 'CONSIGNER COPY', paperTint: '#ffd9df' },
+    consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffffff' },
     lorry: { label: 'LORRY COPY', paperTint: '#fff6a6' },
     office: { label: 'OFFICE COPY', paperTint: '#cdefff' },
 };
@@ -359,9 +359,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div class="address-line tall">
                 <span class="address-value small ink">${consigneeAddress}</span>
             </div>
-            <div class="address-line" style="justify-content:center;">
-                <span class="address-value small ink" style="text-align:center;">${consigneeLocation}</span>
-            </div>
+
         </div>
 
         <div class="box tiny route-box">
@@ -436,7 +434,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
     </table>
 
     <div class="footer">
-        <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${goodsValue.toLocaleString('en-IN')}</span></div>
+        <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${Number(goodsValue).toFixed(2)}</span></div>
         <div style="font-size:19px; font-weight:700; margin-left:auto; text-align:right;">
             <div class="ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
             <div>Signature of the Issuing Officer .......................................</div>
