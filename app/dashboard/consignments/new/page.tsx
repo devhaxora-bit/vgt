@@ -129,6 +129,7 @@ function NewConsignmentForm() {
         void loadLoggedInUser();
     }, []);
     const [bookingBranchCode, setBookingBranchCode] = useState("");
+    const [destBranch, setDestBranch] = useState("");
     const [cnNo, setCnNo] = useState("");
     const [cnDate, setCnDate] = useState(new Date().toLocaleDateString('en-GB'));
     const [deliveryType, setDeliveryType] = useState("");
@@ -292,7 +293,8 @@ function NewConsignmentForm() {
 
                 const data = await response.json();
 
-                setBookingBranchCode(data.booking_branch || "");
+                setBookingBranchCode((data.booking_branch || "").toLowerCase());
+                setDestBranch((data.dest_branch || "").toLowerCase());
                 setCnNo(data.cn_no || "");
                 setCnDate(formatDateForUi(data.bkg_date) || new Date().toLocaleDateString('en-GB'));
                 setDeliveryType(
@@ -349,7 +351,7 @@ function NewConsignmentForm() {
                         gstin: data.billing_party_gst,
                         address: data.billing_party_address,
                     }));
-                    setBillingBranch(data.billing_branch || "");
+                    setBillingBranch((data.billing_branch || "").toLowerCase());
                     setManualBillingName("");
                     setManualBillingGst("");
                     setManualBillingAddress("");
@@ -492,6 +494,7 @@ function NewConsignmentForm() {
                 cn_no: cnNo,
                 bkg_date: cnDate.split('/').reverse().join('-'), // DD/MM/YYYY to YYYY-MM-DD
                 booking_branch: bookingBranchCode.toUpperCase(),
+                dest_branch: destBranch.toUpperCase(),
 
                 delivery_point: deliveryPoint,
                 vehicle_no: vehicleNo.trim().toUpperCase(),
