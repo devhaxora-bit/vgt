@@ -339,7 +339,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">GSTIN : </span><span class="strong" style="font-size:15px;">37AAWFV7670H1Z8</span></div>
             <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">E-Way Bill No. : </span><span class="strong" style="font-size:15px;">${ewayNo}</span><br/><span class="lbl" style="font-size:13px;">valid upto : </span><span class="strong">${ewayValidUpto}</span></div>
             <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">HSN Desc : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(goodsDescription)}</span></div>
-
+            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">Vehicle No. : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(c.vehicle_no || truckNo)}</span></div>
         </div>
     </div>
 
@@ -369,6 +369,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div class="line ink">${toUpperValue(getFullBranchName(c.booking_branch || c.bkg_branch))}</div>
             <div class="lbl">To</div>
             <div class="line ink">${toUpperValue(c.delivery_point || getFullBranchName(c.dest_branch))}</div>
+            <div style="margin-top:6px; text-align:center;">
+                <span style="font-size:18px; font-weight:900; color:#cc1a1a; letter-spacing:1px;">${toUpperValue(topayLabel)}</span>
+            </div>
         </div>
 
         <div class="box right-stack tiny">
@@ -407,24 +410,24 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}MT</td>
                 <td class="charges-list">
                     <span style="font-size:16px;">Basic Freight</span><br/>
-                    ${Number(c.unload_charges||0) > 0 ? `<span style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
-                    ${Number(c.retention_charges||0) > 0 ? `<span style="font-size:16px;">Detention Ch.</span><br/>` : ''}
-                    ${Number(c.extra_km_charges||0) > 0 ? `<span style="font-size:16px;">Extra KM Ch.</span><br/>` : ''}
-                    ${Number(c.mhc_charges||0) > 0 ? `<span style="font-size:16px;">Loading Ch.</span><br/>` : ''}
-                    ${Number(c.door_coll_charges||0) > 0 ? `<span style="font-size:16px;">Door Coll. Ch.</span><br/>` : ''}
-                    ${Number(c.door_del_charges||0) > 0 ? `<span style="font-size:16px;">Door Del. Ch.</span><br/>` : ''}
-                    ${Number(c.other_charges||0) > 0 ? `<span style="font-size:16px;">Other Ch. ${topayLabel}</span><br/>` : ''}
+                    ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
+                    ${Number(c.retention_charges || 0) > 0 ? `<span style="font-size:16px;">Detention Ch.</span><br/>` : ''}
+                    ${Number(c.extra_km_charges || 0) > 0 ? `<span style="font-size:16px;">Extra KM Ch.</span><br/>` : ''}
+                    ${Number(c.mhc_charges || 0) > 0 ? `<span style="font-size:16px;">Loading Ch.</span><br/>` : ''}
+                    ${Number(c.door_coll_charges || 0) > 0 ? `<span style="font-size:16px;">Door Coll. Ch.</span><br/>` : ''}
+                    ${Number(c.door_del_charges || 0) > 0 ? `<span style="font-size:16px;">Door Del. Ch.</span><br/>` : ''}
+                    ${Number(c.other_charges || 0) > 0 ? `<span style="font-size:16px;">Other Ch. ${topayLabel}</span><br/>` : ''}
                     <br/><span class="strong" style="font-size:16px;">TOTAL</span>
                 </td>
                 <td class="charges-list amount-box ink">
                     <span style="font-size:16px;">Rs. ${Number(c.basic_freight || 0).toFixed(2)}</span><br/>
-                    ${Number(c.unload_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.unload_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.retention_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.retention_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.extra_km_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.extra_km_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.mhc_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.mhc_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.door_coll_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_coll_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.door_del_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_del_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.other_charges||0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.other_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.unload_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.retention_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.retention_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.extra_km_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.extra_km_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.mhc_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.mhc_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.door_coll_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_coll_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.door_del_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_del_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.other_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.other_charges).toFixed(2)}</span><br/>` : ''}
                     <br/><span class="strong amount-total ink" style="font-size:16px;">Rs. ${totalFreight.toFixed(2)}</span>
                 </td>
                 <td class="charges-list amount-box">&nbsp;</td>
@@ -434,7 +437,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 
     <div class="footer">
         <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${goodsValue.toLocaleString('en-IN')}</span></div>
-        <div style="font-size:19px; font-weight:700; text-align:right; margin-left:auto;">
+        <div style="font-size:19px; font-weight:700; margin-left:auto; text-align:right;">
             <div class="ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
             <div>Signature of the Issuing Officer .......................................</div>
         </div>
