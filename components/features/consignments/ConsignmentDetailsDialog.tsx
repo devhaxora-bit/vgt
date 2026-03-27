@@ -339,7 +339,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">GSTIN : </span><span class="strong" style="font-size:15px;">37AAWFV7670H1Z8</span></div>
             <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">E-Way Bill No. : </span><span class="strong" style="font-size:15px;">${ewayNo}</span><br/><span class="lbl" style="font-size:13px;">valid upto : </span><span class="strong">${ewayValidUpto}</span></div>
             <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">HSN Desc : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(goodsDescription)}</span></div>
-            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">Vehicle No. : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(c.vehicle_no || truckNo)}</span></div>
+
         </div>
     </div>
 
@@ -434,7 +434,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 
     <div class="footer">
         <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${goodsValue.toLocaleString('en-IN')}</span></div>
-        <div style="font-size:19px; font-weight:700; text-align:center; margin-left:50px;">
+        <div style="font-size:19px; font-weight:700; text-align:right; margin-left:auto;">
             <div class="ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
             <div>Signature of the Issuing Officer .......................................</div>
         </div>
