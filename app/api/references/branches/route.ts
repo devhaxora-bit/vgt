@@ -35,10 +35,49 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Missing required fields: code, name, type, city, state' }, { status: 400 });
     }
 
+    const branchCode = code.toUpperCase();
+
+    // Check if branch with same code already exists (even if inactive)
+    const { data: existingBranch } = await supabase
+        .from('branches')
+        .select('*')
+        .eq('code', branchCode)
+        .maybeSingle();
+
+    if (existingBranch) {
+        if (existingBranch.is_active) {
+            return NextResponse.json({ error: `Branch with code ${branchCode} already exists and is active.` }, { status: 409 });
+        }
+
+        // If it exists but is inactive, reactivate it and update its details
+        const { data, error } = await supabase
+            .from('branches')
+            .update({
+                name,
+                type,
+                city,
+                state,
+                phone: phone || null,
+                is_active: true,
+                next_cn_no: next_cn_no ? parseInt(next_cn_no) : 800001,
+                next_challan_no: next_challan_no ? parseInt(next_challan_no) : 300066955
+            })
+            .eq('id', existingBranch.id)
+            .select()
+            .single();
+
+        if (error) {
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json(data, { status: 200 }); // Or 201
+    }
+
+    // Normal insert for new branch
     const { data, error } = await supabase
         .from('branches')
         .insert([{ 
-            code: code.toUpperCase(), 
+            code: branchCode, 
             name, 
             type, 
             city, 
