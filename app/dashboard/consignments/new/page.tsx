@@ -51,7 +51,7 @@ interface PackageItem {
 }
 
 // We fetch branch options dynamically now, so just a helper if we ever need it static
-const getBranchLabel = (branchCode: string, options: {value: string, label: string}[]) => {
+const getBranchLabel = (branchCode: string, options: { value: string, label: string }[]) => {
     const normalizedCode = branchCode.trim().toUpperCase();
     const match = options.find((branch) => branch.value.toUpperCase() === normalizedCode);
     return match?.label || branchCode.toUpperCase();
@@ -136,9 +136,9 @@ function NewConsignmentForm() {
     const [isDoorCollection, setIsDoorCollection] = useState(false);
     const [bkgBasis, setBkgBasis] = useState("");
 
-    
+
     // Dynamic branch fetching
-    const [branchOptions, setBranchOptions] = useState<{value: string, label: string}[]>([]);
+    const [branchOptions, setBranchOptions] = useState<{ value: string, label: string }[]>([]);
 
     React.useEffect(() => {
         const fetchBranches = async () => {
@@ -373,7 +373,7 @@ function NewConsignmentForm() {
                 setVolume(String(data.volume ?? ""));
                 setPrivateMark(data.private_mark || "");
                 setIsFreightPending(data.freight_pending ?? false);
-                
+
                 // Infer freight type
                 const rateVal = parseFloat(data.freight_rate) || 0;
                 const basicVal = parseFloat(data.basic_freight) || 0;
@@ -382,7 +382,7 @@ function NewConsignmentForm() {
                 } else {
                     setFreightType("per_tone");
                 }
-                
+
                 setFreightRate(String(data.freight_rate ?? ""));
                 setBasicFreight(String(data.basic_freight ?? ""));
                 setCharges({
@@ -498,9 +498,9 @@ function NewConsignmentForm() {
                 return;
             }
 
-            const basicFrt = freightType === 'fixed' 
-                ? (parseFloat(basicFreight) || 0) 
-                : (loadUnit.toLowerCase() === 'kg' 
+            const basicFrt = freightType === 'fixed'
+                ? (parseFloat(basicFreight) || 0)
+                : (loadUnit.toLowerCase() === 'kg'
                     ? ((parseFloat(chargedWeight) || 0) / 1000) * (parseFloat(freightRate) || 0)
                     : (parseFloat(chargedWeight) || 0) * (parseFloat(freightRate) || 0));
 
@@ -1027,7 +1027,7 @@ function NewConsignmentForm() {
                                                     <SelectItem value="mt">MT</SelectItem>
                                                     <SelectItem value="kg">KG</SelectItem>
                                                     <SelectItem value="odc">ODC</SelectItem>
-                                                    <SelectItem value="flt">FLT</SelectItem>
+                                                    <SelectItem value="ftl">FTL</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
