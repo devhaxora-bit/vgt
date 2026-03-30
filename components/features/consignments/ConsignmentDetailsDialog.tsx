@@ -369,7 +369,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 
         <div class="box tiny route-box">
             <div class="lbl">From</div>
-            <div class="line ink">${toUpperValue(getFullBranchName(c.booking_branch || c.bkg_branch))}</div>
+            <div class="line ink">${toUpperValue(c.loading_point || getFullBranchName(c.booking_branch || c.bkg_branch))}</div>
             <div class="lbl">To</div>
             <div class="line ink">${toUpperValue(c.delivery_point || getFullBranchName(c.dest_branch))}</div>
             <div style="margin-top:6px; text-align:center;">
