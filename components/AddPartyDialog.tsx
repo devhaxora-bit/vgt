@@ -18,7 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Party, PartyType, PartyInput } from '@/lib/types/party.types';
-import { createParty } from '@/lib/services/party.service';
+import { createParty, updateParty } from '@/lib/services/party.service';
 import { Loader2 } from 'lucide-react';
 
 interface AddPartyDialogProps {
@@ -27,9 +27,17 @@ interface AddPartyDialogProps {
     onSave: (party: Party) => void;
     initialName?: string;
     defaultType?: PartyType;
+    editParty?: Party; // Add this
 }
 
-export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', defaultType = 'both' }: AddPartyDialogProps) {
+export function AddPartyDialog({ 
+    open, 
+    onOpenChange, 
+    onSave, 
+    initialName = '', 
+    defaultType = 'both',
+    editParty 
+}: AddPartyDialogProps) {
     const [name, setName] = React.useState(initialName);
     const [type, setType] = React.useState(defaultType);
     const [code, setCode] = React.useState(''); // Editable for now
@@ -43,17 +51,28 @@ export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', d
 
     React.useEffect(() => {
         if (open) {
-            setName(initialName);
-            setType(defaultType);
-            // Reset other fields or generate code
-            setCode(Math.floor(100000 + Math.random() * 900000).toString()); // Random 6 digit for demo
-            setGstin('');
-            setAddress('');
-            setPincode('');
-            setPhone('');
-            setEmail('');
+            if (editParty) {
+                setName(editParty.name || '');
+                setType(editParty.type || 'both');
+                setCode(editParty.code || '');
+                setGstin(editParty.gstin || '');
+                setAddress(editParty.address || '');
+                setPincode(editParty.pincode || '');
+                setPhone(editParty.phone || '');
+                setEmail(editParty.email || '');
+            } else {
+                setName(initialName);
+                setType(defaultType);
+                setCode(Math.floor(100000 + Math.random() * 900000).toString());
+                setGstin('');
+                setAddress('');
+                setPincode('');
+                setPhone('');
+                setEmail('');
+            }
+            setError(null);
         }
-    }, [open, initialName, defaultType]);
+    }, [open, initialName, defaultType, editParty]);
 
     const handleSave = async () => {
         if (!name) {
@@ -82,7 +101,10 @@ export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', d
                 state: null,
             };
 
-            const savedParty = await createParty(partyInput);
+            const savedParty = editParty 
+                ? await updateParty(editParty.id, partyInput)
+                : await createParty(partyInput);
+
             onSave(savedParty);
             onOpenChange(false);
         } catch (err: any) {
@@ -97,9 +119,11 @@ export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', d
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>Add New Party</DialogTitle>
+                    <DialogTitle>{editParty ? 'Edit Party' : 'Add New Party'}</DialogTitle>
                     <DialogDescription>
-                        Enter the details of the party. The party code is pre-generated but can be edited.
+                        {editParty 
+                            ? `Update the details for ${editParty.name}.` 
+                            : 'Enter the details of the party. The party code is pre-generated but can be edited.'}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
@@ -151,7 +175,7 @@ export function AddPartyDialog({ open, onOpenChange, onSave, initialName = '', d
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
                     <Button onClick={handleSave} disabled={isSaving}>
                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {isSaving ? 'Saving...' : 'Save Party'}
+                        {isSaving ? 'Saving...' : (editParty ? 'Update Party' : 'Save Party')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

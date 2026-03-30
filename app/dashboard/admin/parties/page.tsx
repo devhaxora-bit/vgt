@@ -36,46 +36,56 @@ import { Badge } from '@/components/ui/badge';
 
 
 import { Party } from '@/lib/types/party.types';
+import { getParties, deleteParty } from '@/lib/services/party.service';
+import { Loader2, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function PartiesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [editingParty, setEditingParty] = useState<Party | undefined>();
+    const [parties, setParties] = useState<Party[]>([]);
 
-    // Mock data
-    const [parties, setParties] = useState<Party[]>([
-        {
-            id: '1',
-            code: '100001',
-            name: 'ACME Corporation',
-            type: 'both',
-            gstin: '27AAACA1234A1Z1',
-            address: 'Industrial Area, Phase II',
-            city: 'Goa',
-            state: 'Goa',
-            pincode: '403722',
-            phone: '9876543210',
-            email: 'admin@acme.com',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        },
-        {
-            id: '2',
-            code: '100002',
-            name: 'Bharat Logistics',
-            type: 'consignee',
-            gstin: '27BBABA5678B2Z2',
-            address: 'Main St, Near Station',
-            city: 'Mumbai',
-            state: 'Maharashtra',
-            pincode: '403001',
-            phone: '9822113344',
-            email: 'ops@bharat.in',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+    const fetchParties = async () => {
+        setIsLoading(true);
+        try {
+            const data = await getParties();
+            setParties(data);
+        } catch (error) {
+            console.error('Failed to fetch parties:', error);
+            toast.error('Failed to load parties');
+        } finally {
+            setIsLoading(false);
         }
-    ]);
+    };
+
+    React.useEffect(() => {
+        fetchParties();
+    }, []);
+
+    const handleDelete = async (id: string, name: string) => {
+        if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+        
+        try {
+            await deleteParty(id);
+            toast.success('Party deleted successfully');
+            fetchParties();
+        } catch (error) {
+            console.error('Failed to delete party:', error);
+            toast.error('Failed to delete party');
+        }
+    };
+
+    const handleEdit = (party: Party) => {
+        setEditingParty(party);
+        setIsAddDialogOpen(true);
+    };
+
+    const handleAddNew = () => {
+        setEditingParty(undefined);
+        setIsAddDialogOpen(true);
+    };
 
     const filteredParties = parties.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -90,16 +100,17 @@ export default function PartiesPage() {
                     <h1 className="text-2xl font-bold tracking-tight">Party Management</h1>
                     <p className="text-muted-foreground">Manage your consignors, consignees, and billing parties.</p>
                 </div>
-                <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Button onClick={handleAddNew}>
                     <Plus className="mr-2 h-4 w-4" />
                     Add Party
                 </Button>
                 <AddPartyDialog
                     open={isAddDialogOpen}
                     onOpenChange={setIsAddDialogOpen}
-                    onSave={(newParty) => {
-                        setParties([...parties, newParty]);
-                        // In a real app, this would also save to backend
+                    editParty={editingParty}
+                    onSave={() => {
+                        fetchParties();
+                        toast.success(`Party ${editingParty ? 'updated' : 'created'} successfully`);
                     }}
                 />
             </div>
@@ -109,6 +120,16 @@ export default function PartiesPage() {
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                         <CardTitle className="text-lg">Party List</CardTitle>
                         <div className="flex items-center gap-2 w-full md:w-auto">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-9 gap-2"
+                                onClick={fetchParties}
+                                disabled={isLoading}
+                            >
+                                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                                Refresh
+                            </Button>
                             <div className="relative flex-1 md:w-64">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -118,9 +139,6 @@ export default function PartiesPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
-                            <Button variant="outline" size="icon">
-                                <Filter className="h-4 w-4" />
-                            </Button>
                         </div>
                     </div>
                 </CardHeader>
@@ -138,41 +156,67 @@ export default function PartiesPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredParties.map((party) => (
-                                    <TableRow key={party.id}>
-                                        <TableCell className="font-mono font-bold text-primary">{party.code}</TableCell>
-                                        <TableCell>
-                                            <div className="font-medium text-[#101828]">{party.name}</div>
-                                            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                <Phone className="h-3 w-3" /> {party.phone}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline" className="capitalize">
-                                                {party.type}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="font-mono text-xs">{party.gstin}</TableCell>
-                                        <TableCell>
-                                            <div className="text-xs flex flex-col">
-                                                <span>{party.address}</span>
-                                                <span className="text-muted-foreground font-medium flex items-center gap-1 mt-0.5">
-                                                    <MapPin className="h-3 w-3" /> {party.pincode}
-                                                </span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                {isLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="h-24 text-center">
+                                            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                                                <Loader2 className="h-4 w-4 animate-spin" /> Fetching parties...
                                             </div>
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                ) : filteredParties.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                            No parties found.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    filteredParties.map((party) => (
+                                        <TableRow key={party.id}>
+                                            <TableCell className="font-mono font-bold text-primary">{party.code}</TableCell>
+                                            <TableCell>
+                                                <div className="font-medium text-[#101828]">{party.name}</div>
+                                                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                    <Phone className="h-3 w-3" /> {party.phone}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className="capitalize">
+                                                    {party.type}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="font-mono text-xs">{party.gstin}</TableCell>
+                                            <TableCell>
+                                                <div className="text-xs flex flex-col">
+                                                    <span>{party.address}</span>
+                                                    <span className="text-muted-foreground font-medium flex items-center gap-1 mt-0.5">
+                                                        <MapPin className="h-3 w-3" /> {party.pincode}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="h-8 w-8"
+                                                        onClick={() => handleEdit(party)}
+                                                    >
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="h-8 w-8 text-destructive"
+                                                        onClick={() => handleDelete(party.id, party.name)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
                             </TableBody>
                         </Table>
                     </div>

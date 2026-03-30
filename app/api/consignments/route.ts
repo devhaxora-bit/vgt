@@ -67,6 +67,7 @@ export async function POST(request: Request) {
         consignor_code: body.consignor_code,
         consignor_gst: body.consignor_gst,
         consignor_address: body.consignor_address,
+        consignor_pincode: body.consignor_pincode,
         consignor_mobile: body.consignor_mobile,
         consignor_email: body.consignor_email,
 
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
         consignee_code: body.consignee_code,
         consignee_gst: body.consignee_gst,
         consignee_address: body.consignee_address,
+        consignee_pincode: body.consignee_pincode,
         consignee_mobile: body.consignee_mobile,
         consignee_email: body.consignee_email,
 

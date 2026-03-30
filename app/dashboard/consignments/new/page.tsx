@@ -373,6 +373,16 @@ function NewConsignmentForm() {
                 setVolume(String(data.volume ?? ""));
                 setPrivateMark(data.private_mark || "");
                 setIsFreightPending(data.freight_pending ?? false);
+                
+                // Infer freight type
+                const rateVal = parseFloat(data.freight_rate) || 0;
+                const basicVal = parseFloat(data.basic_freight) || 0;
+                if (rateVal === 0 && basicVal > 0) {
+                    setFreightType("fixed");
+                } else {
+                    setFreightType("per_tone");
+                }
+                
                 setFreightRate(String(data.freight_rate ?? ""));
                 setBasicFreight(String(data.basic_freight ?? ""));
                 setCharges({
@@ -513,6 +523,7 @@ function NewConsignmentForm() {
                 consignor_code: consignor?.code,
                 consignor_gst: consignor?.gstin,
                 consignor_address: consignor?.address,
+                consignor_pincode: consignor?.pincode,
                 consignor_mobile: consignor?.phone,
                 consignor_email: consignor?.email,
 
@@ -520,6 +531,7 @@ function NewConsignmentForm() {
                 consignee_code: consignee?.code,
                 consignee_gst: consignee?.gstin,
                 consignee_address: consignee?.address,
+                consignee_pincode: consignee?.pincode,
                 consignee_mobile: consignee?.phone,
                 consignee_email: consignee?.email,
 
@@ -1470,7 +1482,7 @@ function NewConsignmentForm() {
                                             <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
                                                 <div className="flex items-center justify-between">
                                                     <Label className="text-xs font-black uppercase text-primary">Balance Due</Label>
-                                                    <div className="text-xl font-black text-primary">₹ {calculateFreight().toFixed(2)}</div>
+                                                    <div className="text-xl font-black text-primary">₹ {(calculateFreight() - (parseFloat(advanceAmount) || 0)).toFixed(2)}</div>
                                                 </div>
                                             </div>
 

@@ -118,7 +118,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         gst: c.consignor_gst || '---',
         mobile: c.consignor_mobile || '---',
         email: c.consignor_email || '---',
-        pincode: '', 
+        pincode: c.consignor_pincode || '',
     };
     const consignee = {
         name: c.consignee_name || '---',
@@ -127,7 +127,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         gst: c.consignee_gst || '---',
         mobile: c.consignee_mobile || '---',
         email: c.consignee_email || '---',
-        pincode: '',
+        pincode: c.consignee_pincode || '',
         state: '',
     };
     const billing = {
@@ -235,7 +235,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 44px; letter-spacing: 1px; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
-.logo-box { width: 90px; height: 60px; display:flex; align-items:center; justify-content:center; background:transparent; }
+.logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:transparent; }
 .logo-box img { width: 100%; height: 100%; object-fit: contain; display:block; }
 .top-grid { display: grid; grid-template-columns: 1.22fr 1.1fr 1.02fr 0.72fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
 .mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
@@ -254,7 +254,12 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .address-label { font-size: 13px; color: #1d2f7a; margin-right: 8px; flex: 0 0 auto; }
 .address-value { font-size: 21px; font-weight: 700; letter-spacing: 0.2px; white-space: normal; word-break: break-word; flex: 1; color: #132b94; }
 .address-value.small { font-size: 17px; color: #132b94; }
-.bill-check { display:inline-flex; width: 18px; height: 18px; margin-left: 8px; border: 2px solid #14803c; border-radius: 3px; align-items:center; justify-content:center; color:#14803c; font-size:14px; font-weight:900; line-height:1; vertical-align:middle; }
+.payable-cell { padding-bottom: 8px !important; min-height: 40px; }
+.payable-line { display:flex; gap:8px; align-items:baseline; justify-content:flex-start; flex-wrap:nowrap; margin-top: 7px; }
+.payable-option { display:inline-flex; align-items:baseline; gap:3px; font-size: 11px; line-height: 1; white-space: nowrap; }
+.payable-box { display:inline-flex; width: 11px; height: 11px; border: 1px solid #1d2f7a; align-items:center; justify-content:center; font-size:8px; line-height:1; flex: 0 0 auto; position: relative; top: 10px; }
+.payable-box.checked { border-color:#14803c; color:#14803c; font-weight:900; }
+.payable-box.checked::before { content: "✓"; position: relative; top: -0.5px; }
 .route-box .line { min-height: 54px; padding: 6px; font-size: 18px; font-weight: 700; align-items: center; }
 .consignment-note-box { padding: 0; overflow: hidden; }
 .consignment-note-box .note-head { text-align:center; font-size: 15px; font-weight: 700; color:#17308b; padding: 4px 0; border-bottom: 1px solid #1d2f7a; }
@@ -302,7 +307,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 <div class="copy-title">${config.label}</div>
                 <div class="lbl" style="text-align:center; font-size:19px;">AT/CARRIER'S RISK/OWNER'S RISK</div>
                 <div class="lbl" style="text-align:center; font-size:22px;">INSURANCE</div>
-                <div class="line" style="padding:0 6px;">The consignor has stated that he has not insured the consignment</div>
+                <div class="line" style="padding:2px 6px 6px; min-height:30px; align-items:flex-start; line-height:1.25;">The consignor has stated that he has not insured the consignment</div>
                 <div class="line" style="padding:0 6px;">OR he has insured the consignment</div>
                 <div class="line" style="padding:0 6px;">Company ..................... Policy No ............. Date .............</div>
                 <div>Amount ..................... Risk .............</div>
@@ -347,14 +352,14 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="address-wrap">
             <div class="address-line">
                 <span class="address-label">Consignor's Name & Address</span>
-                <span class="address-value ink">${consignorName}${isConsignorBilled ? '<span class="bill-check">✓</span>' : ''}</span>
+                <span class="address-value ink">${consignorName}</span>
             </div>
             <div class="address-line tall">
                 <span class="address-value small ink">${consignorAddress}</span>
             </div>
             <div class="address-line">
                 <span class="address-label">Consignee's Name & Address</span>
-                <span class="address-value ink">${consigneeName}${isConsigneeBilled ? '<span class="bill-check">✓</span>' : ''}</span>
+                <span class="address-value ink">${consigneeName}</span>
             </div>
             <div class="address-line tall">
                 <span class="address-value small ink">${consigneeAddress}</span>
@@ -376,7 +381,19 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div><span class="lbl">Address of issuing office or name and address of agenta</span><br/><span class="strong ink">${toUpperValue(issuingOffice)}</span></div>
             <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignor.gst || '---')}</span></div>
             <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignee.gst || '---')}</span></div>
-            <div><span class="lbl">GST payable by</span><br/><span class="strong">Consignor / Consignee</span></div>
+            <div class="payable-cell">
+                <span class="lbl">GST payable by</span><br/>
+                <div class="strong payable-line">
+                    <span class="payable-option">
+                        <span class="payable-box ${isConsignorBilled ? 'checked' : ''}"></span>
+                        <span>Consignor</span>
+                    </span>
+                    <span class="payable-option">
+                        <span class="payable-box ${isConsigneeBilled ? 'checked' : ''}"></span>
+                        <span>Consignee</span>
+                    </span>
+                </div>
+            </div>
         </div>
     </div>
 

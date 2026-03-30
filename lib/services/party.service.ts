@@ -81,3 +81,16 @@ export const updateParty = async (id: string, party: Partial<PartyInput>) => {
 
     return data as Party;
 };
+
+export const deleteParty = async (id: string) => {
+    const supabase = createClient();
+    const { error } = await supabase
+        .from('parties')
+        .update({ is_active: false })
+        .eq('id', id);
+
+    if (error) {
+        throw error;
+    }
+    return true;
+};
