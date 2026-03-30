@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         bkg_date: body.bkg_date || new Date().toISOString().split("T")[0],
         booking_branch: body.booking_branch,
         dest_branch: body.dest_branch,
+        loading_point: body.loading_point,
         delivery_point: body.delivery_point,
         delivery_type: body.delivery_type,
         distance_km: parseInt(body.distance_km) || 0,
@@ -144,6 +145,7 @@ export async function POST(request: Request) {
         transport_mode: body.transport_mode || "BY ROAD",
         doc_prepared_by: body.doc_prepared_by,
         remarks: body.remarks,
+        vehicle_no: body.vehicle_no,
 
         created_by: user.id,
     };

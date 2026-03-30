@@ -159,6 +159,7 @@ function NewConsignmentForm() {
         fetchBranches();
     }, []);
     const [deliveryPoint, setDeliveryPoint] = useState("");
+    const [loadingPoint, setLoadingPoint] = useState("");
     const [vehicleNo, setVehicleNo] = useState("");
     // Goods fields
     const [goodsValue, setGoodsValue] = useState("");
@@ -391,6 +392,9 @@ function NewConsignmentForm() {
                 setEwayFrom(formatDateForUi(data.eway_from_date));
                 setEwayTo(formatDateForUi(data.eway_to_date));
                 setRemarks(data.remarks || "");
+                setLoadingPoint(data.loading_point || "");
+                setDeliveryPoint(data.delivery_point || "");
+                setVehicleNo(data.vehicle_no || "");
             } catch (error) {
                 console.error('Failed to load consignment for edit:', error);
                 toast.error(error instanceof Error ? error.message : 'Failed to load consignment');
@@ -496,6 +500,7 @@ function NewConsignmentForm() {
                 booking_branch: bookingBranchCode.toUpperCase(),
                 dest_branch: destBranch.toUpperCase(),
 
+                loading_point: loadingPoint,
                 delivery_point: deliveryPoint,
                 vehicle_no: vehicleNo.trim().toUpperCase(),
                 delivery_type: deliveryType === 'dd' ? 'Door Delivery' : deliveryType === 'gd' ? 'Godown Delivery' : deliveryType,
@@ -716,7 +721,11 @@ function NewConsignmentForm() {
                                         </Select>
                                     </div>
 
-                                    <div className="space-y-1 lg:col-span-2">
+                                    <div className="space-y-1">
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Loading Point</Label>
+                                        <Input className="h-9" placeholder="Enter Loading Point" value={loadingPoint} onChange={(e) => setLoadingPoint(e.target.value)} />
+                                    </div>
+                                    <div className="space-y-1">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Delivery Point</Label>
                                         <Input className="h-9" placeholder="Enter Delivery Point" value={deliveryPoint} onChange={(e) => setDeliveryPoint(e.target.value)} />
                                     </div>
@@ -1006,6 +1015,7 @@ function NewConsignmentForm() {
                                                     <SelectItem value="mt">MT</SelectItem>
                                                     <SelectItem value="kg">KG</SelectItem>
                                                     <SelectItem value="odc">ODC</SelectItem>
+                                                    <SelectItem value="flt">FLT</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>

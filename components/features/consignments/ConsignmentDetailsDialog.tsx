@@ -110,63 +110,47 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
 
     if (!consignment) return null;
 
-    // Helper to safely access data (DB is flat, JSON was nested)
     const c = consignment;
     const consignor = {
-        name: c.consignor_name || c.consignor?.name || '---',
-        legal_name: c.consignor_name || c.consignor?.legal_name || '---',
-        trade_name: c.consignor_name || c.consignor?.trade_name || '---',
-        code: c.consignor_code || c.consignor?.code || '---',
-        unit: c.consignor_unit || c.consignor?.unit || '---',
-        address: c.consignor_address || c.consignor?.address || '---',
-        pincode: c.consignor_pincode || c.consignor?.pincode || '',
-        gst: c.consignor_gst || c.consignor?.gst || '---',
-        mobile: c.consignor_mobile || c.consignor?.mobile || '---',
-        email: c.consignor_email || c.consignor?.email || '---',
+        name: c.consignor_name || '---',
+        code: c.consignor_code || '---',
+        address: c.consignor_address || '---',
+        gst: c.consignor_gst || '---',
+        mobile: c.consignor_mobile || '---',
+        email: c.consignor_email || '---',
+        pincode: '', 
     };
     const consignee = {
-        name: c.consignee_name || c.consignee?.name || '---',
-        legal_name: c.consignee_name || c.consignee?.legal_name || '---',
-        trade_name: c.consignee_name || c.consignee?.trade_name || '---',
-        code: c.consignee_code || c.consignee?.code || '---',
-        unit: c.consignee_unit || c.consignee?.unit || '---',
-        address: c.consignee_address || c.consignee?.address || '---',
-        pincode: c.consignee_pincode || c.consignee?.pincode || '',
-        gst: c.consignee_gst || c.consignee?.gst || '---',
-        mobile: c.consignee_mobile || c.consignee?.mobile || '---',
-        email: c.consignee_email || c.consignee?.email || '---',
-        state: c.consignee_state || c.consignee?.state || '',
+        name: c.consignee_name || '---',
+        code: c.consignee_code || '---',
+        address: c.consignee_address || '---',
+        gst: c.consignee_gst || '---',
+        mobile: c.consignee_mobile || '---',
+        email: c.consignee_email || '---',
+        pincode: '',
+        state: '',
     };
     const billing = {
-        billing_party: c.billing_party || c.billing_details?.billing_party || '---',
-        billing_party_gst: c.billing_party_gst || c.billing_details?.billing_party_gst || '---',
-        address: c.billing_party_address || c.billing_details?.address || '---',
-        party_code_unit: c.billing_party_code || c.billing_details?.party_code_unit || '---',
-        sector_dcc: c.billing_sector || c.billing_details?.sector_dcc || '---',
-        bill_for_station: c.billing_branch || c.billing_details?.bill_for_station || '---',
-        cnee_type: c.consignee_type || c.billing_details?.cnee_type || '---',
+        billing_party: c.billing_party || '---',
+        billing_party_gst: c.billing_party_gst || '---',
+        address: c.billing_party_address || '---',
+        party_code: c.billing_party_code || '---',
+        bill_for_station: c.billing_branch || '---',
     };
     const freight = {
-        rate_kg: c.freight_rate || c.freight_details?.rate_kg || 0,
-        basic_freight: c.basic_freight || c.freight_details?.basic_freight || 0,
-        door_del_charges: c.door_del_charges || c.freight_details?.door_delivery_charges || 0,
-        door_coll_charges: c.door_coll_charges || c.freight_details?.door_collection_charges || 0,
-        statistical_charges: c.statistical_charges || c.freight_details?.statistical_charges || 0,
-        misc_charges: c.other_charges || c.freight_details?.misc_charges || 0,
-        aoc_charges: c.aoc_charges || c.freight_details?.aoc_charges || 0,
-        fov_charges: c.fov_charges || c.freight_details?.fov_charges || 0,
-        cover_charges: c.cover_charges || c.freight_details?.cover_charges || 0,
-        mhc_charges: c.mhc_charges || c.freight_details?.mhc_charges || 0,
-        with_pass_charges: c.with_pass_charges || c.freight_details?.with_pass_charges || 0,
-        enroute_charges: c.enroute_charges || c.freight_details?.enroute_charges || 0,
-        cod_charges: c.cod_charges || c.freight_details?.cod_charges || 0,
-        toll_charges: c.toll_charges || c.freight_details?.toll_charges || 0,
-        green_tax: c.green_tax || c.freight_details?.green_tax || 0,
-        eway_bill_charges: c.eway_bill_charges || c.freight_details?.eway_bill_charges || 0,
-        total_freight: c.total_freight || c.freight_details?.total_freight || 0,
-        advance: c.advance_amount || c.freight_details?.advance || 0,
-        balance: c.balance_amount || c.freight_details?.balance || 0,
-        amount_in_words: c.amount_in_words || c.freight_details?.amount_in_words || '',
+        rate: c.freight_rate || 0,
+        basic_freight: c.basic_freight || 0,
+        unloading: c.unload_charges || 0,
+        retention: c.retention_charges || 0,
+        extraKm: c.extra_km_charges || 0,
+        loading: c.mhc_charges || 0,
+        doorColl: c.door_coll_charges || 0,
+        doorDel: c.door_del_charges || 0,
+        other: c.other_charges || 0,
+        total_freight: c.total_freight || 0,
+        advance: c.advance_amount || 0,
+        balance: c.balance_amount || 0,
+        amount_in_words: c.amount_in_words || '',
     };
     const history = c.tracking_history || [];
 
@@ -197,20 +181,22 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const actualWeight = c.actual_weight || c.goods_details?.actual_weight || '---';
         const chargedWeight = c.charged_weight || c.goods_details?.charged_weight || '---';
 
-        let packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
+        const packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
         let packageDetailsStr = '';
+        const totalPackageNos = c.total_qty || c.package_details?.total_qty || c.no_of_pkg || c.package_details?.total_pkg || '---';
         if (Array.isArray(c.packages) && c.packages.length > 0) {
             packageDetailsStr = c.packages.map((p: any) => {
                 const method = String(p.method || '').charAt(0).toUpperCase() + String(p.method || '').slice(1).toLowerCase();
-                return `${method} (Qty: ${p.qty || 0})`;
+                return `${method}`;
             }).join('<br/>');
         } else if (c.package_details?.packages && Array.isArray(c.package_details.packages) && c.package_details.packages.length > 0) {
             packageDetailsStr = c.package_details.packages.map((p: any) => {
                 const method = String(p.method || '').charAt(0).toUpperCase() + String(p.method || '').slice(1).toLowerCase();
-                return `${method} (Qty: ${p.qty || 0})`;
+                return `${method}`;
             }).join('<br/>');
         }
         const packagesList = packageDetailsStr || packageText;
+        const loadUnitDisplay = (c.load_unit || 'KG').toUpperCase();
 
         const goodsDescription = c.hsn_desc || c.goods_details?.hsn_desc || '---';
         const invoiceDescription = c.goods_desc || c.goods_details?.goods_desc || '';
@@ -225,16 +211,20 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const consigneeName = toUpperValue(consignee.name);
         const consigneeAddress = toUpperValue(`${consignee.address}${consignee.pincode ? ', ' + consignee.pincode : ''}`);
         const consigneeLocation = toUpperValue(`${toUpperValue(c.delivery_point || getFullBranchName(c.dest_branch))} ${consignee.state || ''}`.trim());
+        const normalizeName = (value: unknown) => String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const normalizedBillingParty = normalizeName(billing.billing_party);
+        const isConsignorBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignor.name);
+        const isConsigneeBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignee.name);
 
         const html = `<!DOCTYPE html>
 <html>
 <head>
 <title>${config.label} - ${c.cn_no}</title>
 <style>
-@page { size: A4 landscape; margin: 4mm; }
+@page { size: A4 landscape; margin: 5mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; }
-.page { border: 2px solid #1d2f7a; background: ${config.paperTint}; width: 279mm; min-height: 194mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; }
+.page { position: relative; background: ${config.paperTint}; width: 274mm; min-height: 189mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; box-shadow: inset 0 0 0 2px #1d2f7a; }
 .row { display: flex; width: 100%; }
 .box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
 .tiny { font-size: 11px; line-height: 1.25; }
@@ -264,6 +254,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .address-label { font-size: 13px; color: #1d2f7a; margin-right: 8px; flex: 0 0 auto; }
 .address-value { font-size: 21px; font-weight: 700; letter-spacing: 0.2px; white-space: normal; word-break: break-word; flex: 1; color: #132b94; }
 .address-value.small { font-size: 17px; color: #132b94; }
+.bill-check { display:inline-flex; width: 18px; height: 18px; margin-left: 8px; border: 2px solid #14803c; border-radius: 3px; align-items:center; justify-content:center; color:#14803c; font-size:14px; font-weight:900; line-height:1; vertical-align:middle; }
 .route-box .line { min-height: 54px; padding: 6px; font-size: 18px; font-weight: 700; align-items: center; }
 .consignment-note-box { padding: 0; overflow: hidden; }
 .consignment-note-box .note-head { text-align:center; font-size: 15px; font-weight: 700; color:#17308b; padding: 4px 0; border-bottom: 1px solid #1d2f7a; }
@@ -275,6 +266,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .amount-total { margin-top: 18px; font-weight: 700; }
 .top-grid .right-stack .lbl { font-size: 8.5px; line-height: 1.05; }
 .top-grid .right-stack .strong { font-size: 9.5px; line-height: 1.1; }
+.eway-entry-box { margin-top: 4px; padding: 4px 6px; }
+.eway-entry-box .strong { font-size: 15px !important; }
+.eway-valid { font-size: 17px !important; }
 .ink { font-family: Arial, Helvetica, sans-serif; color: #132b94; font-weight: 700; letter-spacing: 0.2px; }
 </style>
 </head>
@@ -337,7 +331,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="box right-stack tiny">
             <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">PAN NO : </span><span class="strong" style="font-size:15px;" >AAWFV7670H</span></div>
             <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">GSTIN : </span><span class="strong" style="font-size:15px;">37AAWFV7670H1Z8</span></div>
-            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">E-Way Bill No. : </span><span class="strong" style="font-size:15px;">${ewayNo}</span><br/><span class="lbl" style="font-size:13px;">valid upto : </span><span class="strong">${ewayValidUpto}</span></div>
+            <div style="font-size:15px;">
+                <span class="lbl" style="font-size:15px;">E-Way Bill No. : </span>
+                <div class="eway-entry-box">
+                    <span class="strong">${ewayNo}</span><br/>
+                    <span class="lbl" style="font-size:13px;">valid upto : </span><span class="strong eway-valid">${ewayValidUpto}</span>
+                </div>
+            </div>
             <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">HSN Desc : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(goodsDescription)}</span></div>
             <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">Vehicle No. : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(c.vehicle_no || truckNo)}</span></div>
         </div>
@@ -347,14 +347,14 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="address-wrap">
             <div class="address-line">
                 <span class="address-label">Consignor's Name & Address</span>
-                <span class="address-value ink">${consignorName}</span>
+                <span class="address-value ink">${consignorName}${isConsignorBilled ? '<span class="bill-check">✓</span>' : ''}</span>
             </div>
             <div class="address-line tall">
                 <span class="address-value small ink">${consignorAddress}</span>
             </div>
             <div class="address-line">
                 <span class="address-label">Consignee's Name & Address</span>
-                <span class="address-value ink">${consigneeName}</span>
+                <span class="address-value ink">${consigneeName}${isConsigneeBilled ? '<span class="bill-check">✓</span>' : ''}</span>
             </div>
             <div class="address-line tall">
                 <span class="address-value small ink">${consigneeAddress}</span>
@@ -398,14 +398,14 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </thead>
         <tbody>
             <tr style="height:162px;">
-                <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}</td>
+                <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}<br/><span style="display:block; margin-top:10px; font-size:15px;">Nos: ${totalPackageNos}</span></td>
                 <td>
                     ${invoiceDescription ? `<div class="strong ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
                     <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink">${invoiceNo}</span></div>
                     <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
                 </td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(actualWeight)}MT</td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}MT</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(actualWeight)}${loadUnitDisplay}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}${loadUnitDisplay}</td>
                 <td class="charges-list">
                     <span style="font-size:16px;">Basic Freight</span><br/>
                     ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
@@ -499,7 +499,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             compress: true,
         });
 
-        pdf.addImage(imageData, 'PNG', 2, 2, 293, 206, undefined, 'FAST');
+        pdf.addImage(imageData, 'PNG', 5, 5, 284, 198, undefined, 'FAST');
         const safeCopyLabel = config.label.toLowerCase().replace(/\s+/g, '-');
         const safeCn = String(c.cn_no || 'cns').replace(/[^a-zA-Z0-9-_]/g, '');
         pdf.save(`${safeCn}-${safeCopyLabel}.pdf`);
@@ -568,13 +568,14 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         <InfoItem label="CN Date" value={c.bkg_date} />
                                         <InfoItem label="Destination" value={getFullBranchName(c.dest_branch)} />
                                         <InfoItem label="Delivery Type" value={c.delivery_type} />
-                                        <InfoItem label="Packages" value={`${c.no_of_pkg} ${c.package_method}`} />
-                                        <InfoItem label="Actual Weight" value={`${c.actual_weight} KG`} />
-                                        <InfoItem label="Charged Weight" value={`${c.charged_weight} KG`} />
-                                        <InfoItem label="Delivery Location" value={c.delivery_drop_location} />
-                                        <InfoItem label="Landmark" value={c.del_loc_landmark} />
+                                        <InfoItem label="Vehicle No" value={c.vehicle_no} />
+                                        <InfoItem label="Loading Point" value={c.loading_point} />
+                                        <InfoItem label="Delivery Point" value={c.delivery_point} />
                                         <InfoItem label="Risk Type" value={c.owner_risk ? "OWNER RISK" : "CARRIER RISK"} />
                                         <InfoItem label="Door Collection" value={c.door_collection ? "YES" : "NO"} />
+                                        <InfoItem label="Packages" value={`${c.no_of_pkg} PKGS`} />
+                                        <InfoItem label="Total Qty" value={c.total_qty} />
+                                        <InfoItem label="Weight" value={`${c.actual_weight} / ${c.charged_weight} ${c.load_unit || 'KG'}`} />
                                     </CardContent>
                                 </Card>
 
@@ -588,14 +589,11 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-3">
-                                            <div>
-                                                <div className="text-sm font-bold">{consignor.name}</div>
-                                                <div className="text-xs text-muted-foreground">{consignor.legal_name}</div>
-                                            </div>
+                                            <div className="text-sm font-bold">{consignor.name}</div>
                                             <Separator />
                                             <div className="grid grid-cols-2 gap-3">
-                                                <InfoItem label="Code / Unit" value={`${consignor.code} / ${consignor.unit}`} />
-                                                <InfoItem label="GST (Trade)" value={consignor.gst} sub={consignor.trade_name} />
+                                                <InfoItem label="Code" value={consignor.code} />
+                                                <InfoItem label="GST" value={consignor.gst} />
                                                 <InfoItem label="Mobile" value={consignor.mobile} />
                                                 <InfoItem label="Email" value={consignor.email} />
                                             </div>
@@ -613,14 +611,11 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-3">
-                                            <div>
-                                                <div className="text-sm font-bold">{consignee.name}</div>
-                                                <div className="text-xs text-muted-foreground">{consignee.legal_name}</div>
-                                            </div>
+                                            <div className="text-sm font-bold">{consignee.name}</div>
                                             <Separator />
                                             <div className="grid grid-cols-2 gap-3">
-                                                <InfoItem label="Code / Unit" value={`${consignee.code} / ${consignee.unit}`} />
-                                                <InfoItem label="GST (Trade)" value={consignee.gst} sub={consignee.trade_name} />
+                                                <InfoItem label="Code" value={consignee.code} />
+                                                <InfoItem label="GST" value={consignee.gst} />
                                                 <InfoItem label="Mobile" value={consignee.mobile} />
                                                 <InfoItem label="Email" value={consignee.email} />
                                             </div>
@@ -643,16 +638,16 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         <CardContent className="p-4 space-y-4">
                                             <div className="flex justify-between text-xs py-1 border-b border-dashed">
                                                 <span>Door Collection</span>
-                                                <span className="font-mono">₹ {(freight.door_coll_charges || 0).toFixed(2)}</span>
+                                                <span className="font-mono">₹ {(freight.doorColl || 0).toFixed(2)}</span>
                                             </div>
                                             <div className="flex justify-between text-xs py-1 border-b border-dashed">
                                                 <span>Door Delivery</span>
-                                                <span className="font-mono">₹ ${(freight.door_del_charges || 0).toFixed(2)}</span>
+                                                <span className="font-mono">₹ {(freight.doorDel || 0).toFixed(2)}</span>
                                             </div>
                                             <div className="flex items-center justify-between bg-yellow-50 p-2 rounded border border-yellow-100">
                                                 <span className="text-xs font-bold text-yellow-800 uppercase">Loose / Zero Pkg</span>
-                                                <Badge variant={c.package_details?.loose_pkg ? "default" : "outline"} className="bg-white text-yellow-800 border-yellow-200">
-                                                    {c.package_details?.loose_pkg ? "YES" : "NO"}
+                                                <Badge variant={c.is_loose ? "default" : "outline"} className="bg-white text-yellow-800 border-yellow-200">
+                                                    {c.is_loose ? "YES" : "NO"}
                                                 </Badge>
                                             </div>
 
@@ -662,22 +657,24 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                                     <div className="col-span-8 px-2">Package Method</div>
                                                     <div className="col-span-2 text-center">Qty</div>
                                                 </div>
-                                                {c.package_details?.packages?.length > 0 ? (
-                                                    c.package_details.packages.map((pkg: any) => (
-                                                        <div key={pkg.sr_no} className="grid grid-cols-12 p-2 text-xs border-b last:border-0 hover:bg-slate-50">
-                                                            <div className="col-span-2 text-center text-muted-foreground">{pkg.sr_no}</div>
-                                                            <div className="col-span-8 px-2 font-medium">{pkg.method}</div>
-                                                            <div className="col-span-2 text-center font-bold">{pkg.qty}</div>
-                                                        </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="p-4 text-center text-xs text-muted-foreground italic">No packages listed</div>
-                                                )}
+                                                <div className="max-h-60 overflow-y-auto">
+                                                    {Array.isArray(c.packages) && c.packages.length > 0 ? (
+                                                        c.packages.map((pkg: any, idx: number) => (
+                                                            <div key={idx} className="grid grid-cols-12 p-2 text-xs border-b last:border-0 hover:bg-slate-50">
+                                                                <div className="col-span-2 text-center text-muted-foreground">{idx + 1}</div>
+                                                                <div className="col-span-8 px-2 font-medium">{pkg.method}</div>
+                                                                <div className="col-span-2 text-center font-bold">{pkg.qty}</div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="p-4 text-center text-xs text-muted-foreground italic">No packages listed</div>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             <div className="grid grid-cols-2 gap-4 pt-2">
-                                                <InfoItem label="Total Packages" value={c.package_details?.total_pkg} />
-                                                <InfoItem label="Total Quantity" value={c.package_details?.total_qty} />
+                                                <InfoItem label="No. of Packages" value={c.no_of_pkg} />
+                                                <InfoItem label="Total Quantity" value={c.total_qty} />
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -690,16 +687,18 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-4">
                                             <div className="grid grid-cols-2 gap-4">
-                                                <InfoItem label="Value of Goods" value={`₹ ${(c.goods_details?.value_of_goods || c.goods_value || 0).toLocaleString()}`} />
-                                                <InfoItem label="HSN Description" value={c.hsn_desc || c.goods_details?.hsn_desc} />
+                                                <InfoItem label="Value of Goods" value={`₹ ${Number(c.goods_value || 0).toLocaleString()}`} />
+                                                <InfoItem label="HSN Description" value={c.hsn_desc} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">
-                                                <InfoItem label="Dimensions (LxWxH)" value={c.goods_details?.dimensions ? `${c.goods_details.dimensions.l} x ${c.goods_details.dimensions.w} x ${c.goods_details.dimensions.h}` : '---'} />
-                                                <InfoItem label="Volume" value={c.goods_details?.volume} />
+                                                <InfoItem label="Dimensions" value={c.dimension_l ? `${c.dimension_l} x ${c.dimension_w} x ${c.dimension_h}` : '---'} />
+                                                <InfoItem label="Volume" value={c.volume} />
                                             </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <InfoItem label="Odd Package" value={c.goods_details?.odd_package} />
-                                                <InfoItem label="Single Piece" value={c.goods_details?.single_piece} />
+                                            <div className="space-y-1">
+                                                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Goods Description</Label>
+                                                <div className="text-sm font-medium text-slate-700 bg-slate-50 p-2 rounded border border-slate-100 min-h-[40px]">
+                                                    {c.goods_desc || '---'}
+                                                </div>
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -714,15 +713,15 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                             <Calculator className="h-3.5 w-3.5" /> Billing Information
                                         </CardTitle>
                                     </CardHeader>
-                                    <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <CardContent className="p-4 grid grid-cols-2 lg:grid-cols-3 gap-4">
                                         <InfoItem label="Booking Basis" value={c.bkg_basis} />
                                         <InfoItem label="Billing Party" value={billing.billing_party} />
-                                        <InfoItem label="Party Code" value={billing.party_code_unit} />
+                                        <InfoItem label="Party Code" value={billing.party_code} />
                                         <InfoItem label="Party GST" value={billing.billing_party_gst} />
-                                        <InfoItem label="Sector / DCC" value={billing.sector_dcc} />
-                                        <InfoItem label="Bill Station" value={billing.bill_for_station} />
-                                        <InfoItem label="Billing Address" value={billing.address} />
-                                        <InfoItem label="Consignee Type" value={billing.cnee_type} />
+                                        <InfoItem label="Bill For Branch" value={billing.bill_for_station} />
+                                        <div className="col-span-full">
+                                            <InfoItem label="Billing Address" value={billing.address} />
+                                        </div>
                                     </CardContent>
                                 </Card>
 
@@ -735,22 +734,15 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                     </CardHeader>
                                     <CardContent className="p-0">
                                         <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y border-b">
-                                            <ChargeItem label="Rate / KG" value={freight.rate_kg} />
+                                            <ChargeItem label="Rate" value={freight.rate} />
                                             <ChargeItem label="Basic Freight" value={freight.basic_freight} bold />
-                                            <ChargeItem label="AOC Charges" value={freight.aoc_charges} />
-                                            <ChargeItem label="FOV Charges" value={freight.fov_charges} />
-                                            <ChargeItem label="Cover Charges" value={freight.cover_charges} />
-                                            <ChargeItem label="MHC Charges" value={freight.mhc_charges} />
-                                            <ChargeItem label="Door Coll." value={freight.door_coll_charges} />
-                                            <ChargeItem label="Door Del." value={freight.door_del_charges} />
-                                            <ChargeItem label="With Pass" value={freight.with_pass_charges} />
-                                            <ChargeItem label="Enroute" value={freight.enroute_charges} />
-                                            <ChargeItem label="Statistical" value={freight.statistical_charges} />
-                                            <ChargeItem label="Misc Charges" value={freight.misc_charges} />
-                                            <ChargeItem label="COD Charges" value={freight.cod_charges} />
-                                            <ChargeItem label="Toll Charges" value={freight.toll_charges} />
-                                            <ChargeItem label="Green Tax" value={freight.green_tax} />
-                                            <ChargeItem label="E-Way Bill" value={freight.eway_bill_charges} />
+                                            <ChargeItem label="Unloading" value={freight.unloading} />
+                                            <ChargeItem label="Retention" value={freight.retention} />
+                                            <ChargeItem label="Extra KM" value={freight.extraKm} />
+                                            <ChargeItem label="Loading (MHC)" value={freight.loading} />
+                                            <ChargeItem label="Door Coll." value={freight.doorColl} />
+                                            <ChargeItem label="Door Del." value={freight.doorDel} />
+                                            <ChargeItem label="Other Charges" value={freight.other} />
                                         </div>
                                         <div className="p-4 bg-emerald-50/20 flex flex-col md:flex-row justify-between items-center gap-4">
                                             <div className="text-xs text-muted-foreground font-medium italic">
@@ -777,24 +769,22 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-4">
-                                            <div>
-                                                <h4 className="text-[10px] font-bold text-primary uppercase mb-2">Insurance</h4>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <InfoItem label="Company" value={c.insurance_details?.insurance_comp} />
-                                                    <InfoItem label="Policy Amount" value={c.insurance_details?.policy_amount} />
-                                                    <InfoItem label="Policy No" value={c.insurance_details?.policy_no} />
-                                                    <InfoItem label="Valid Date" value={c.insurance_details?.policy_valid_date} />
-                                                </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <InfoItem label="Insurance Co." value={c.insurance_company} />
+                                                <InfoItem label="Policy Amount" value={c.policy_amount} />
+                                                <InfoItem label="Policy No" value={c.policy_no} />
+                                                <InfoItem label="Policy Date" value={c.policy_date} />
                                             </div>
                                             <Separator />
-                                            <div>
-                                                <h4 className="text-[10px] font-bold text-primary uppercase mb-2">Purchase Order</h4>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <InfoItem label="PO No" value={c.insurance_details?.po_no} />
-                                                    <InfoItem label="PO Date" value={c.insurance_details?.po_date} />
-                                                    <InfoItem label="STF No" value={c.insurance_details?.stf_no} />
-                                                    <InfoItem label="STF Valid Date" value={c.insurance_details?.stf_valid_upto} />
-                                                </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <InfoItem label="PO No" value={c.po_no} />
+                                                <InfoItem label="PO Date" value={c.po_date} />
+                                            </div>
+                                            <Separator />
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <InfoItem label="Transport Mode" value={c.transport_mode} />
+                                                <InfoItem label="Business Type" value={c.business_type} />
+                                                <InfoItem label="Prepared By" value={c.doc_prepared_by} />
                                             </div>
                                         </CardContent>
                                     </Card>
