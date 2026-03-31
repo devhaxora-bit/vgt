@@ -42,7 +42,7 @@ interface ConsignmentDetailsDialogProps {
 type CopyType = 'consigner' | 'consignee' | 'lorry' | 'office';
 
 const COPY_CONFIG: Record<CopyType, { label: string; paperTint: string }> = {
-    consigner: { label: 'CONSIGNER COPY', paperTint: '#ffd9df' },
+    consigner: { label: 'CONSIGNOR COPY', paperTint: '#ffd9df' },
     consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffffff' },
     lorry: { label: 'LORRY COPY', paperTint: '#fff6a6' },
     office: { label: 'OFFICE COPY', paperTint: '#cdefff' },
@@ -197,6 +197,15 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         }
         const packagesList = packageDetailsStr || packageText;
         const loadUnitDisplay = (c.load_unit || 'KG').toUpperCase();
+        const formatWeightDisplay = (value: unknown) => {
+            const normalizedValue = String(value ?? '').trim();
+            if (!normalizedValue || normalizedValue === '0' || normalizedValue === '---') {
+                return loadUnitDisplay === 'FTL' ? 'FTL' : '---';
+            }
+            return loadUnitDisplay === 'FTL'
+                ? `${toUpperValue(normalizedValue)} ${loadUnitDisplay}`
+                : `${toUpperValue(normalizedValue)}${loadUnitDisplay}`;
+        };
 
         const goodsDescription = c.hsn_desc || c.goods_details?.hsn_desc || '---';
         const invoiceDescription = c.goods_desc || c.goods_details?.goods_desc || '';
@@ -215,6 +224,11 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const normalizedBillingParty = normalizeName(billing.billing_party);
         const isConsignorBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignor.name);
         const isConsigneeBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignee.name);
+        const freightRateValue = Number(c.freight_rate || freight.rate_kg || 0);
+        const basicFreightValue = Number(c.basic_freight || freight.basic_freight || 0);
+        const rateLine = freightRateValue > 0
+            ? `Per Tonne: ${freightRateValue.toFixed(2)}`
+            : `Fixed: ${basicFreightValue.toFixed(2)}`;
 
         const html = `<!DOCTYPE html>
 <html>
@@ -418,12 +432,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}<br/><span style="display:block; margin-top:10px; font-size:15px;">Nos: ${totalPackageNos}</span></td>
                 <td>
                     ${invoiceDescription ? `<div class="strong ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
-                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink">${invoiceNo}</span></div>
+                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink" style="color:#cc1a1a; font-size:13px;">${invoiceNo}</span></div>
                     <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
                 </td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(actualWeight)}${loadUnitDisplay}</td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${toUpperValue(chargedWeight)}${loadUnitDisplay}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${formatWeightDisplay(actualWeight)}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${formatWeightDisplay(chargedWeight)}</td>
                 <td class="charges-list">
+                    <span style="font-size:16px;">${rateLine}</span><br/>
                     <span style="font-size:16px;">Basic Freight</span><br/>
                     ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
                     ${Number(c.retention_charges || 0) > 0 ? `<span style="font-size:16px;">Detention Ch.</span><br/>` : ''}
@@ -924,7 +939,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                 onChange={(e) => setCopyType(e.target.value as CopyType)}
                                 className="text-xs font-bold border-none bg-transparent focus:outline-none cursor-pointer pr-1"
                             >
-                                <option value="consigner">Consigner (White)</option>
+                                <option value="consigner">Consignor (White)</option>
                                 <option value="consignee">Consignee (Pink)</option>
                                 <option value="lorry">Lorry (Yellow)</option>
                                 <option value="office">Office (Blue)</option>
