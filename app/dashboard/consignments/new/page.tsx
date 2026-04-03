@@ -2,6 +2,7 @@
 
 import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { cn, numberToWords } from "@/lib/utils";
 import {
     ArrowLeft,
     Save,
@@ -568,6 +569,7 @@ function NewConsignmentForm() {
                 door_del_charges: charges.doorDel,
                 other_charges: charges.other,
                 total_freight: totalFrt.toFixed(2),
+                amount_in_words: numberToWords(totalFrt),
                 advance_amount: advanceAmount,
                 balance_amount: (totalFrt - adv).toFixed(2),
 
@@ -1488,7 +1490,7 @@ function NewConsignmentForm() {
 
                                             <div className="p-3 bg-muted/30 rounded-md border border-dashed text-center">
                                                 <p className="text-[10px] font-bold text-destructive italic">
-                                                    Rs. Two Hundred Fifty Five Zero Paise Only
+                                                    {numberToWords(calculateFreight())}
                                                 </p>
                                             </div>
                                         </div>

@@ -138,7 +138,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         bill_for_station: c.billing_branch || '---',
     };
     const freight = {
-        rate: c.freight_rate || 0,
+        rate: c.freight_rate || c.rate_kg || 0,
         basic_freight: c.basic_freight || 0,
         unloading: c.unload_charges || 0,
         retention: c.retention_charges || 0,
@@ -224,7 +224,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const normalizedBillingParty = normalizeName(billing.billing_party);
         const isConsignorBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignor.name);
         const isConsigneeBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignee.name);
-        const freightRateValue = Number(c.freight_rate || freight.rate_kg || 0);
+        const freightRateValue = Number(c.freight_rate || freight.rate || 0);
         const basicFreightValue = Number(c.basic_freight || freight.basic_freight || 0);
         const rateLine = freightRateValue > 0
             ? `Per Tonne: ${freightRateValue.toFixed(2)}`
@@ -432,7 +432,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}<br/><span style="display:block; margin-top:10px; font-size:15px;">Nos: ${totalPackageNos}</span></td>
                 <td>
                     ${invoiceDescription ? `<div class="strong ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
-                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink" style="color:#cc1a1a; font-size:13px;">${invoiceNo}</span></div>
+                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink" style="color:#cc1a1a; font-size:11px;">${invoiceNo}</span></div>
                     <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
                 </td>
                 <td class="strong ink" style="text-align:center; font-size:23px;">${formatWeightDisplay(actualWeight)}</td>
