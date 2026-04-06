@@ -224,6 +224,7 @@ function NewConsignmentForm() {
             code?: string | null;
             gstin?: string | null;
             address?: string | null;
+            pincode?: string | null;
             phone?: string | null;
             email?: string | null;
         }
@@ -238,7 +239,7 @@ function NewConsignmentForm() {
             gstin: details.gstin || '',
             address: details.address || '',
             city: '',
-            pincode: '',
+            pincode: details.pincode || '',
             state: '',
             phone: details.phone || '',
             email: details.email || '',
@@ -325,6 +326,7 @@ function NewConsignmentForm() {
                     code: data.consignor_code,
                     gstin: data.consignor_gst,
                     address: data.consignor_address,
+                    pincode: data.consignor_pincode,
                     phone: data.consignor_mobile,
                     email: data.consignor_email,
                 }));
@@ -333,6 +335,7 @@ function NewConsignmentForm() {
                     code: data.consignee_code,
                     gstin: data.consignee_gst,
                     address: data.consignee_address,
+                    pincode: data.consignee_pincode,
                     phone: data.consignee_mobile,
                     email: data.consignee_email,
                 }));
@@ -607,7 +610,12 @@ function NewConsignmentForm() {
 
             if (!res.ok) {
                 const err = await res.json();
-                throw new Error(err.error || 'Failed to save consignment');
+                // Supabase unique constraint violation on cn_no
+                const errMsg: string = err.error || '';
+                if (errMsg.includes('23505') || errMsg.toLowerCase().includes('unique') || errMsg.includes('cn_no')) {
+                    throw new Error(`CN Number "${fullCnNo}" already exists. Please use a different CN number.`);
+                }
+                throw new Error(errMsg || 'Failed to save consignment');
             }
 
             alert(`Consignment ${fullCnNo} ${isEditMode ? 'updated' : 'saved'} successfully!`);

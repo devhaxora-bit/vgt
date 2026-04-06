@@ -135,9 +135,9 @@ export default function DashboardNav() {
                 {
                     title: 'Accounts',
                     items: [
+                        { title: 'Party Ledger Book', href: '/dashboard/ledger' },
                         { title: 'Invoicing', href: '#' },
                         { title: 'Payment Entry', href: '#' },
-                        { title: 'Ledger View', href: '#' },
                     ]
                 },
                 {

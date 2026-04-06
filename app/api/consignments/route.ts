@@ -86,6 +86,7 @@ export async function POST(request: Request) {
         billing_party_gst: body.billing_party_gst,
         billing_party_address: body.billing_party_address,
         billing_branch: body.billing_branch,
+        // billing_party_id will be set below after party lookup
 
         // Package & Goods
         no_of_pkg: parseInt(body.no_of_pkg) || 0,
@@ -148,9 +149,24 @@ export async function POST(request: Request) {
         doc_prepared_by: body.doc_prepared_by,
         remarks: body.remarks,
         vehicle_no: body.vehicle_no,
+        amount_in_words: body.amount_in_words,
 
         created_by: user.id,
     };
+
+    // Auto-resolve billing_party_id from billing_party_code for ledger linkage
+    if (body.billing_party_code) {
+        const { data: billingPartyRow } = await supabase
+            .from('parties')
+            .select('id')
+            .eq('code', body.billing_party_code.toUpperCase().trim())
+            .eq('is_active', true)
+            .maybeSingle();
+
+        if (billingPartyRow?.id) {
+            (insertData as any).billing_party_id = billingPartyRow.id;
+        }
+    }
 
     const { data, error } = await supabase
         .from("consignments")

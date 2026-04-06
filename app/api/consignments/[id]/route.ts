@@ -121,6 +121,7 @@ export async function PATCH(
             packages: body.packages || [],
             goods_value: parseNumber(body.goods_value),
             hsn_desc: body.hsn_desc,
+            goods_desc: body.goods_desc,
             actual_weight: parseNumber(body.actual_weight),
             charged_weight: parseNumber(body.charged_weight),
             load_unit: body.load_unit || "KG",
