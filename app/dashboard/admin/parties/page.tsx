@@ -152,7 +152,7 @@ export default function PartiesPage() {
                                     <TableHead>Type</TableHead>
                                     <TableHead>GSTIN</TableHead>
                                     <TableHead>Location</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead className="text-right sticky right-0 bg-slate-50 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.02)] border-l">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -194,7 +194,7 @@ export default function PartiesPage() {
                                                     </span>
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-right">
+                                            <TableCell className="text-right sticky right-0 bg-white z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.02)] border-l group-hover:bg-slate-50 transition-colors">
                                                 <div className="flex justify-end gap-2">
                                                     <Button 
                                                         variant="outline" 
