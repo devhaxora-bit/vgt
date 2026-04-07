@@ -222,8 +222,17 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const consigneeLocation = toUpperValue(`${toUpperValue(c.delivery_point || getFullBranchName(c.dest_branch))} ${consignee.state || ''}`.trim());
         const normalizeName = (value: unknown) => String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
         const normalizedBillingParty = normalizeName(billing.billing_party);
-        const isConsignorBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignor.name);
-        const isConsigneeBilled = normalizedBillingParty !== '' && normalizedBillingParty === normalizeName(consignee.name);
+        const billedPartyType = normalizedBillingParty !== ''
+            ? (
+                normalizedBillingParty === normalizeName(consignor.name)
+                    ? 'consignor'
+                    : normalizedBillingParty === normalizeName(consignee.name)
+                        ? 'consignee'
+                        : ''
+            )
+            : '';
+        const isConsignorBilled = billedPartyType === 'consignor';
+        const isConsigneeBilled = billedPartyType === 'consignee';
         const freightRateValue = Number(c.freight_rate || freight.rate || 0);
         const basicFreightValue = Number(c.basic_freight || freight.basic_freight || 0);
         const rateLine = freightRateValue > 0

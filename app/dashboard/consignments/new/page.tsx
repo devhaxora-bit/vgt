@@ -41,6 +41,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from 'sonner';
 
+import { DatePicker } from "@/components/ui/date-picker";
 import { PartyAutocomplete } from "@/components/PartyAutocomplete";
 import { AddPartyDialog } from "@/components/AddPartyDialog";
 import { Party, PartyType } from "@/lib/types/party.types";
@@ -132,7 +133,7 @@ function NewConsignmentForm() {
     const [bookingBranchCode, setBookingBranchCode] = useState("");
     const [destBranch, setDestBranch] = useState("");
     const [cnNo, setCnNo] = useState("");
-    const [cnDate, setCnDate] = useState(new Date().toLocaleDateString('en-GB'));
+    const [cnDate, setCnDate] = useState(new Date().toISOString().split('T')[0]);
     const [deliveryType, setDeliveryType] = useState("");
     const [isDoorCollection, setIsDoorCollection] = useState(false);
     const [bkgBasis, setBkgBasis] = useState("");
@@ -206,15 +207,19 @@ function NewConsignmentForm() {
     // Saving state
     const [isSaving, setIsSaving] = useState(false);
 
-    const formatDateForUi = (value?: string | null) => {
+    const formatDateForInput = (value?: string | null) => {
         if (!value) return "";
-        if (value.includes('/')) return value;
+        // Already YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+        // DD/MM/YYYY → YYYY-MM-DD
+        if (value.includes('/')) {
+            const parts = value.split('/');
+            if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        // ISO string
         const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) return value;
-        const day = String(parsed.getDate()).padStart(2, '0');
-        const month = String(parsed.getMonth() + 1).padStart(2, '0');
-        const year = parsed.getFullYear();
-        return `${day}/${month}/${year}`;
+        if (Number.isNaN(parsed.getTime())) return "";
+        return parsed.toISOString().split('T')[0];
     };
 
     const buildPartyFromConsignment = (
@@ -299,7 +304,7 @@ function NewConsignmentForm() {
                 setBookingBranchCode((data.booking_branch || "").toLowerCase());
                 setDestBranch((data.dest_branch || "").toLowerCase());
                 setCnNo(data.cn_no || "");
-                setCnDate(formatDateForUi(data.bkg_date) || new Date().toLocaleDateString('en-GB'));
+                setCnDate(formatDateForInput(data.bkg_date) || new Date().toISOString().split('T')[0]);
                 setDeliveryType(
                     data.delivery_type === 'Door Delivery'
                         ? 'dd'
@@ -400,15 +405,24 @@ function NewConsignmentForm() {
                 });
                 setAdvanceAmount(String(data.advance_amount ?? ""));
                 setInvoiceNo(data.invoice_no || "");
-                setInvoiceDate(formatDateForUi(data.invoice_date));
+                setInvoiceDate(formatDateForInput(data.invoice_date));
                 setInvoiceAmt(String(data.invoice_amount ?? ""));
                 setEwayBill(data.eway_bill || "");
-                setEwayFrom(formatDateForUi(data.eway_from_date));
-                setEwayTo(formatDateForUi(data.eway_to_date));
+                setEwayFrom(formatDateForInput(data.eway_from_date));
+                setEwayTo(formatDateForInput(data.eway_to_date));
                 setRemarks(data.remarks || "");
                 setLoadingPoint(data.loading_point || "");
                 setDeliveryPoint(data.delivery_point || "");
                 setVehicleNo(data.vehicle_no || "");
+                setInsuranceComp(data.insurance_company === 'NOT KNOWN' ? 'not-known' : (data.insurance_company || 'not-known'));
+                setPolicyNo(data.policy_no || "");
+                setPolicyDate(formatDateForInput(data.policy_date));
+                setPolicyAmount(String(data.policy_amount ?? ""));
+                setPoNo(data.po_no || "");
+                setPoDate(formatDateForInput(data.po_date));
+                setStfNo(data.stf_no || "");
+                setStfDate(formatDateForInput(data.stf_date));
+                setStfValidUpto(formatDateForInput(data.stf_valid_upto));
             } catch (error) {
                 console.error('Failed to load consignment for edit:', error);
                 toast.error(error instanceof Error ? error.message : 'Failed to load consignment');
@@ -471,9 +485,12 @@ function NewConsignmentForm() {
     // Parse DD/MM/YYYY to YYYY-MM-DD for DB, or return null
     const parseDateForDB = (val: string) => {
         if (!val || val.trim() === '') return null;
+        // Already YYYY-MM-DD from date input
+        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+        // Legacy DD/MM/YYYY format
         const parts = val.split('/');
         if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-        return val; // assume already ISO
+        return val;
     };
 
     const handleSave = async () => {
@@ -510,7 +527,7 @@ function NewConsignmentForm() {
 
             const body = {
                 cn_no: cnNo,
-                bkg_date: cnDate.split('/').reverse().join('-'), // DD/MM/YYYY to YYYY-MM-DD
+                bkg_date: parseDateForDB(cnDate),
                 booking_branch: bookingBranchCode.toUpperCase(),
                 dest_branch: destBranch.toUpperCase(),
 
@@ -726,7 +743,7 @@ function NewConsignmentForm() {
                                             <div className="relative flex-1">
                                                 <Input className="h-9 font-mono font-bold" value={cnNo} onChange={(e) => setCnNo(e.target.value)} />
                                             </div>
-                                            <Input type="text" className="w-32 h-9 text-center" value={cnDate} onChange={(e) => setCnDate(e.target.value)} />
+                                            <DatePicker className="w-40 h-9" value={cnDate} onChange={(val) => setCnDate(val)} />
                                         </div>
                                     </div>
 
@@ -1250,7 +1267,7 @@ function NewConsignmentForm() {
                                                         <div className="flex items-center gap-4">
                                                             <Label className="w-24 text-[10px] font-bold text-muted-foreground uppercase">Ins Comp</Label>
                                                             <div className="flex-1">
-                                                                <Select defaultValue="not-known">
+                                                                <Select value={insuranceComp} onValueChange={setInsuranceComp}>
                                                                     <SelectTrigger className="h-8 text-xs">
                                                                         <SelectValue />
                                                                     </SelectTrigger>
@@ -1265,8 +1282,8 @@ function NewConsignmentForm() {
                                                         <div className="flex items-center gap-4">
                                                             <Label className="w-24 text-[10px] font-bold text-muted-foreground uppercase">PO No & Date</Label>
                                                             <div className="flex-1 flex gap-2">
-                                                                <Input className="h-8 text-xs" placeholder="PO Number" />
-                                                                <Input className="h-8 text-xs w-32" placeholder="DD/MM/YYYY" />
+                                                                <Input className="h-8 text-xs" placeholder="PO Number" value={poNo} onChange={(e) => setPoNo(e.target.value)} />
+                                                                <DatePicker className="h-8 text-xs w-40" value={poDate} onChange={(val) => setPoDate(val)} />
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1276,24 +1293,24 @@ function NewConsignmentForm() {
                                                         <div className="flex items-center gap-4">
                                                             <Label className="w-24 text-[10px] font-bold text-muted-foreground uppercase">Policy No & Date</Label>
                                                             <div className="flex-1 flex gap-2">
-                                                                <Input className="h-8 text-xs" placeholder="Policy Number" />
-                                                                <Input className="h-8 text-xs w-32" placeholder="DD/MM/YYYY" />
+                                                                <Input className="h-8 text-xs" placeholder="Policy Number" value={policyNo} onChange={(e) => setPolicyNo(e.target.value)} />
+                                                                <DatePicker className="h-8 text-xs w-40" value={policyDate} onChange={(val) => setPolicyDate(val)} />
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             <Label className="w-24 text-[10px] font-bold text-muted-foreground uppercase">Policy Amount</Label>
-                                                            <Input className="h-8 text-xs flex-1" placeholder="0.00" />
+                                                            <Input className="h-8 text-xs flex-1" placeholder="0.00" value={policyAmount} onChange={(e) => setPolicyAmount(e.target.value)} />
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             <Label className="w-24 text-[10px] font-bold text-muted-foreground uppercase">STF No & Date</Label>
                                                             <div className="flex-1 flex gap-2">
-                                                                <Input className="h-8 text-xs" placeholder="STF Number" />
-                                                                <Input className="h-8 text-xs w-32" placeholder="DD/MM/YYYY" />
+                                                                <Input className="h-8 text-xs" placeholder="STF Number" value={stfNo} onChange={(e) => setStfNo(e.target.value)} />
+                                                                <DatePicker className="h-8 text-xs w-40" value={stfDate} onChange={(val) => setStfDate(val)} />
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-4">
                                                             <Label className="w-24 text-[10px] font-bold text-muted-foreground uppercase">STF Valid Upto</Label>
-                                                            <Input className="h-8 text-xs w-32" placeholder="DD/MM/YYYY" />
+                                                            <DatePicker className="h-8 text-xs w-40" value={stfValidUpto} onChange={(val) => setStfValidUpto(val)} />
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1320,7 +1337,7 @@ function NewConsignmentForm() {
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Invoice Date</Label>
-                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+                                                        <DatePicker className="h-8 text-xs w-full" value={invoiceDate} onChange={(val) => setInvoiceDate(val)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Invoice Amt</Label>
@@ -1332,11 +1349,11 @@ function NewConsignmentForm() {
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">eWay From Date</Label>
-                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" value={ewayFrom} onChange={(e) => setEwayFrom(e.target.value)} />
+                                                        <DatePicker className="h-8 text-xs w-full" value={ewayFrom} onChange={(val) => setEwayFrom(val)} />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">eWay To Date</Label>
-                                                        <Input className="h-8 text-xs" placeholder="DD/MM/YYYY" value={ewayTo} onChange={(e) => setEwayTo(e.target.value)} />
+                                                        <DatePicker className="h-8 text-xs w-full" value={ewayTo} onChange={(val) => setEwayTo(val)} />
                                                     </div>
                                                 </div>
                                             </CardContent>

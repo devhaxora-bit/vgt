@@ -18,8 +18,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Party, PartyType, PartyInput } from '@/lib/types/party.types';
-import { createParty, updateParty } from '@/lib/services/party.service';
-import { Loader2 } from 'lucide-react';
+import { createParty, updateParty, getPartyByCode } from '@/lib/services/party.service';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 interface AddPartyDialogProps {
     open: boolean;
@@ -48,6 +48,8 @@ export function AddPartyDialog({
     const [email, setEmail] = React.useState('');
     const [isSaving, setIsSaving] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+    const [codeError, setCodeError] = React.useState<string | null>(null);
+    const [isCheckingCode, setIsCheckingCode] = React.useState(false);
 
     React.useEffect(() => {
         if (open) {
@@ -71,8 +73,36 @@ export function AddPartyDialog({
                 setEmail('');
             }
             setError(null);
+            setCodeError(null);
         }
     }, [open, initialName, defaultType, editParty]);
+
+    const handleCodeBlur = async () => {
+        const trimmedCode = code.trim();
+        if (!trimmedCode || trimmedCode.length !== 6) {
+            setCodeError(trimmedCode.length > 0 && trimmedCode.length !== 6 ? 'Code must be exactly 6 digits' : null);
+            return;
+        }
+        // Skip check if code hasn't changed during edit
+        if (editParty && editParty.code === trimmedCode) {
+            setCodeError(null);
+            return;
+        }
+        setIsCheckingCode(true);
+        try {
+            const existing = await getPartyByCode(trimmedCode);
+            if (existing) {
+                setCodeError(`Party code "${trimmedCode}" is already used by "${existing.name}"`);
+            } else {
+                setCodeError(null);
+            }
+        } catch {
+            // If lookup fails, don't block — the server will catch duplicates on save
+            setCodeError(null);
+        } finally {
+            setIsCheckingCode(false);
+        }
+    };
 
     const handleSave = async () => {
         if (!name) {
@@ -81,6 +111,10 @@ export function AddPartyDialog({
         }
         if (code.length !== 6) {
             setError('Code must be exactly 6 digits');
+            return;
+        }
+        if (codeError) {
+            setError('Please fix the party code issue before saving.');
             return;
         }
 
@@ -140,14 +174,32 @@ export function AddPartyDialog({
                             <SelectContent>
                                 <SelectItem value="consignor">Consignor Only</SelectItem>
                                 <SelectItem value="consignee">Consignee Only</SelectItem>
-                                <SelectItem value="both">Both (Consignor & Consignee)</SelectItem>
+                                <SelectItem value="both">Both (Consignor &amp; Consignee)</SelectItem>
                                 <SelectItem value="billing">Billing Party</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="code">Party Code (6 Digits)</Label>
-                        <Input id="code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="100003" className="bg-slate-50" />
+                        <div className="relative">
+                            <Input
+                                id="code"
+                                value={code}
+                                onChange={(e) => { setCode(e.target.value); setCodeError(null); }}
+                                onBlur={handleCodeBlur}
+                                placeholder="100003"
+                                className={`bg-slate-50 ${codeError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                            />
+                            {isCheckingCode && (
+                                <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                            )}
+                        </div>
+                        {codeError && (
+                            <p className="text-xs text-destructive flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3 shrink-0" />
+                                {codeError}
+                            </p>
+                        )}
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="gstin">GST Number</Label>
@@ -173,7 +225,7 @@ export function AddPartyDialog({
                 {error && <p className="text-xs text-destructive px-1">{error}</p>}
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
-                    <Button onClick={handleSave} disabled={isSaving}>
+                    <Button onClick={handleSave} disabled={isSaving || isCheckingCode || !!codeError}>
                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         {isSaving ? 'Saving...' : (editParty ? 'Update Party' : 'Save Party')}
                     </Button>

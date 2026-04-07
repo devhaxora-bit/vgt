@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     let query = supabase
         .from("consignments")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("cn_no", { ascending: false });
 
     if (search) {
         query = query.or(`cn_no.ilike.%${search}%,dest_branch.ilike.%${search}%`);

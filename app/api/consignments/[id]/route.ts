@@ -163,6 +163,7 @@ export async function PATCH(
             doc_prepared_by: body.doc_prepared_by,
             vehicle_no: body.vehicle_no,
             remarks: body.remarks,
+            amount_in_words: body.amount_in_words,
         };
 
         const { data, error } = await supabase

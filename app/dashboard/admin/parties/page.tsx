@@ -197,17 +197,18 @@ export default function PartiesPage() {
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
                                                     <Button 
-                                                        variant="ghost" 
-                                                        size="icon" 
-                                                        className="h-8 w-8"
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
                                                         onClick={() => handleEdit(party)}
                                                     >
-                                                        <Edit className="h-4 w-4" />
+                                                        <Edit className="h-3.5 w-3.5" />
+                                                        <span>Edit</span>
                                                     </Button>
                                                     <Button 
                                                         variant="ghost" 
                                                         size="icon" 
-                                                        className="h-8 w-8 text-destructive"
+                                                        className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
                                                         onClick={() => handleDelete(party.id, party.name)}
                                                     >
                                                         <Trash2 className="h-4 w-4" />

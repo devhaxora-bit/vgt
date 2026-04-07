@@ -179,6 +179,11 @@ export default function ConsignmentsPage() {
 
             return matchesSearch && matchesCn && matchesBkgBranch && matchesDestBranch &&
                 matchesBkgBasis && matchesDelType && matchesDateFrom && matchesDateTo;
+        }).sort((a: any, b: any) => {
+            // Sort by cn_no descending so largest comes first
+            const cnA = a.cn_no || "";
+            const cnB = b.cn_no || "";
+            return cnB.localeCompare(cnA);
         });
     }, [searchTerm, appliedFilters, consignments]);
 
