@@ -221,8 +221,18 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const consigneeAddress = toUpperValue(`${consignee.address}${consignee.pincode ? ', ' + consignee.pincode : ''}`);
         const consigneeLocation = toUpperValue(`${toUpperValue(c.delivery_point || getFullBranchName(c.dest_branch))} ${consignee.state || ''}`.trim());
         const normalizeName = (value: unknown) => String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const normalizeGst = (value: unknown) => String(value ?? '').trim().toUpperCase();
         const normalizedBillingParty = normalizeName(billing.billing_party);
-        const billedPartyType = normalizedBillingParty !== ''
+        const normalizedBillingGst = normalizeGst(billing.billing_party_gst);
+        const billedPartyType = normalizedBillingGst !== '' && normalizedBillingGst !== '---'
+            ? (
+                normalizedBillingGst === normalizeGst(consignor.gst)
+                    ? 'consignor'
+                    : normalizedBillingGst === normalizeGst(consignee.gst)
+                        ? 'consignee'
+                        : ''
+            )
+            : normalizedBillingParty !== ''
             ? (
                 normalizedBillingParty === normalizeName(consignor.name)
                     ? 'consignor'
