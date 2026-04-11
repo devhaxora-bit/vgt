@@ -154,18 +154,44 @@ export async function POST(request: Request) {
         created_by: user.id,
     };
 
-    // Auto-resolve billing_party_id from billing_party_code for ledger linkage
-    if (body.billing_party_code) {
-        const { data: billingPartyRow } = await supabase
+    // Auto-resolve billing_party_id for ledger linkage (Priority: GSTIN -> Name -> Code)
+    let billingPartyRow = null;
+
+    if (body.billing_party_gst?.trim()) {
+        const { data } = await supabase
             .from('parties')
             .select('id')
-            .eq('code', body.billing_party_code.toUpperCase().trim())
+            .ilike('gstin', body.billing_party_gst.trim())
             .eq('is_active', true)
+            .limit(1)
             .maybeSingle();
+        billingPartyRow = data;
+    }
 
-        if (billingPartyRow?.id) {
-            (insertData as any).billing_party_id = billingPartyRow.id;
-        }
+    if (!billingPartyRow && body.billing_party?.trim()) {
+        const { data } = await supabase
+            .from('parties')
+            .select('id')
+            .ilike('name', body.billing_party.trim())
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+        billingPartyRow = data;
+    }
+
+    if (!billingPartyRow && body.billing_party_code?.trim()) {
+        const { data } = await supabase
+            .from('parties')
+            .select('id')
+            .ilike('code', body.billing_party_code.trim())
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+        billingPartyRow = data;
+    }
+
+    if (billingPartyRow?.id) {
+        (insertData as any).billing_party_id = billingPartyRow.id;
     }
 
     const { data, error } = await supabase

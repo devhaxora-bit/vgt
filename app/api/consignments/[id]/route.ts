@@ -166,6 +166,48 @@ export async function PATCH(
             amount_in_words: body.amount_in_words,
         };
 
+        // Auto-resolve billing_party_id for ledger linkage (Priority: GSTIN -> Name -> Code)
+        let billingPartyRow = null;
+
+        if (body.billing_party_gst?.trim()) {
+            const { data } = await supabase
+                .from('parties')
+                .select('id')
+                .ilike('gstin', body.billing_party_gst.trim())
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle();
+            billingPartyRow = data;
+        }
+
+        if (!billingPartyRow && body.billing_party?.trim()) {
+            const { data } = await supabase
+                .from('parties')
+                .select('id')
+                .ilike('name', body.billing_party.trim())
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle();
+            billingPartyRow = data;
+        }
+
+        if (!billingPartyRow && body.billing_party_code?.trim()) {
+            const { data } = await supabase
+                .from('parties')
+                .select('id')
+                .ilike('code', body.billing_party_code.trim())
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle();
+            billingPartyRow = data;
+        }
+
+        if (billingPartyRow?.id) {
+            (updateData as any).billing_party_id = billingPartyRow.id;
+        } else {
+            (updateData as any).billing_party_id = null; // Unlink if billing party removed or invalid
+        }
+
         const { data, error } = await supabase
             .from("consignments")
             .update(updateData)

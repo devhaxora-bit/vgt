@@ -158,14 +158,14 @@ export default function ConsignmentsPage() {
             // Table Search (Live)
             const matchesSearch =
                 item.cn_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                item.dest_branch.toLowerCase().includes(searchTerm.toLowerCase());
+                (item.dest_branch || item.delivery_point || '').toLowerCase().includes(searchTerm.toLowerCase());
 
             // Form Filters (Applied on Click)
             const { cnNo, bkgBranch: ab, deliveryBranch: ad, bookingType: at, deliveryType: adt, dateFrom: df, dateTo: dt } = appliedFilters;
 
             const matchesCn = cnNo === '' || item.cn_no?.toLowerCase().includes(cnNo.toLowerCase());
             const matchesBkgBranch = ab === 'all' || item.booking_branch === ab;
-            const matchesDestBranch = ad === 'all' || item.dest_branch.includes(ad);
+            const matchesDestBranch = ad === 'all' || (item.dest_branch || item.delivery_point || '').includes(ad);
             const matchesBkgBasis = at === 'all' || item.bkg_basis === at;
             const matchesDelType = adt === 'all' || item.delivery_type === adt;
 
@@ -435,14 +435,14 @@ export default function ConsignmentsPage() {
                                                 </button>
                                             </TableCell>
                                             <TableCell className="text-xs font-medium text-foreground/80">{item.bkg_date}</TableCell>
-                                            <TableCell className="text-xs font-bold text-foreground/90">{getFullBranchName(item.dest_branch, branchOptions)}</TableCell>
+                                            <TableCell className="text-xs font-bold text-foreground/90">{item.dest_branch ? getFullBranchName(item.dest_branch, branchOptions) : (item.delivery_point ? item.delivery_point.toUpperCase() : '---')}</TableCell>
                                             <TableCell className="text-center">
                                                 <Badge variant="outline" className="font-bold bg-background shadow-sm border-muted/50 text-foreground/70">
                                                     {item.no_of_pkg}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right text-xs font-mono font-bold text-foreground/70">
-                                                {item.actual_weight.toLocaleString()} kg
+                                                {item.actual_weight.toLocaleString()} {item.load_unit?.toLowerCase() || 'kg'}
                                             </TableCell>
                                             <TableCell>
                                                 <Badge

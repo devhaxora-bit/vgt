@@ -174,16 +174,17 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
 
         const invoiceNo = c.invoice_no || c.invoice_details?.invoices?.[0]?.invoice_no || '---';
         const invoiceDate = formatDate(c.invoice_date || c.invoice_details?.invoices?.[0]?.date);
+        const remarks = String(c.remarks || '').trim();
         const ewayNo = c.eway_bill || c.invoice_details?.invoices?.[0]?.eway_bill || '---';
         const ewayValidUpto = formatDate(c.eway_to_date || c.invoice_details?.eway_to_date);
         const cnDate = formatDate(c.bkg_date);
-        const goodsValue = Number(c.goods_value || c.goods_details?.value_of_goods || 0);
+        const invoiceAmountValue = Number(c.invoice_amount || c.invoice_details?.invoices?.[0]?.amount || 0);
         const actualWeight = c.actual_weight || c.goods_details?.actual_weight || '---';
         const chargedWeight = c.charged_weight || c.goods_details?.charged_weight || '---';
 
         const packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
         let packageDetailsStr = '';
-        const totalPackageNos = c.total_qty || c.package_details?.total_qty || c.no_of_pkg || c.package_details?.total_pkg || '---';
+        const totalPackageNos = c.is_loose ? 'LOOSE' : (c.total_qty || c.package_details?.total_qty || c.no_of_pkg || c.package_details?.total_pkg || '---');
         if (Array.isArray(c.packages) && c.packages.length > 0) {
             packageDetailsStr = c.packages.map((p: any) => {
                 const method = String(p.method || '').charAt(0).toUpperCase() + String(p.method || '').slice(1).toLowerCase();
@@ -245,9 +246,8 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const isConsigneeBilled = billedPartyType === 'consignee';
         const freightRateValue = Number(c.freight_rate || freight.rate || 0);
         const basicFreightValue = Number(c.basic_freight || freight.basic_freight || 0);
-        const rateLine = freightRateValue > 0
-            ? `Per Tonne: ${freightRateValue.toFixed(2)}`
-            : `Fixed: ${basicFreightValue.toFixed(2)}`;
+        const rateLabel = freightRateValue > 0 ? 'Per Tonne:' : 'Fixed:';
+        const rateValue = freightRateValue > 0 ? freightRateValue.toFixed(2) : basicFreightValue.toFixed(2);
 
         const html = `<!DOCTYPE html>
 <html>
@@ -265,7 +265,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .lbl { font-size: 11px; font-weight: 700; color: #1d2f7a; }
 .strong { font-weight: 700; }
 .head-blue { color: #17308b; font-weight: 800; }
-.lr-red { color: #cc1a1a; font-weight: 900; font-size: 44px; letter-spacing: 1px; }
+.lr-red { color: #cc1a1a; font-weight: 900; font-size: 20px; letter-spacing: 1px; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
 .logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:transparent; }
@@ -316,7 +316,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="row" style="gap:10px; align-items:center;">
             <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
             <div style="flex:1; text-align:center;">
-                <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:20px;">Visakha Golden Transport</div>
+                <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:40px;">Visakha Golden Transport</div>
                 <div class="strong" style="font-size:18px; margin-bottom:6px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
                 <div style="font-size:16px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
@@ -451,13 +451,15 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}<br/><span style="display:block; margin-top:10px; font-size:15px;">Nos: ${totalPackageNos}</span></td>
                 <td>
                     ${invoiceDescription ? `<div class="strong ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
-                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink" style="color:#cc1a1a; font-size:11px;">${invoiceNo}</span></div>
+                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink" style="color:#cc1a1a; font-size:15px;">${invoiceNo}</span></div>
                     <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
+                    ${remarks ? `<div style="margin-top:8px; font-size:16px;">Remarks . <span class="strong ink">${toUpperValue(remarks)}</span></div>` : ''}
                 </td>
                 <td class="strong ink" style="text-align:center; font-size:23px;">${formatWeightDisplay(actualWeight)}</td>
                 <td class="strong ink" style="text-align:center; font-size:23px;">${formatWeightDisplay(chargedWeight)}</td>
                 <td class="charges-list">
-                    <span style="font-size:16px;">${rateLine}</span><br/>
+                    <span style="font-size:16px;">${rateLabel}</span><br/>
+                    <span style="font-size:16px; display:block; margin-bottom:8px;">${rateValue}</span>
                     <span style="font-size:16px;">Basic Freight</span><br/>
                     ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
                     ${Number(c.retention_charges || 0) > 0 ? `<span style="font-size:16px;">Detention Ch.</span><br/>` : ''}
@@ -469,6 +471,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     <br/><span class="strong" style="font-size:16px;">TOTAL</span>
                 </td>
                 <td class="charges-list amount-box ink">
+                    <span style="display:block; height:42px;"></span>
                     <span style="font-size:16px;">Rs. ${Number(c.basic_freight || 0).toFixed(2)}</span><br/>
                     ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.unload_charges).toFixed(2)}</span><br/>` : ''}
                     ${Number(c.retention_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.retention_charges).toFixed(2)}</span><br/>` : ''}
@@ -485,7 +488,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
     </table>
 
     <div class="footer">
-        <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${Number(goodsValue).toFixed(2)}</span></div>
+        <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${Number(invoiceAmountValue).toFixed(2)}</span></div>
         <div style="font-size:19px; font-weight:700; margin-left:auto; text-align:right;">
             <div class="ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
             <div>Signature of the Issuing Officer .......................................</div>
@@ -738,7 +741,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-4">
                                             <div className="grid grid-cols-2 gap-4">
-                                                <InfoItem label="Value of Goods" value={`₹ ${Number(c.goods_value || 0).toLocaleString()}`} />
+                                                <InfoItem label="Invoice Amount" value={`₹ ${Number(c.invoice_amount || 0).toLocaleString()}`} />
                                                 <InfoItem label="HSN Description" value={c.hsn_desc} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">

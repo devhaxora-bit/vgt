@@ -134,7 +134,7 @@ function NewConsignmentForm() {
     const [destBranch, setDestBranch] = useState("");
     const [cnNo, setCnNo] = useState("");
     const [cnDate, setCnDate] = useState(new Date().toISOString().split('T')[0]);
-    const [deliveryType, setDeliveryType] = useState("");
+    const [deliveryType, setDeliveryType] = useState("dd");
     const [isDoorCollection, setIsDoorCollection] = useState(false);
     const [bkgBasis, setBkgBasis] = useState("");
 
@@ -164,7 +164,6 @@ function NewConsignmentForm() {
     const [loadingPoint, setLoadingPoint] = useState("");
     const [vehicleNo, setVehicleNo] = useState("");
     // Goods fields
-    const [goodsValue, setGoodsValue] = useState("");
     const [hsnDesc, setHsnDesc] = useState("");
     const [goodsDesc, setGoodsDesc] = useState("");
     const [actualWeight, setActualWeight] = useState("");
@@ -370,7 +369,6 @@ function NewConsignmentForm() {
 
                 setIsLoose(data.is_loose ?? false);
                 setPackages(Array.isArray(data.packages) ? data.packages : []);
-                setGoodsValue(String(data.goods_value ?? ""));
                 setHsnDesc(data.hsn_desc || "");
                 setGoodsDesc(data.goods_desc || "");
                 setChargedWeight(String(data.charged_weight ?? ""));
@@ -566,7 +564,7 @@ function NewConsignmentForm() {
                 total_qty: isLoose ? packages.length : totalQty,
                 is_loose: isLoose,
                 packages: packages,
-                goods_value: goodsValue,
+                goods_value: invoiceAmt,
                 hsn_desc: hsnDesc,
                 goods_desc: goodsDesc,
                 actual_weight: actualWeight,
@@ -734,8 +732,19 @@ function NewConsignmentForm() {
                                             </SelectContent>
                                         </Select>
                                     </div>
-
-
+                                    <div className="space-y-1">
+                                        <Label className="text-[11px] font-bold uppercase text-muted-foreground">Dest. Branch</Label>
+                                        <Select value={destBranch} onValueChange={setDestBranch}>
+                                            <SelectTrigger className="h-9 bg-slate-50">
+                                                <SelectValue placeholder="Select Dest Branch" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {branchOptions.map(branch => (
+                                                    <SelectItem key={branch.value} value={branch.value}>{branch.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
 
                                     <div className="space-y-1 lg:col-span-2">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">CN No & Date</Label>
@@ -1017,10 +1026,6 @@ function NewConsignmentForm() {
                                 </CardHeader>
                                 <CardContent className="p-4 space-y-3">
                                     <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <Label className="text-[10px] font-bold text-muted-foreground">Value Of Goods</Label>
-                                            <Input className="h-8 text-xs" value={goodsValue} onChange={(e) => setGoodsValue(e.target.value)} />
-                                        </div>
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground">HSN Code</Label>
                                             <Input className="h-8 text-xs" placeholder="AUTO EXTENDER" value={hsnDesc} onChange={(e) => setHsnDesc(e.target.value)} />
