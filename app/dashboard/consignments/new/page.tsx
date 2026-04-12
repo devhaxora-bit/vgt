@@ -45,6 +45,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { PartyAutocomplete } from "@/components/PartyAutocomplete";
 import { AddPartyDialog } from "@/components/AddPartyDialog";
 import { Party, PartyType } from "@/lib/types/party.types";
+import { createClient as createSupabaseClient } from "@/utils/supabase/client";
 
 interface PackageItem {
     id: string;
@@ -120,12 +121,18 @@ function NewConsignmentForm() {
         // Load logged-in user on mount
         const loadLoggedInUser = async () => {
             try {
-                const res = await fetch('/api/auth/me');
-                if (res.ok) {
-                    const result = await res.json();
-                    const name = result?.data?.full_name || result?.data?.username || '';
-                    if (name) setLoggedInUserName(name);
-                }
+                const supabase = createSupabaseClient();
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (!authUser) return;
+
+                const { data: profile } = await supabase
+                    .from('users')
+                    .select('full_name')
+                    .eq('id', authUser.id)
+                    .single();
+
+                const name = profile?.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || '';
+                if (name) setLoggedInUserName(name);
             } catch { /* ignore */ }
         };
         void loadLoggedInUser();
@@ -285,15 +292,19 @@ function NewConsignmentForm() {
             if (!editId) return;
 
             try {
-                const authResponse = await fetch('/api/auth/me');
-                const authResult = await authResponse.json();
-                if (authResult?.data?.role !== 'admin') {
-                    toast.error('Admin access required');
-                    router.replace('/dashboard/consignments');
+                const supabase = createSupabaseClient();
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+
+                if (!authUser) {
+                    router.replace('/login');
                     return;
                 }
 
                 const response = await fetch(`/api/consignments/${editId}`);
+                if (response.status === 401) {
+                    router.replace('/login');
+                    return;
+                }
                 if (!response.ok) {
                     throw new Error('Failed to load consignment');
                 }
