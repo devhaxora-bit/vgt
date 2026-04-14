@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from "next/server";
+import { resolveBillingPartyId } from '@/lib/server/resolveBillingParty';
 
 export async function GET(request: Request) {
     const supabase = await createClient();
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const insertData = {
+    const insertData: Record<string, unknown> = {
         cn_no: body.cn_no,
         bkg_date: body.bkg_date || new Date().toISOString().split("T")[0],
         booking_branch: body.booking_branch,
@@ -154,44 +155,13 @@ export async function POST(request: Request) {
         created_by: user.id,
     };
 
-    // Auto-resolve billing_party_id for ledger linkage (Priority: GSTIN -> Name -> Code)
-    let billingPartyRow = null;
-
-    if (body.billing_party_gst?.trim()) {
-        const { data } = await supabase
-            .from('parties')
-            .select('id')
-            .ilike('gstin', body.billing_party_gst.trim())
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-        billingPartyRow = data;
+    const { billingPartyId, error: billingPartyError } = await resolveBillingPartyId(supabase, body);
+    if (billingPartyError) {
+        return NextResponse.json({ error: billingPartyError }, { status: 400 });
     }
 
-    if (!billingPartyRow && body.billing_party?.trim()) {
-        const { data } = await supabase
-            .from('parties')
-            .select('id')
-            .ilike('name', body.billing_party.trim())
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-        billingPartyRow = data;
-    }
-
-    if (!billingPartyRow && body.billing_party_code?.trim()) {
-        const { data } = await supabase
-            .from('parties')
-            .select('id')
-            .ilike('code', body.billing_party_code.trim())
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-        billingPartyRow = data;
-    }
-
-    if (billingPartyRow?.id) {
-        (insertData as any).billing_party_id = billingPartyRow.id;
+    if (billingPartyId) {
+        insertData.billing_party_id = billingPartyId;
     }
 
     const { data, error } = await supabase
@@ -206,21 +176,23 @@ export async function POST(request: Request) {
     }
 
     // Increment sequence in branches table if booking_branch matches a code
-    if (insertData.booking_branch) {
+    if (typeof insertData.booking_branch === "string" && insertData.booking_branch) {
+        const bookingBranchCode = insertData.booking_branch.toUpperCase();
+
         // We use an RPC or just update it manually if no complex locking is needed
         // Since this is a simple low-traffic POC, updating directly is fine
         // First get the current next_cn_no to be safe
         const { data: branchData } = await supabase
             .from("branches")
             .select("next_cn_no")
-            .eq("code", insertData.booking_branch.toUpperCase())
+            .eq("code", bookingBranchCode)
             .single();
 
         if (branchData) {
             await supabase
                 .from("branches")
                 .update({ next_cn_no: (branchData.next_cn_no || 0) + 1 })
-                .eq("code", insertData.booking_branch.toUpperCase());
+                .eq("code", bookingBranchCode);
         }
     }
 

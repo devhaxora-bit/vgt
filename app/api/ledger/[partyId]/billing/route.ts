@@ -39,8 +39,8 @@ export async function POST(
     const body = await request.json();
     const { billing_date, billing_period_from, billing_period_to, amount, bill_ref_no, narration, covered_cn_nos } = body;
 
-    if (!narration || !amount) {
-        return NextResponse.json({ error: 'narration and amount are required' }, { status: 400 });
+    if (!billing_date || !bill_ref_no?.trim() || !amount) {
+        return NextResponse.json({ error: 'billing_date, bill_ref_no and amount are required' }, { status: 400 });
     }
 
     const amountNum = parseFloat(amount);
@@ -48,17 +48,19 @@ export async function POST(
         return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
     }
 
+    const normalizedNarration = narration?.trim() || `Freight bill ${bill_ref_no.trim()}`;
+
     const { data, error } = await supabase
         .from('party_billing_records')
         .insert({
             party_ledger_account_id: account.id,
             party_id: partyId,
-            billing_date: billing_date || new Date().toISOString().split('T')[0],
+            billing_date,
             billing_period_from: billing_period_from || null,
             billing_period_to: billing_period_to || null,
             amount: amountNum,
-            bill_ref_no: bill_ref_no || null,
-            narration,
+            bill_ref_no: bill_ref_no.trim(),
+            narration: normalizedNarration,
             covered_cn_nos: covered_cn_nos || null,
             created_by: user.id,
         })

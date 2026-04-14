@@ -35,7 +35,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { receipt_date, amount, payment_mode, reference_no, bank_name, narration } = body;
+    const { receipt_date, amount, payment_mode, reference_no, bank_name, narration, related_billing_record_ids } = body;
 
     if (!amount) {
         return NextResponse.json({ error: 'amount is required' }, { status: 400 });
@@ -52,6 +52,30 @@ export async function POST(
         return NextResponse.json({ error: `payment_mode must be one of: ${validModes.join(', ')}` }, { status: 400 });
     }
 
+    const normalizedBillingRecordIds = Array.isArray(related_billing_record_ids)
+        ? related_billing_record_ids.map((value) => String(value).trim()).filter(Boolean)
+        : [];
+
+    if (normalizedBillingRecordIds.length > 0) {
+        const { data: billingRecords, error: billingRecordsError } = await supabase
+            .from('party_billing_records')
+            .select('id, status')
+            .eq('party_id', partyId)
+            .in('id', normalizedBillingRecordIds);
+
+        if (billingRecordsError) {
+            return NextResponse.json({ error: billingRecordsError.message }, { status: 400 });
+        }
+
+        if (!billingRecords || billingRecords.length !== normalizedBillingRecordIds.length) {
+            return NextResponse.json({ error: 'One or more selected bills are invalid for this party' }, { status: 400 });
+        }
+
+        if (billingRecords.some((record) => record.status !== 'ACTIVE')) {
+            return NextResponse.json({ error: 'Payments can only be linked to active bills' }, { status: 400 });
+        }
+    }
+
     const { data, error } = await supabase
         .from('party_payment_receipts')
         .insert({
@@ -63,6 +87,7 @@ export async function POST(
             reference_no: reference_no || null,
             bank_name: bank_name || null,
             narration: narration || null,
+            related_billing_record_ids: normalizedBillingRecordIds.length > 0 ? normalizedBillingRecordIds : null,
             created_by: user.id,
         })
         .select()

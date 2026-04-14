@@ -59,6 +59,14 @@ interface LedgerParty {
 const fmt = (n: number) =>
     new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
 
+const hasLedgerActivity = (party: LedgerParty) =>
+    Number(party.opening_balance || 0) !== 0 ||
+    Number(party.total_cns_amount || 0) !== 0 ||
+    Number(party.total_billed || 0) !== 0 ||
+    Number(party.total_paid || 0) !== 0 ||
+    Number(party.unbilled_amount || 0) !== 0 ||
+    Number(party.outstanding || 0) !== 0;
+
 export default function LedgerPage() {
     const [parties, setParties] = useState<LedgerParty[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -98,7 +106,7 @@ export default function LedgerPage() {
     }, []);
 
     const filtered = useMemo(() => {
-        let list = [...parties];
+        let list = parties.filter(hasLedgerActivity);
         if (searchTerm) {
             const q = searchTerm.toLowerCase();
             list = list.filter(p =>

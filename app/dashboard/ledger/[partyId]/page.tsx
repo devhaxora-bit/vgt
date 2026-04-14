@@ -1,20 +1,19 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, use } from 'react';
+import React, { useState, useEffect, useMemo, use, useCallback } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import {
-    ArrowLeft, BookOpen, Package, TrendingUp, AlertCircle, DollarSign,
-    Search, Calendar as CalendarIcon, RotateCcw, Plus, X, FileText,
+    ArrowLeft, Package, TrendingUp, AlertCircle, DollarSign,
+    Search, RotateCcw, Plus, FileText,
     Truck, CheckCircle2, XCircle, CreditCard, Banknote, Building2,
-    ChevronRight, Loader2
+    Loader2, Eye, Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -25,11 +24,10 @@ import {
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-    Popover, PopoverContent, PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { toast } from 'sonner';
+import { BillingRecordViewDialog, EditBillingDialog } from '@/components/features/ledger/BillingRecordDialogs';
+import { BillingConsignmentPicker } from '@/components/features/ledger/BillingConsignmentPicker';
+import { BillingRecordPicker } from '@/components/features/ledger/BillingRecordPicker';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +72,7 @@ interface PaymentReceipt {
     payment_mode: string; reference_no?: string; bank_name?: string;
     narration?: string; status: string; reversal_reason?: string;
     reversed_at?: string;
+    related_billing_record_ids?: string[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -106,7 +105,7 @@ const MODE_BADGE: Record<string, string> = {
 function KpiCard({
     label, value, icon: Icon, iconBg, valueClass, sub,
 }: {
-    label: string; value: string; icon: any; iconBg: string;
+    label: string; value: string; icon: React.ComponentType<{ className?: string }>; iconBg: string;
     valueClass?: string; sub?: string;
 }) {
     return (
@@ -130,19 +129,19 @@ function KpiCard({
 // ─── AddBillingDialog ─────────────────────────────────────────────────────────
 
 function AddBillingDialog({
-    open, onClose, partyId, onSuccess,
-}: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void }) {
+    open, onClose, partyId, onSuccess, consignments,
+}: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void; consignments: Consignment[] }) {
     const [form, setForm] = useState({
         billing_date: new Date().toISOString().split('T')[0],
-        billing_period_from: '', billing_period_to: '',
-        amount: '', bill_ref_no: '', narration: '', covered_cn_nos: '',
+        amount: '', bill_ref_no: '', narration: '',
+        covered_cn_nos: [] as string[],
     });
     const [saving, setSaving] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.narration.trim() || !form.amount) {
-            toast.error('Narration and Amount are required');
+        if (!form.bill_ref_no.trim() || !form.amount) {
+            toast.error('Bill No and Amount are required');
             return;
         }
         setSaving(true);
@@ -153,9 +152,7 @@ function AddBillingDialog({
                 body: JSON.stringify({
                     ...form,
                     amount: parseFloat(form.amount),
-                    covered_cn_nos: form.covered_cn_nos
-                        ? form.covered_cn_nos.split(',').map(s => s.trim()).filter(Boolean)
-                        : null,
+                    covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
                 }),
             });
             if (!res.ok) {
@@ -165,9 +162,9 @@ function AddBillingDialog({
             toast.success('Billing record created successfully');
             onSuccess();
             onClose();
-            setForm({ billing_date: new Date().toISOString().split('T')[0], billing_period_from: '', billing_period_to: '', amount: '', bill_ref_no: '', narration: '', covered_cn_nos: '' });
-        } catch (err: any) {
-            toast.error(err.message);
+            setForm({ billing_date: new Date().toISOString().split('T')[0], amount: '', bill_ref_no: '', narration: '', covered_cn_nos: [] });
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to create billing record');
         } finally {
             setSaving(false);
         }
@@ -191,19 +188,8 @@ function AddBillingDialog({
                             <Input type="date" value={form.billing_date} onChange={e => setForm(f => ({ ...f, billing_date: e.target.value }))} className="h-9" required />
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Ref No</Label>
-                            <Input placeholder="e.g. BILL-001" value={form.bill_ref_no} onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Period From</Label>
-                            <Input type="date" value={form.billing_period_from} onChange={e => setForm(f => ({ ...f, billing_period_from: e.target.value }))} className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Period To</Label>
-                            <Input type="date" value={form.billing_period_to} onChange={e => setForm(f => ({ ...f, billing_period_to: e.target.value }))} className="h-9" />
+                            <Label className="text-xs font-bold uppercase text-muted-foreground">Bill No *</Label>
+                            <Input placeholder="e.g. 1408-1" value={form.bill_ref_no} onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" required />
                         </div>
                     </div>
 
@@ -213,13 +199,17 @@ function AddBillingDialog({
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Narration *</Label>
-                        <Input placeholder="e.g. Freight billing for March 2026" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" required />
+                        <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
+                        <Input placeholder="Optional description" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">CNs Covered (comma-separated)</Label>
-                        <Input placeholder="801192, 801193, 801194" value={form.covered_cn_nos} onChange={e => setForm(f => ({ ...f, covered_cn_nos: e.target.value }))} className="h-9 font-mono" />
+                        <Label className="text-xs font-bold uppercase text-muted-foreground">Covered CNs</Label>
+                        <BillingConsignmentPicker
+                            consignments={consignments}
+                            value={form.covered_cn_nos}
+                            onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
+                        />
                     </div>
 
                     <div className="flex justify-end gap-2 pt-2">
@@ -238,11 +228,12 @@ function AddBillingDialog({
 // ─── AddPaymentDialog ─────────────────────────────────────────────────────────
 
 function AddPaymentDialog({
-    open, onClose, partyId, onSuccess,
-}: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void }) {
+    open, onClose, partyId, onSuccess, billingRecords,
+}: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void; billingRecords: BillingRecord[] }) {
     const [form, setForm] = useState({
         receipt_date: new Date().toISOString().split('T')[0],
         amount: '', payment_mode: 'NEFT', reference_no: '', bank_name: '', narration: '',
+        related_billing_record_ids: [] as string[],
     });
     const [saving, setSaving] = useState(false);
 
@@ -254,7 +245,11 @@ function AddPaymentDialog({
             const res = await fetch(`/api/ledger/${partyId}/payments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
+                body: JSON.stringify({
+                    ...form,
+                    amount: parseFloat(form.amount),
+                    related_billing_record_ids: form.related_billing_record_ids.length > 0 ? form.related_billing_record_ids : null,
+                }),
             });
             if (!res.ok) {
                 const err = await res.json();
@@ -263,9 +258,17 @@ function AddPaymentDialog({
             toast.success('Payment receipt recorded successfully');
             onSuccess();
             onClose();
-            setForm({ receipt_date: new Date().toISOString().split('T')[0], amount: '', payment_mode: 'NEFT', reference_no: '', bank_name: '', narration: '' });
-        } catch (err: any) {
-            toast.error(err.message);
+            setForm({
+                receipt_date: new Date().toISOString().split('T')[0],
+                amount: '',
+                payment_mode: 'NEFT',
+                reference_no: '',
+                bank_name: '',
+                narration: '',
+                related_billing_record_ids: [],
+            });
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to record payment');
         } finally {
             setSaving(false);
         }
@@ -324,6 +327,15 @@ function AddPaymentDialog({
                     <div className="space-y-1.5">
                         <Label className="text-xs font-bold uppercase text-muted-foreground">Narration</Label>
                         <Input placeholder="Payment remarks / against bills" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Numbers</Label>
+                        <BillingRecordPicker
+                            billingRecords={billingRecords.filter((record) => record.status === 'ACTIVE')}
+                            value={form.related_billing_record_ids}
+                            onChange={(related_billing_record_ids) => setForm((f) => ({ ...f, related_billing_record_ids }))}
+                        />
                     </div>
 
                     <div className="flex justify-end gap-2 pt-2">
@@ -406,13 +418,19 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [cnsSearch, setCnsSearch] = useState('');
+    const [billingSearch, setBillingSearch] = useState('');
+    const [billingStatusFilter, setBillingStatusFilter] = useState<'all' | 'ACTIVE' | 'CANCELLED'>('all');
+    const [billingDateFrom, setBillingDateFrom] = useState('');
+    const [billingDateTo, setBillingDateTo] = useState('');
 
     // Dialogs
     const [showBillingDialog, setShowBillingDialog] = useState(false);
     const [showPaymentDialog, setShowPaymentDialog] = useState(false);
     const [cancelTarget, setCancelTarget] = useState<{ type: 'billing' | 'payment'; id: string } | null>(null);
+    const [selectedBillingRecord, setSelectedBillingRecord] = useState<BillingRecord | null>(null);
+    const [editingBillingRecord, setEditingBillingRecord] = useState<BillingRecord | null>(null);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
@@ -430,9 +448,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [partyId, dateFrom, dateTo, cnsSearch]);
 
-    useEffect(() => { fetchData(); }, [partyId, dateFrom, dateTo, cnsSearch]);
+    useEffect(() => { void fetchData(); }, [fetchData]);
 
     useEffect(() => {
         fetch('/api/auth/me')
@@ -452,7 +470,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
             toast.success('Billing record cancelled');
             fetchData();
-        } catch (err: any) { toast.error(err.message); }
+        } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Failed to cancel billing record'); }
         setCancelTarget(null);
     };
 
@@ -467,7 +485,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
             toast.success('Payment receipt reversed');
             fetchData();
-        } catch (err: any) { toast.error(err.message); }
+        } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Failed to reverse payment receipt'); }
         setCancelTarget(null);
     };
 
@@ -497,7 +515,42 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         return Object.values(map).sort((a, b) => b.month.localeCompare(a.month));
     }, [data]);
 
-    const { party, account, summary } = data;
+    const filteredBillingRecords = useMemo(() => {
+        const query = billingSearch.trim().toLowerCase();
+
+        return data.billing_records.filter((record) => {
+            if (billingStatusFilter !== 'all' && record.status !== billingStatusFilter) {
+                return false;
+            }
+
+            const billingDate = record.billing_date?.slice(0, 10) || '';
+            if (billingDateFrom && billingDate < billingDateFrom) {
+                return false;
+            }
+            if (billingDateTo && billingDate > billingDateTo) {
+                return false;
+            }
+
+            if (!query) return true;
+
+            const haystack = [
+                record.bill_ref_no || '',
+                record.narration || '',
+                (record.covered_cn_nos || []).join(' '),
+                data.party?.name || '',
+                data.party?.code || '',
+            ].join(' ').toLowerCase();
+
+            return haystack.includes(query);
+        });
+    }, [billingSearch, billingStatusFilter, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
+
+    const billingRecordMap = useMemo(
+        () => new Map(data.billing_records.map((record) => [record.id, record])),
+        [data.billing_records]
+    );
+
+    const { party, summary } = data;
 
     if (isLoading && !party) {
         return (
@@ -727,6 +780,59 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 )}
                             </CardHeader>
                             <CardContent className="p-0">
+                                <div className="px-6 py-4 border-b bg-muted/10">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="relative min-w-[240px] flex-1">
+                                            <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Search bill ref, narration or CN..."
+                                                className="pl-9 h-8 text-xs"
+                                                value={billingSearch}
+                                                onChange={(e) => setBillingSearch(e.target.value)}
+                                            />
+                                        </div>
+                                        <Select
+                                            value={billingStatusFilter}
+                                            onValueChange={(value: 'all' | 'ACTIVE' | 'CANCELLED') => setBillingStatusFilter(value)}
+                                        >
+                                            <SelectTrigger className="h-8 w-[160px] text-xs">
+                                                <SelectValue placeholder="All Status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Status</SelectItem>
+                                                <SelectItem value="ACTIVE">Active</SelectItem>
+                                                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Input
+                                            type="date"
+                                            value={billingDateFrom}
+                                            onChange={(e) => setBillingDateFrom(e.target.value)}
+                                            className="h-8 w-[150px] text-xs"
+                                        />
+                                        <Input
+                                            type="date"
+                                            value={billingDateTo}
+                                            onChange={(e) => setBillingDateTo(e.target.value)}
+                                            className="h-8 w-[150px] text-xs"
+                                        />
+                                        {(billingSearch || billingStatusFilter !== 'all' || billingDateFrom || billingDateTo) && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 gap-1 text-xs"
+                                                onClick={() => {
+                                                    setBillingSearch('');
+                                                    setBillingStatusFilter('all');
+                                                    setBillingDateFrom('');
+                                                    setBillingDateTo('');
+                                                }}
+                                            >
+                                                <RotateCcw className="h-3 w-3" /> Reset
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
@@ -737,18 +843,18 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             <TableHead className="font-bold text-xs py-3">CNs</TableHead>
                                             <TableHead className="font-bold text-xs py-3 text-right">Amount</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Status</TableHead>
-                                            {isAdmin && <TableHead className="py-3" />}
+                                            <TableHead className="py-3" />
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {data.billing_records.length === 0 ? (
+                                        {filteredBillingRecords.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={isAdmin ? 8 : 7} className="h-24 text-center text-muted-foreground text-sm">
-                                                    No billing records yet
+                                                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground text-sm">
+                                                    No billing records found
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            data.billing_records.map(b => (
+                                            filteredBillingRecords.map(b => (
                                                 <TableRow key={b.id} className={`hover:bg-primary/5 transition-colors border-b last:border-0 ${b.status === 'CANCELLED' ? 'opacity-50' : ''}`}>
                                                     <TableCell className="font-mono text-xs text-primary font-bold">{b.bill_ref_no || '—'}</TableCell>
                                                     <TableCell className="text-xs">{fmtDate(b.billing_date)}</TableCell>
@@ -768,29 +874,47 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                             {b.status}
                                                         </Badge>
                                                     </TableCell>
-                                                    {isAdmin && (
-                                                        <TableCell className="text-right">
-                                                            {b.status === 'ACTIVE' && (
-                                                                <Button size="sm" variant="ghost"
-                                                                    className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
-                                                                    onClick={() => setCancelTarget({ type: 'billing', id: b.id })}>
-                                                                    Cancel
-                                                                </Button>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-7 px-2 text-xs"
+                                                                onClick={() => setSelectedBillingRecord(b)}
+                                                            >
+                                                                <Eye className="h-3.5 w-3.5 mr-1" /> View
+                                                            </Button>
+                                                            {isAdmin && b.status === 'ACTIVE' && (
+                                                                <>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                                                                        onClick={() => setEditingBillingRecord(b)}
+                                                                    >
+                                                                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                                                                    </Button>
+                                                                    <Button size="sm" variant="ghost"
+                                                                        className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
+                                                                        onClick={() => setCancelTarget({ type: 'billing', id: b.id })}>
+                                                                        Cancel
+                                                                    </Button>
+                                                                </>
                                                             )}
-                                                        </TableCell>
-                                                    )}
+                                                        </div>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))
                                         )}
                                     </TableBody>
                                 </Table>
-                                {data.billing_records.filter(b => b.status === 'ACTIVE').length > 0 && (
+                                {filteredBillingRecords.length > 0 && (
                                     <div className="px-6 py-3 border-t bg-muted/10 flex justify-between items-center">
                                         <span className="text-xs text-muted-foreground">
-                                            Active: {data.billing_records.filter(b => b.status === 'ACTIVE').length} records
+                                            Showing {filteredBillingRecords.length} of {data.billing_records.length} records
                                         </span>
                                         <span className="text-sm font-black text-emerald-700 font-mono">
-                                            Total: ₹{fmt(data.billing_records.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + (parseFloat(String(b.amount)) || 0), 0))}
+                                            Active Total: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + (parseFloat(String(b.amount)) || 0), 0))}
                                         </span>
                                     </div>
                                 )}
@@ -817,6 +941,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         <TableRow>
                                             <TableHead className="font-bold text-xs py-3">Date</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Mode</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Bills</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Reference</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Bank</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Narration</TableHead>
@@ -828,7 +953,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                     <TableBody>
                                         {data.payment_receipts.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={isAdmin ? 8 : 7} className="h-24 text-center text-muted-foreground text-sm">
+                                                <TableCell colSpan={isAdmin ? 9 : 8} className="h-24 text-center text-muted-foreground text-sm">
                                                     No payment receipts yet
                                                 </TableCell>
                                             </TableRow>
@@ -840,6 +965,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                         <Badge variant="outline" className={`text-[9px] px-1.5 py-0 h-4 ${MODE_BADGE[p.payment_mode] || ''}`}>
                                                             {p.payment_mode}
                                                         </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground max-w-[180px]">
+                                                        {p.related_billing_record_ids && p.related_billing_record_ids.length > 0
+                                                            ? p.related_billing_record_ids
+                                                                .map((id) => billingRecordMap.get(id)?.bill_ref_no || billingRecordMap.get(id)?.id.slice(0, 8).toUpperCase() || '—')
+                                                                .join(', ')
+                                                            : '—'}
                                                     </TableCell>
                                                     <TableCell className="font-mono text-xs text-muted-foreground">{p.reference_no || '—'}</TableCell>
                                                     <TableCell className="text-xs">{p.bank_name || '—'}</TableCell>
@@ -948,12 +1080,35 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 onClose={() => setShowBillingDialog(false)}
                 partyId={partyId}
                 onSuccess={fetchData}
+                consignments={data.consignments}
+            />
+            <EditBillingDialog
+                open={!!editingBillingRecord}
+                onClose={() => setEditingBillingRecord(null)}
+                partyId={partyId}
+                record={editingBillingRecord}
+                onSuccess={fetchData}
+                consignments={data.consignments}
             />
             <AddPaymentDialog
                 open={showPaymentDialog}
                 onClose={() => setShowPaymentDialog(false)}
                 partyId={partyId}
                 onSuccess={fetchData}
+                billingRecords={data.billing_records}
+            />
+            <BillingRecordViewDialog
+                open={!!selectedBillingRecord}
+                onClose={() => setSelectedBillingRecord(null)}
+                party={party}
+                record={selectedBillingRecord}
+                consignments={data.consignments}
+                isAdmin={isAdmin}
+                onEdit={() => {
+                    if (!selectedBillingRecord) return;
+                    setEditingBillingRecord(selectedBillingRecord);
+                    setSelectedBillingRecord(null);
+                }}
             />
             {cancelTarget && (
                 <CancelDialog
