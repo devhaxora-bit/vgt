@@ -54,9 +54,10 @@ interface Summary {
 
 interface Consignment {
     id: string; cn_no: string; bkg_date: string;
+    invoice_no?: string;
     booking_branch: string; dest_branch: string;
     no_of_pkg: number; actual_weight: number; charged_weight: number;
-    load_unit: string; total_freight: number; bkg_basis: string;
+    load_unit: string; total_freight: number; basic_freight?: number; freight_rate?: number; vehicle_no?: string; bkg_basis: string;
     goods_desc?: string; delivery_type?: string;
 }
 
@@ -172,8 +173,8 @@ function AddBillingDialog({
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
+            <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] max-h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
+                <DialogHeader className="px-6 py-4 border-b bg-slate-50">
                     <DialogTitle className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-primary" /> Add Billing Record
                     </DialogTitle>
@@ -181,38 +182,40 @@ function AddBillingDialog({
                         Record a manual billing entry for this party. Amount is immutable after saving.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Billing Date *</Label>
-                            <Input type="date" value={form.billing_date} onChange={e => setForm(f => ({ ...f, billing_date: e.target.value }))} className="h-9" required />
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+                    <div className="grid gap-6 p-6 lg:grid-cols-[1.05fr_0.95fr]">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Billing Date *</Label>
+                                    <Input type="date" value={form.billing_date} onChange={e => setForm(f => ({ ...f, billing_date: e.target.value }))} className="h-9" required />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Bill No *</Label>
+                                    <Input placeholder="e.g. 1408-1" value={form.bill_ref_no} onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" required />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Amount (₹) *</Label>
+                                <Input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" required />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
+                                <Input placeholder="Optional description" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
+                            </div>
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Bill No *</Label>
-                            <Input placeholder="e.g. 1408-1" value={form.bill_ref_no} onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" required />
+                            <Label className="text-xs font-bold uppercase text-muted-foreground">Covered CNs</Label>
+                            <BillingConsignmentPicker
+                                consignments={consignments}
+                                value={form.covered_cn_nos}
+                                onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
+                            />
                         </div>
                     </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Amount (₹) *</Label>
-                        <Input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" required />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
-                        <Input placeholder="Optional description" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Covered CNs</Label>
-                        <BillingConsignmentPicker
-                            consignments={consignments}
-                            value={form.covered_cn_nos}
-                            onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
-                        />
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-2">
+                    <div className="flex justify-end gap-2 border-t bg-slate-50 px-6 py-4">
                         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                         <Button type="submit" disabled={saving} className="gap-2">
                             {saving && <Loader2 className="h-4 w-4 animate-spin" />}

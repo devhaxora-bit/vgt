@@ -41,6 +41,7 @@ interface BillingRecord {
 interface Consignment {
     id: string;
     cn_no: string;
+    invoice_no?: string;
     bkg_date: string;
     booking_branch: string;
     dest_branch: string;
@@ -49,6 +50,9 @@ interface Consignment {
     charged_weight: number;
     load_unit: string;
     total_freight: number;
+    basic_freight?: number;
+    freight_rate?: number;
+    vehicle_no?: string;
     bkg_basis: string;
     goods_desc?: string;
     delivery_type?: string;
@@ -70,6 +74,69 @@ const fmtDate = (value?: string | null) => {
 const normalizeDate = (value?: string | null) => {
     if (!value) return '';
     return value.slice(0, 10);
+};
+
+const fmtDotDate = (value?: string | null) => {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    const day = String(parsed.getDate()).padStart(2, '0');
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const year = parsed.getFullYear();
+    return `${day}.${month}.${year}`;
+};
+
+const toUpperText = (value?: string | null) => String(value || '').trim().toUpperCase();
+
+const splitAddressLines = (address?: string | null) => {
+    const normalized = String(address || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+
+    if (!normalized) return ['ADDRESS NOT AVAILABLE', ''];
+
+    if (normalized.length <= 42) return [normalized, ''];
+
+    const midpoint = Math.floor(normalized.length / 2);
+    let splitIndex = -1;
+
+    for (let offset = 0; offset < normalized.length / 2; offset += 1) {
+        const right = midpoint + offset;
+        const left = midpoint - offset;
+
+        if (normalized[right] === ' ' || normalized[right] === ',') {
+            splitIndex = right;
+            break;
+        }
+
+        if (normalized[left] === ' ' || normalized[left] === ',') {
+            splitIndex = left;
+            break;
+        }
+    }
+
+    if (splitIndex <= 0) {
+        splitIndex = normalized.indexOf(' ', 32);
+    }
+
+    if (splitIndex <= 0) return [normalized, ''];
+
+    return [
+        normalized.slice(0, splitIndex).replace(/[,\s]+$/g, '').trim(),
+        normalized.slice(splitIndex + 1).replace(/^[,\s]+/g, '').trim(),
+    ];
+};
+
+const getBillDownloadName = (billRefNo?: string | null, recordId?: string) => {
+    const rawValue = String(billRefNo || recordId || 'billing-record').trim();
+    const safeValue = rawValue
+        .replace(/[\\/:*?"<>|]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const finalValue = /-\d+$/.test(safeValue) ? safeValue : `${safeValue}-1`;
+    return `Bill no.${finalValue}.pdf`;
 };
 
 function buildCoveredConsignments(record: BillingRecord, consignments: Consignment[]) {
@@ -158,8 +225,8 @@ export function EditBillingDialog({
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
+            <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] max-h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
+                <DialogHeader className="px-6 py-4 border-b bg-slate-50">
                     <DialogTitle className="flex items-center gap-2">
                         <Pencil className="h-4 w-4 text-primary" /> Edit Billing Record
                     </DialogTitle>
@@ -167,34 +234,38 @@ export function EditBillingDialog({
                         Bill amount is immutable after save. You can update bill dates, reference, narration, and covered CNs.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Billing Date *</Label>
-                            <Input type="date" value={form.billing_date} onChange={(e) => setForm((f) => ({ ...f, billing_date: e.target.value }))} className="h-9" required />
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+                    <div className="grid gap-6 p-6 lg:grid-cols-[1.05fr_0.95fr]">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Billing Date *</Label>
+                                    <Input type="date" value={form.billing_date} onChange={(e) => setForm((f) => ({ ...f, billing_date: e.target.value }))} className="h-9" required />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Ref No</Label>
+                                    <Input value={form.bill_ref_no} onChange={(e) => setForm((f) => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Amount</Label>
+                                <Input value={form.amount} className="h-9 font-mono bg-muted/40" readOnly />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
+                                <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
+                            </div>
                         </div>
                         <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Ref No</Label>
-                            <Input value={form.bill_ref_no} onChange={(e) => setForm((f) => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" />
+                            <Label className="text-xs font-bold uppercase text-muted-foreground">CNs Covered</Label>
+                            <BillingConsignmentPicker
+                                consignments={consignments}
+                                value={form.covered_cn_nos}
+                                onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
+                            />
                         </div>
                     </div>
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Amount</Label>
-                        <Input value={form.amount} className="h-9 font-mono bg-muted/40" readOnly />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
-                        <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">CNs Covered</Label>
-                        <BillingConsignmentPicker
-                            consignments={consignments}
-                            value={form.covered_cn_nos}
-                            onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
-                        />
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
+                    <div className="flex justify-end gap-2 border-t bg-slate-50 px-6 py-4">
                         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                         <Button type="submit" disabled={saving} className="gap-2">
                             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -251,131 +322,229 @@ export function BillingRecordViewDialog({
         return buildCoveredConsignments(record, consignments);
     }, [record, consignments]);
 
+    const billAmount = Number(record?.amount || 0);
+    const coveredFreightTotal = coveredConsignments.reduce(
+        (sum, consignment) => sum + (Number(consignment.total_freight) || 0),
+        0
+    );
+    const issuingBranch = coveredConsignments[0]?.booking_branch || party?.branch_code || '—';
+
     const handlePrint = async (mode: 'print' | 'download') => {
         if (!party || !record) return;
 
         const logoUrl = logoBase64 || `${window.location.origin}/vgt_logo.png`;
-        const coveredRows = coveredConsignments.length > 0
-            ? coveredConsignments.map((consignment, index) => `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td>${consignment.cn_no}</td>
-                    <td>${fmtDate(consignment.bkg_date)}</td>
-                    <td>${consignment.booking_branch || '—'}</td>
-                    <td>${consignment.dest_branch || '—'}</td>
-                    <td>${consignment.no_of_pkg || 0}</td>
-                    <td>${consignment.charged_weight || consignment.actual_weight || 0} ${consignment.load_unit || ''}</td>
-                    <td class="amount">₹${fmt(Number(consignment.total_freight || 0))}</td>
+        const displayTotal = Number(record.amount || 0);
+        const branchDisplay = (() => {
+            const normalized = toUpperText(issuingBranch);
+            if (!normalized || normalized === '—') return 'Vizianagaram';
+            if (normalized === 'VZM' || normalized === 'VIZIANAGARAM') return 'Vizianagaram';
+            return normalized.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+        })();
+        const partyName = toUpperText(party.name).startsWith('M/S')
+            ? toUpperText(party.name)
+            : `M/S. ${toUpperText(party.name)}`;
+        const [addressLine1, addressLine2] = splitAddressLines(party.address);
+        const amountWords = numberToWords(displayTotal).replace(/^Rupees\s+/i, '').trim();
+        const detailRows = coveredConsignments.length > 0
+            ? coveredConsignments.map((consignment) => {
+                const weight = consignment.charged_weight || consignment.actual_weight || 0;
+                const unit = toUpperText(consignment.load_unit);
+
+                return {
+                    cnNo: consignment.cn_no || '—',
+                    date: fmtDotDate(consignment.bkg_date),
+                    invoiceNo: consignment.invoice_no || consignment.cn_no || '—',
+                    vehicleNo: toUpperText(consignment.vehicle_no) || '—',
+                    loadingStation: toUpperText(consignment.booking_branch) || '—',
+                    deliveryStation: toUpperText(consignment.dest_branch) || '—',
+                    chargeWt: weight ? `${weight}${unit}` : '—',
+                    rate: Number(consignment.freight_rate || 0) > 0 ? fmt(Number(consignment.freight_rate || 0)) : '',
+                    detention: '',
+                    extraCharges: '',
+                    totalAmount: fmt(Number(consignment.total_freight || 0)),
+                };
+            })
+            : [{
+                cnNo: record.bill_ref_no || '—',
+                date: fmtDotDate(record.billing_date),
+                invoiceNo: record.bill_ref_no || '—',
+                vehicleNo: '—',
+                loadingStation: toUpperText(issuingBranch) || '—',
+                deliveryStation: '—',
+                chargeWt: '—',
+                rate: '',
+                detention: '',
+                extraCharges: '',
+                totalAmount: fmt(displayTotal),
+            }];
+        const minimumDetailRows = Math.max(8, detailRows.length);
+        const coveredRows = detailRows.map((row) => `
+                <tr class="item-row">
+                    <td class="center">${row.cnNo}</td>
+                    <td class="center">${row.date}</td>
+                    <td class="center">${row.invoiceNo}</td>
+                    <td class="center">${row.vehicleNo}</td>
+                    <td class="center">${row.loadingStation}</td>
+                    <td class="center">${row.deliveryStation}</td>
+                    <td class="center">${row.chargeWt}</td>
+                    <td class="center">${row.rate}</td>
+                    <td class="center">${row.detention}</td>
+                    <td class="center">${row.extraCharges}</td>
+                    <td class="amount">${row.totalAmount}</td>
                 </tr>
-            `).join('')
-            : `
-                <tr>
-                    <td>1</td>
-                    <td colspan="6">${record.narration || 'Manual billing record'}</td>
-                    <td class="amount">₹${fmt(Number(record.amount || 0))}</td>
+            `).join('');
+        const blankRows = Array.from({ length: Math.max(0, minimumDetailRows - detailRows.length) }, () => `
+                <tr class="item-row blank-row">
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
                 </tr>
-            `;
+            `).join('');
 
         const html = `<!DOCTYPE html>
 <html>
 <head>
 <title>${record.bill_ref_no || record.id}</title>
 <style>
-@page { size: A4 portrait; margin: 10mm; }
+@page { size: A4 landscape; margin: 5mm; }
 * { box-sizing: border-box; }
-body { margin: 0; font-family: "Times New Roman", Georgia, serif; color: #172554; background: #fff; }
-.page { width: 190mm; margin: 0 auto; padding: 10mm; border: 2px solid #1d2f7a; }
-.header { display: flex; gap: 12px; align-items: center; border-bottom: 2px solid #1d2f7a; padding-bottom: 10px; }
-.logo { width: 72px; height: 72px; object-fit: contain; }
-.brand { flex: 1; text-align: center; }
-.brand h1 { margin: 0; font-size: 30px; color: #17308b; line-height: 1; }
-.brand p { margin: 4px 0 0; font-size: 12px; color: #334155; }
-.meta { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.box { border: 1px solid #1d2f7a; padding: 10px; min-height: 94px; }
-.label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; margin-bottom: 6px; }
-.value { font-size: 15px; font-weight: 700; color: #0f172a; }
-.small { font-size: 12px; line-height: 1.45; color: #334155; }
-.bill-title { margin: 14px 0 10px; text-align: center; font-size: 24px; font-weight: 800; color: #17308b; letter-spacing: 1px; }
-.table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-.table th, .table td { border: 1px solid #1d2f7a; padding: 8px 6px; font-size: 12px; vertical-align: top; }
-.table th { background: #eff6ff; color: #17308b; }
-.amount { text-align: right; font-weight: 700; white-space: nowrap; }
-.summary { margin-top: 12px; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 12px; }
-.amount-words { border: 1px solid #1d2f7a; padding: 10px; min-height: 70px; }
-.totals { border: 1px solid #1d2f7a; padding: 10px; }
-.totals-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #cbd5e1; font-size: 13px; }
-.totals-row:last-child { border-bottom: none; font-size: 16px; font-weight: 800; color: #17308b; }
-.footer { margin-top: 18px; display: flex; justify-content: space-between; align-items: flex-end; }
-.signature { text-align: right; font-size: 12px; min-width: 240px; }
-.signature strong { display: block; margin-bottom: 20px; font-size: 13px; color: #17308b; }
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
+.page { width: 287mm; min-height: 200mm; margin: 0 auto; padding: 6mm 10mm; background: #fff; }
+.sheet { border: 1.2px solid #111; min-height: 186mm; }
+.header-band { border-bottom: 1.2px solid #111; text-align: center; padding: 7px 12px 5px; }
+.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; }
+.header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
+.header-line.contact { display: block; margin-top: 3px; }
+.detail-grid { display: grid; grid-template-columns: 34% 17% 49%; border-bottom: 1.2px solid #111; align-items: stretch; }
+.party-block { border-right: 1.2px solid #111; display: grid; grid-template-rows: minmax(34px, auto) minmax(34px, auto) minmax(52px, auto) minmax(34px, auto); }
+.party-line { border-bottom: 1.2px solid #111; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
+.party-line:last-child { border-bottom: none; text-align: center; padding-top: 6px; padding-bottom: 8px; }
+.logo-block { border-right: 1.2px solid #111; display: flex; align-items: center; justify-content: center; min-height: 115px; }
+.logo-block img { width: 168px; max-width: 88%; filter: grayscale(1) contrast(1.6) brightness(0.2); object-fit: contain; }
+.right-block { display: grid; grid-template-rows: 58px 57px; }
+.branch-row { border-bottom: 1.2px solid #111; display: grid; grid-template-columns: 18% 82%; }
+.branch-label { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 800; line-height: 1.25; }
+.branch-value { display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
+.bill-row { display: grid; grid-template-columns: 40% 18% 42%; }
+.bill-cell { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 700; line-height: 1.2; }
+.bill-cell:last-child { border-right: none; }
+.bill-cell.center { text-align: center; }
+.bill-cell.value { font-size: 12px; font-weight: 800; }
+.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; }
+.items-table th, .items-table td { border-right: 1.2px solid #111; border-bottom: 1.2px solid #111; padding: 5px 4px 6px; font-size: 10px; vertical-align: middle; }
+.items-table th:last-child, .items-table td:last-child { border-right: none; }
+.items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.35; padding: 7px 4px 9px; }
+.items-table tbody td { height: 28px; font-weight: 700; line-height: 1.2; }
+.items-table .center { text-align: center; }
+.items-table .amount { text-align: right; padding-right: 8px; }
+.blank-row td { font-weight: 400; }
+.total-row td { height: 26px; font-size: 10px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
+.total-label { text-align: center; }
+.words-row { border-bottom: 1.2px solid #111; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
+.notes-block { min-height: 90px; border-bottom: 1.2px solid #111; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.8; }
+.note-title { margin-bottom: 12px; }
+.footer-grid { display: grid; grid-template-columns: 60% 40%; min-height: 88px; }
+.bank-block { border-right: 1.2px solid #111; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.9; }
+.bank-title { font-size: 10px; font-weight: 800; }
+.signature-block { padding: 8px 8px 10px; display: flex; align-items: flex-start; justify-content: center; }
+.signature-inner { width: 100%; text-align: center; font-size: 10px; font-weight: 700; line-height: 1.7; }
+.signature-company { font-size: 11px; font-weight: 800; margin-bottom: 22px; }
+.signature-name { margin-top: 10px; }
+.signature-role { font-size: 10px; font-weight: 800; }
 </style>
 </head>
 <body>
 <div class="page">
-    <div class="header">
-        <img class="logo" src="${logoUrl}" alt="VGT Logo" />
-        <div class="brand">
-            <h1>Visakha Golden Transport</h1>
-            <p>D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</p>
-            <p>Cell: 9701523640 | Website: https://visakhagolden.com | Email: support@visakhagolden.com</p>
-            <p>PAN: AAWFV7670H | GSTIN: 37AAWFV7670H1Z8</p>
+    <div class="sheet">
+        <div class="header-band">
+            <div class="header-title">VISAKHA GOLDEN TRANSPORT</div>
+            <div class="header-line">
+                <span>OUR PAN NO: AAWFV7670H</span>
+                <span>D. NO. 8-19-58/A, GOPAL NAGAR, NEAR BANK COLONY, VIZIANAGARAM, ANDHRA PRADESH - 535003</span>
+            </div>
+            <div class="header-line contact">Contact:9392223404,8756314575 Email:vsp@visakhagolden.com</div>
         </div>
-    </div>
 
-    <div class="bill-title">BILL / FREIGHT INVOICE</div>
-
-    <div class="meta">
-        <div class="box">
-            <div class="label">Bill To</div>
-            <div class="value">${party.name}</div>
-            <div class="small">Code: ${party.code || '—'}</div>
-            <div class="small">GSTIN: ${party.gstin || '—'}</div>
-            <div class="small">${party.address || 'Address not available'}</div>
+        <div class="detail-grid">
+            <div class="party-block">
+                <div class="party-line">${partyName}</div>
+                <div class="party-line">${addressLine1}</div>
+                <div class="party-line">${addressLine2 || '&nbsp;'}</div>
+                <div class="party-line">${party.gstin ? `GST-${toUpperText(party.gstin)}` : '&nbsp;'}</div>
+            </div>
+            <div class="logo-block">
+                <img src="${logoUrl}" alt="VGT Logo" />
+            </div>
+            <div class="right-block">
+                <div class="branch-row">
+                    <div class="branch-label">Issuing<br/>Branch :</div>
+                    <div class="branch-value">${branchDisplay}</div>
+                </div>
+                <div class="bill-row">
+                    <div class="bill-cell value">Bill No.${record.bill_ref_no || `VGT-${record.id.slice(0, 8).toUpperCase()}`}</div>
+                    <div class="bill-cell center">Date.</div>
+                    <div class="bill-cell value center">${fmtDotDate(record.billing_date)}</div>
+                </div>
+            </div>
         </div>
-        <div class="box">
-            <div class="small"><span class="label">Bill No</span><br/><span class="value">${record.bill_ref_no || `VGT-${record.id.slice(0, 8).toUpperCase()}`}</span></div>
-            <div class="small" style="margin-top:8px;"><span class="label">Bill Date</span><br/><span class="value">${fmtDate(record.billing_date)}</span></div>
-            <div class="small" style="margin-top:8px;"><span class="label">Billing Period</span><br/><span class="value">${record.billing_period_from ? `${fmtDate(record.billing_period_from)} to ${fmtDate(record.billing_period_to)}` : '—'}</span></div>
-        </div>
-    </div>
 
-    <table class="table">
-        <thead>
-            <tr>
-                <th style="width: 5%;">#</th>
-                <th style="width: 12%;">CN No</th>
-                <th style="width: 12%;">Date</th>
-                <th style="width: 12%;">From</th>
-                <th style="width: 12%;">To</th>
-                <th style="width: 10%;">Pkgs</th>
-                <th style="width: 17%;">Weight</th>
-                <th style="width: 20%;">Amount</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${coveredRows}
-        </tbody>
-    </table>
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th style="width:8%;">Consignment<br/>Note No.</th>
+                    <th style="width:8%;">Date</th>
+                    <th style="width:17%;">Invoice<br/>No</th>
+                    <th style="width:8%;">Vehicle no.</th>
+                    <th style="width:9%;">Loding station</th>
+                    <th style="width:9%;">Delivery<br/>Station</th>
+                    <th style="width:8%;">Charge Wt.<br/>(M.T)</th>
+                    <th style="width:8%;">Rate</th>
+                    <th style="width:8%;">Detention</th>
+                    <th style="width:8%;">Extra Charges</th>
+                    <th style="width:9%;">Total Billed<br/>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${coveredRows}
+                ${blankRows}
+                <tr class="total-row">
+                    <td colspan="9"></td>
+                    <td class="total-label">TOTAL</td>
+                    <td class="amount">${fmt(displayTotal)}</td>
+                </tr>
+            </tbody>
+        </table>
 
-    <div class="summary">
-        <div class="amount-words">
-            <div class="label">Narration</div>
-            <div class="small" style="min-height: 24px; margin-bottom: 10px;">${record.narration || '—'}</div>
-            <div class="label">Amount In Words</div>
-            <div class="value" style="font-size: 14px;">${numberToWords(Number(record.amount || 0))}</div>
-        </div>
-        <div class="totals">
-            <div class="totals-row"><span>Covered CNs</span><strong>${coveredConsignments.length || (record.covered_cn_nos?.length || 0) || 1}</strong></div>
-            <div class="totals-row"><span>Status</span><strong>${record.status}</strong></div>
-            <div class="totals-row"><span>Total Bill Amount</span><strong>₹${fmt(Number(record.amount || 0))}</strong></div>
-        </div>
-    </div>
+        <div class="words-row">Rupees In Words:- ${amountWords}</div>
 
-    <div class="footer">
-        <div class="small">System Bill ID: ${record.id}</div>
-        <div class="signature">
-            <strong>For Visakha Golden Transport</strong>
-            <div>Authorised Signatory</div>
+        <div class="notes-block">
+            <div class="note-title">Note-</div>
+            <div>GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
+            <div>Ewaybill id:37AAWFV7670H1Z8</div>
+        </div>
+
+        <div class="footer-grid">
+            <div class="bank-block">
+                <div class="bank-title">Bank Details: Visakha Golden Transport</div>
+                <div>A/C No: 070205500602</div>
+                <div>IFSC Code: ICIC0000702</div>
+                <div>ICICI Bank Vizianagaram</div>
+            </div>
+            <div class="signature-block">
+                <div class="signature-inner">
+                    <div class="signature-company">For Visakha Golden Transport</div>
+                    <div class="signature-name">${record.status === 'CANCELLED' ? 'Cancelled Bill' : '&nbsp;'}</div>
+                    <div class="signature-role">(Authorized Signatory)</div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -429,22 +598,21 @@ body { margin: 0; font-family: "Times New Roman", Georgia, serif; color: #172554
 
         const imageData = canvas.toDataURL('image/png');
         const pdf = new jsPDF({
-            orientation: 'portrait',
+            orientation: 'landscape',
             unit: 'mm',
             format: 'a4',
             compress: true,
         });
 
-        pdf.addImage(imageData, 'PNG', 8, 8, 194, 281, undefined, 'FAST');
-        const safeBillNo = String(record.bill_ref_no || record.id).replace(/[^a-zA-Z0-9-_]/g, '');
-        pdf.save(`${safeBillNo || 'billing-record'}.pdf`);
+        pdf.addImage(imageData, 'PNG', 5, 5, 287, 200, undefined, 'FAST');
+        pdf.save(getBillDownloadName(record.bill_ref_no, record.id));
     };
 
     if (!party || !record) return null;
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+            <DialogContent className="max-w-[95vw] w-[95vw] h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col sm:max-w-[95vw]">
                 <iframe
                     ref={iframeRef}
                     style={{
@@ -458,16 +626,22 @@ body { margin: 0; font-family: "Times New Roman", Georgia, serif; color: #172554
                         pointerEvents: 'none',
                     }}
                 />
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Eye className="h-4 w-4 text-primary" /> Billing Record Details
-                    </DialogTitle>
-                    <DialogDescription>
-                        View complete bill details and print or download the same bill in PDF format.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-4">
+                <DialogHeader className="bg-primary px-6 py-4 flex-shrink-0 flex flex-row items-center justify-between space-y-0 text-white">
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-3">
+                            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                                <Eye className="h-5 w-5 opacity-80" />
+                                <span className="opacity-70">Bill No:</span>
+                                <span className="tracking-wide">{record.bill_ref_no || '—'}</span>
+                            </DialogTitle>
+                            <Badge className="bg-white/20 text-white border-white/20 hover:bg-white/30 text-[10px] uppercase tracking-wider px-2 py-0.5">
+                                {record.status}
+                            </Badge>
+                        </div>
+                        <DialogDescription className="text-white/70 text-xs mt-1">
+                            Bill dated <span className="font-mono">{fmtDate(record.billing_date)}</span>
+                        </DialogDescription>
+                    </div>
                     <div className="flex flex-wrap gap-2 justify-end">
                         <Button variant="outline" className="gap-2" onClick={() => void handlePrint('print')}>
                             <Printer className="h-4 w-4" /> Print
@@ -481,6 +655,9 @@ body { margin: 0; font-family: "Times New Roman", Georgia, serif; color: #172554
                             </Button>
                         )}
                     </div>
+                </DialogHeader>
+
+                <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6 space-y-4">
 
                     <div className="grid md:grid-cols-2 gap-4">
                         <Card><CardContent className="p-4 space-y-2">
@@ -502,8 +679,10 @@ body { margin: 0; font-family: "Times New Roman", Georgia, serif; color: #172554
                                 </Badge>
                             </div>
                             <div className="text-sm">Bill Date: <span className="font-medium">{fmtDate(record.billing_date)}</span></div>
-                            <div className="text-sm">Billing Period: <span className="font-medium">{record.billing_period_from ? `${fmtDate(record.billing_period_from)} – ${fmtDate(record.billing_period_to)}` : '—'}</span></div>
-                            <div className="text-sm">Amount: <span className="font-black text-emerald-700 font-mono">₹{fmt(Number(record.amount || 0))}</span></div>
+                            <div className="text-sm">Issuing Branch: <span className="font-medium">{issuingBranch}</span></div>
+                            <div className="text-sm">Matched LR Count: <span className="font-medium">{coveredConsignments.length || (record.covered_cn_nos?.length || 0) || 1}</span></div>
+                            <div className="text-sm">Amount: <span className="font-black text-emerald-700 font-mono">₹{fmt(billAmount)}</span></div>
+                            <div className="text-sm">Covered Freight: <span className="font-black text-primary font-mono">₹{fmt(coveredFreightTotal)}</span></div>
                         </CardContent></Card>
                     </div>
 
@@ -512,7 +691,7 @@ body { margin: 0; font-family: "Times New Roman", Georgia, serif; color: #172554
                             <div className="text-[11px] font-bold uppercase text-muted-foreground">Narration</div>
                             <div className="text-sm">{record.narration || '—'}</div>
                             <div className="text-[11px] font-bold uppercase text-muted-foreground pt-2">Amount In Words</div>
-                            <div className="text-sm font-semibold text-primary">{numberToWords(Number(record.amount || 0))}</div>
+                            <div className="text-sm font-semibold text-primary">{numberToWords(billAmount)}</div>
                             {record.status === 'CANCELLED' && (
                                 <>
                                     <div className="text-[11px] font-bold uppercase text-muted-foreground pt-2">Cancel Reason</div>
@@ -532,25 +711,43 @@ body { margin: 0; font-family: "Times New Roman", Georgia, serif; color: #172554
                                 <table className="w-full text-sm border-collapse">
                                     <thead>
                                         <tr className="border-b bg-muted/30">
+                                            <th className="text-left p-2 font-bold text-xs">SL</th>
                                             <th className="text-left p-2 font-bold text-xs">CN No</th>
                                             <th className="text-left p-2 font-bold text-xs">Date</th>
                                             <th className="text-left p-2 font-bold text-xs">From</th>
                                             <th className="text-left p-2 font-bold text-xs">To</th>
+                                            <th className="text-left p-2 font-bold text-xs">Truck No</th>
+                                            <th className="text-right p-2 font-bold text-xs">Rate PMT</th>
+                                            <th className="text-right p-2 font-bold text-xs">Wt.</th>
                                             <th className="text-right p-2 font-bold text-xs">Freight</th>
+                                            <th className="text-right p-2 font-bold text-xs">Halting</th>
+                                            <th className="text-right p-2 font-bold text-xs">Loading</th>
+                                            <th className="text-right p-2 font-bold text-xs">Unloading</th>
+                                            <th className="text-left p-2 font-bold text-xs">Slip No</th>
+                                            <th className="text-right p-2 font-bold text-xs">Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {coveredConsignments.length > 0 ? coveredConsignments.map((consignment) => (
+                                        {coveredConsignments.length > 0 ? coveredConsignments.map((consignment, index) => (
                                             <tr key={consignment.id} className="border-b last:border-0">
+                                                <td className="p-2 text-xs">{index + 1}</td>
                                                 <td className="p-2 font-mono text-xs text-primary font-bold">{consignment.cn_no}</td>
                                                 <td className="p-2 text-xs">{fmtDate(consignment.bkg_date)}</td>
                                                 <td className="p-2 text-xs">{consignment.booking_branch || '—'}</td>
                                                 <td className="p-2 text-xs">{consignment.dest_branch || '—'}</td>
+                                                <td className="p-2 text-xs">{consignment.vehicle_no || '—'}</td>
+                                                <td className="p-2 text-right text-xs font-mono">{Number(consignment.freight_rate || 0) > 0 ? fmt(Number(consignment.freight_rate || 0)) : '0.00'}</td>
+                                                <td className="p-2 text-right text-xs font-mono">{consignment.charged_weight || consignment.actual_weight || 0} {consignment.load_unit || ''}</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹{fmt(Number(consignment.basic_freight || consignment.total_freight || 0))}</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹0.00</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹0.00</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹0.00</td>
+                                                <td className="p-2 text-xs">—</td>
                                                 <td className="p-2 text-right text-xs font-mono">₹{fmt(Number(consignment.total_freight || 0))}</td>
                                             </tr>
                                         )) : (
                                             <tr>
-                                                <td colSpan={5} className="p-3 text-center text-xs text-muted-foreground">
+                                                <td colSpan={14} className="p-3 text-center text-xs text-muted-foreground">
                                                     No exact CN rows matched this bill. The PDF will still include the saved narration and bill amount.
                                                 </td>
                                             </tr>

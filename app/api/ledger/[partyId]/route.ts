@@ -1,6 +1,20 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+type SummaryConsignment = {
+    total_freight: number | string | null;
+};
+
+type SummaryBillingRecord = {
+    amount: number | string | null;
+    status: string;
+};
+
+type SummaryPaymentReceipt = {
+    amount: number | string | null;
+    status: string;
+};
+
 // GET /api/ledger/[partyId]
 // Returns full party ledger detail: party info, summary, CNS list, billing records, payment receipts
 export async function GET(
@@ -39,7 +53,7 @@ export async function GET(
     // 3. Consignments (date-filtered, for this billing party)
     let cnsQuery = supabase
         .from('consignments')
-        .select('id, cn_no, bkg_date, booking_branch, dest_branch, no_of_pkg, actual_weight, charged_weight, load_unit, total_freight, bkg_basis, cancel_cn, goods_desc, delivery_type')
+        .select('id, cn_no, invoice_no, bkg_date, booking_branch, dest_branch, no_of_pkg, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, vehicle_no, bkg_basis, cancel_cn, goods_desc, delivery_type')
         .eq('billing_party_id', partyId)
         .eq('cancel_cn', false)
         .order('bkg_date', { ascending: false })
@@ -76,13 +90,13 @@ export async function GET(
     const { data: paymentReceipts } = await payQuery;
 
     // 6. Compute summary from raw data
-    const allCns = consignments || [];
-    const allBills = (billingRecords || []).filter((b) => b.status === 'ACTIVE');
-    const allPayments = (paymentReceipts || []).filter((p) => p.status === 'ACTIVE');
+    const allCns = (consignments || []) as SummaryConsignment[];
+    const allBills = ((billingRecords || []) as SummaryBillingRecord[]).filter((b) => b.status === 'ACTIVE');
+    const allPayments = ((paymentReceipts || []) as SummaryPaymentReceipt[]).filter((p) => p.status === 'ACTIVE');
 
-    const totalCnsAmount = allCns.reduce((sum: number, c: any) => sum + (parseFloat(c.total_freight) || 0), 0);
-    const totalBilled = allBills.reduce((sum: number, b: any) => sum + (parseFloat(b.amount) || 0), 0);
-    const totalPaid = allPayments.reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0);
+    const totalCnsAmount = allCns.reduce((sum, c) => sum + (parseFloat(String(c.total_freight || 0)) || 0), 0);
+    const totalBilled = allBills.reduce((sum, b) => sum + (parseFloat(String(b.amount || 0)) || 0), 0);
+    const totalPaid = allPayments.reduce((sum, p) => sum + (parseFloat(String(p.amount || 0)) || 0), 0);
     const openingBalance = parseFloat(account?.opening_balance || '0') || 0;
 
     const summary = {
