@@ -53,7 +53,7 @@ export async function GET(
     // 3. Consignments (date-filtered, for this billing party)
     let cnsQuery = supabase
         .from('consignments')
-        .select('id, cn_no, invoice_no, bkg_date, booking_branch, dest_branch, no_of_pkg, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, vehicle_no, bkg_basis, cancel_cn, goods_desc, delivery_type')
+        .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, no_of_pkg, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, other_charges, vehicle_no, bkg_basis, cancel_cn, goods_desc, delivery_type')
         .eq('billing_party_id', partyId)
         .eq('cancel_cn', false)
         .order('bkg_date', { ascending: false })

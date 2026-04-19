@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { BillingConsignmentPicker, type BillingConsignmentOption } from '@/components/features/ledger/BillingConsignmentPicker';
+import { BillingExtraChargesEditor, billingExtraChargeDraftItem, type BillingExtraChargeDraftItem } from '@/components/features/ledger/BillingExtraChargesEditor';
 
 interface PartyInfo {
     id: string;
@@ -33,9 +34,15 @@ interface BillingRecord {
     bill_ref_no?: string;
     narration: string;
     covered_cn_nos?: string[];
+    extra_charge_items?: BillingExtraChargeItem[];
     status: string;
     cancel_reason?: string;
     cancelled_at?: string;
+}
+
+interface BillingExtraChargeItem {
+    label: string;
+    amount: number;
 }
 
 interface Consignment {
@@ -44,7 +51,9 @@ interface Consignment {
     invoice_no?: string;
     bkg_date: string;
     booking_branch: string;
+    loading_point?: string;
     dest_branch: string;
+    delivery_point?: string;
     no_of_pkg: number;
     actual_weight: number;
     charged_weight: number;
@@ -52,6 +61,13 @@ interface Consignment {
     total_freight: number;
     basic_freight?: number;
     freight_rate?: number;
+    unload_charges?: number;
+    retention_charges?: number;
+    extra_km_charges?: number;
+    mhc_charges?: number;
+    door_coll_charges?: number;
+    door_del_charges?: number;
+    other_charges?: number;
     vehicle_no?: string;
     bkg_basis: string;
     goods_desc?: string;
@@ -128,6 +144,77 @@ const splitAddressLines = (address?: string | null) => {
     ];
 };
 
+const parseMoney = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return 0;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const normalizeExtraChargeDraftItems = (items: BillingExtraChargeDraftItem[]) =>
+    items
+        .map((item) => ({
+            label: item.label.trim(),
+            amount: Number(parseMoney(item.amount).toFixed(2)),
+        }))
+        .filter((item) => item.label && item.amount > 0);
+
+const mapExtraChargeItemsToDrafts = (items?: BillingExtraChargeItem[]) =>
+    (items || []).map((item) => ({
+        id: billingExtraChargeDraftItem().id,
+        label: item.label,
+        amount: String(item.amount || ''),
+    }));
+
+const getConsignmentExtraCharges = (
+    consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+) : number => {
+    const chargeValues: Array<number | undefined> = [
+        consignment.unload_charges,
+        consignment.extra_km_charges,
+        consignment.mhc_charges,
+        consignment.door_coll_charges,
+        consignment.door_del_charges,
+        consignment.other_charges,
+    ];
+
+    return chargeValues.reduce<number>((sum, value) => sum + parseMoney(value), 0);
+};
+
+const getConsignmentBaseFreight = (
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+) : number => {
+    const baseFreight = parseMoney(consignment.basic_freight);
+    if (baseFreight > 0) return baseFreight;
+
+    const totalFreight = parseMoney(consignment.total_freight);
+    const detention = parseMoney(consignment.retention_charges);
+    const extraCharges = getConsignmentExtraCharges(consignment);
+    const derivedFreight = totalFreight - detention - extraCharges;
+
+    return derivedFreight > 0 ? derivedFreight : totalFreight;
+};
+
+const buildConsignmentBreakup = (
+    consignments: Array<Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>>
+) => {
+    const freightTotal = consignments.reduce<number>((sum, consignment) => sum + getConsignmentBaseFreight(consignment), 0);
+    const detentionTotal = consignments.reduce<number>((sum, consignment) => sum + parseMoney(consignment.retention_charges), 0);
+    const extraChargeTotal = consignments.reduce<number>((sum, consignment) => sum + getConsignmentExtraCharges(consignment), 0);
+    const cnChargeTotal = consignments.reduce<number>((sum, consignment) => {
+        const totalFreight = parseMoney(consignment.total_freight);
+        return sum + (totalFreight > 0
+            ? totalFreight
+            : getConsignmentBaseFreight(consignment) + parseMoney(consignment.retention_charges) + getConsignmentExtraCharges(consignment));
+    }, 0);
+
+    return {
+        freightTotal,
+        detentionTotal,
+        extraChargeTotal,
+        cnChargeTotal,
+    };
+};
+
 const getBillDownloadName = (billRefNo?: string | null, recordId?: string) => {
     const rawValue = String(billRefNo || recordId || 'billing-record').trim();
     const safeValue = rawValue
@@ -142,7 +229,10 @@ const getBillDownloadName = (billRefNo?: string | null, recordId?: string) => {
 function buildCoveredConsignments(record: BillingRecord, consignments: Consignment[]) {
     const covered = new Set((record.covered_cn_nos || []).map((cn) => cn.trim()).filter(Boolean));
     if (covered.size > 0) {
-        return consignments.filter((c) => covered.has(c.cn_no));
+        const order = new Map((record.covered_cn_nos || []).map((cn, index) => [cn.trim(), index]));
+        return consignments
+            .filter((c) => covered.has(c.cn_no))
+            .sort((a, b) => (order.get(a.cn_no) ?? 9999) - (order.get(b.cn_no) ?? 9999));
     }
 
     if (record.billing_period_from || record.billing_period_to) {
@@ -178,6 +268,7 @@ export function EditBillingDialog({
         bill_ref_no: '',
         narration: '',
         covered_cn_nos: [] as string[],
+        extra_charge_items: [] as BillingExtraChargeDraftItem[],
     });
     const [saving, setSaving] = useState(false);
 
@@ -189,8 +280,41 @@ export function EditBillingDialog({
             bill_ref_no: record.bill_ref_no || '',
             narration: record.narration || '',
             covered_cn_nos: record.covered_cn_nos || [],
+            extra_charge_items: mapExtraChargeItemsToDrafts(record.extra_charge_items),
         });
     }, [record]);
+
+    const selectedConsignments = useMemo(
+        () => consignments.filter((consignment) => form.covered_cn_nos.includes(consignment.cn_no)),
+        [consignments, form.covered_cn_nos]
+    );
+
+    const consignmentBreakup = useMemo(
+        () => buildConsignmentBreakup(selectedConsignments),
+        [selectedConsignments]
+    );
+
+    const normalizedExtraChargeItems = useMemo(
+        () => normalizeExtraChargeDraftItems(form.extra_charge_items),
+        [form.extra_charge_items]
+    );
+
+    const extraChargeTotal = useMemo(
+        () => normalizedExtraChargeItems.reduce((sum, item) => sum + item.amount, 0),
+        [normalizedExtraChargeItems]
+    );
+
+    const suggestedBillTotal = consignmentBreakup.cnChargeTotal + extraChargeTotal;
+
+    useEffect(() => {
+        if (!record) return;
+
+        setForm((current) => {
+            const nextAmount = suggestedBillTotal > 0 ? suggestedBillTotal.toFixed(2) : '';
+            if (current.amount === nextAmount) return current;
+            return { ...current, amount: nextAmount };
+        });
+    }, [record, suggestedBillTotal]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -202,9 +326,11 @@ export function EditBillingDialog({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     billing_date: form.billing_date,
+                    amount: parseMoney(form.amount),
                     bill_ref_no: form.bill_ref_no || null,
                     narration: form.narration.trim(),
                     covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
+                    extra_charge_items: normalizedExtraChargeItems,
                 }),
             });
 
@@ -231,7 +357,7 @@ export function EditBillingDialog({
                         <Pencil className="h-4 w-4 text-primary" /> Edit Billing Record
                     </DialogTitle>
                     <DialogDescription>
-                        Bill amount is immutable after save. You can update bill dates, reference, narration, and covered CNs.
+                        Bill amount now follows the selected CN and manual charge breakup. Update the bill details and save the recalculated total.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -255,14 +381,58 @@ export function EditBillingDialog({
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
                                 <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
                             </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">CNs Covered</Label>
-                            <BillingConsignmentPicker
-                                consignments={consignments}
-                                value={form.covered_cn_nos}
-                                onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
+
+                            <BillingExtraChargesEditor
+                                items={form.extra_charge_items}
+                                onChange={(extra_charge_items) => setForm((current) => ({ ...current, extra_charge_items }))}
                             />
+                        </div>
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">CNs Covered</Label>
+                                <BillingConsignmentPicker
+                                    consignments={consignments}
+                                    value={form.covered_cn_nos}
+                                    onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
+                                />
+                            </div>
+
+                            <div className="rounded-lg border bg-muted/10">
+                                <div className="border-b px-4 py-3">
+                                    <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Updated Bill Breakup</div>
+                                    <div className="text-xs text-muted-foreground">This view updates instantly from the selected CN and manual charge composition.</div>
+                                </div>
+                                <div className="space-y-2 p-4 text-sm">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">CN Freight</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.freightTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">CN Detention</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.detentionTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">CN Extra Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.extraChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">CN Total</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.cnChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Manual Extra Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(extraChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between border-t pt-2">
+                                        <span className="text-muted-foreground">Recalculated Total</span>
+                                        <span className="font-mono font-semibold">₹{fmt(suggestedBillTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between border-t pt-2 font-bold">
+                                        <span>Current Bill Amount</span>
+                                        <span className="font-mono text-primary">₹{fmt(parseMoney(form.amount))}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="flex justify-end gap-2 border-t bg-slate-50 px-6 py-4">
@@ -323,10 +493,13 @@ export function BillingRecordViewDialog({
     }, [record, consignments]);
 
     const billAmount = Number(record?.amount || 0);
-    const coveredFreightTotal = coveredConsignments.reduce(
-        (sum, consignment) => sum + (Number(consignment.total_freight) || 0),
-        0
+    const consignmentBreakup = useMemo(
+        () => buildConsignmentBreakup(coveredConsignments),
+        [coveredConsignments]
     );
+    const coveredFreightTotal = consignmentBreakup.freightTotal;
+    const manualExtraChargeItems = record?.extra_charge_items || [];
+    const manualExtraChargeTotal = manualExtraChargeItems.reduce((sum, item) => sum + parseMoney(item.amount), 0);
     const issuingBranch = coveredConsignments[0]?.booking_branch || party?.branch_code || '—';
 
     const handlePrint = async (mode: 'print' | 'download') => {
@@ -345,23 +518,37 @@ export function BillingRecordViewDialog({
             : `M/S. ${toUpperText(party.name)}`;
         const [addressLine1, addressLine2] = splitAddressLines(party.address);
         const amountWords = numberToWords(displayTotal).replace(/^Rupees\s+/i, '').trim();
+        const manualChargeLinesHtml = manualExtraChargeItems.length > 0
+            ? `
+                <div class="remark-title">Charge Breakup :</div>
+                ${manualExtraChargeItems.map((item) => `
+                    <div>${item.label} - Rs. ${fmt(parseMoney(item.amount))}</div>
+                `).join('')}
+            `
+            : '';
+        const narrationHtml = record.narration
+            ? `<div class="remark-title">Remarks :</div><div>${record.narration}</div>`
+            : '';
         const detailRows = coveredConsignments.length > 0
             ? coveredConsignments.map((consignment) => {
                 const weight = consignment.charged_weight || consignment.actual_weight || 0;
                 const unit = toUpperText(consignment.load_unit);
+                const extraCharges = getConsignmentExtraCharges(consignment);
+                const totalAmount = parseMoney(consignment.total_freight)
+                    || (getConsignmentBaseFreight(consignment) + parseMoney(consignment.retention_charges) + extraCharges);
 
                 return {
                     cnNo: consignment.cn_no || '—',
                     date: fmtDotDate(consignment.bkg_date),
                     invoiceNo: consignment.invoice_no || consignment.cn_no || '—',
                     vehicleNo: toUpperText(consignment.vehicle_no) || '—',
-                    loadingStation: toUpperText(consignment.booking_branch) || '—',
-                    deliveryStation: toUpperText(consignment.dest_branch) || '—',
+                    loadingStation: toUpperText(consignment.loading_point || consignment.booking_branch) || '—',
+                    deliveryStation: toUpperText(consignment.delivery_point || consignment.dest_branch) || '—',
                     chargeWt: weight ? `${weight}${unit}` : '—',
                     rate: Number(consignment.freight_rate || 0) > 0 ? fmt(Number(consignment.freight_rate || 0)) : '',
-                    detention: '',
-                    extraCharges: '',
-                    totalAmount: fmt(Number(consignment.total_freight || 0)),
+                    detention: parseMoney(consignment.retention_charges) > 0 ? fmt(parseMoney(consignment.retention_charges)) : '',
+                    extraCharges: extraCharges > 0 ? fmt(extraCharges) : '',
+                    totalAmount: fmt(totalAmount),
                 };
             })
             : [{
@@ -451,6 +638,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .words-row { border-bottom: 1.2px solid #111; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
 .notes-block { min-height: 90px; border-bottom: 1.2px solid #111; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.8; }
 .note-title { margin-bottom: 12px; }
+.remark-title { margin-top: 10px; font-weight: 800; }
 .footer-grid { display: grid; grid-template-columns: 60% 40%; min-height: 88px; }
 .bank-block { border-right: 1.2px solid #111; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.9; }
 .bank-title { font-size: 10px; font-weight: 800; }
@@ -527,6 +715,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
         <div class="notes-block">
             <div class="note-title">Note-</div>
+            ${manualChargeLinesHtml}
+            ${narrationHtml}
             <div>GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
             <div>Ewaybill id:37AAWFV7670H1Z8</div>
         </div>
@@ -682,7 +872,11 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                             <div className="text-sm">Issuing Branch: <span className="font-medium">{issuingBranch}</span></div>
                             <div className="text-sm">Matched LR Count: <span className="font-medium">{coveredConsignments.length || (record.covered_cn_nos?.length || 0) || 1}</span></div>
                             <div className="text-sm">Amount: <span className="font-black text-emerald-700 font-mono">₹{fmt(billAmount)}</span></div>
-                            <div className="text-sm">Covered Freight: <span className="font-black text-primary font-mono">₹{fmt(coveredFreightTotal)}</span></div>
+                            <div className="text-sm">CN Freight: <span className="font-black text-primary font-mono">₹{fmt(coveredFreightTotal)}</span></div>
+                            <div className="text-sm">CN Detention: <span className="font-black text-amber-700 font-mono">₹{fmt(consignmentBreakup.detentionTotal)}</span></div>
+                            <div className="text-sm">CN Extra Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.extraChargeTotal)}</span></div>
+                            <div className="text-sm">CN Total: <span className="font-black text-foreground font-mono">₹{fmt(consignmentBreakup.cnChargeTotal)}</span></div>
+                            <div className="text-sm">Manual Extra Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(manualExtraChargeTotal)}</span></div>
                         </CardContent></Card>
                     </div>
 
@@ -690,6 +884,19 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                         <CardContent className="p-4 space-y-3">
                             <div className="text-[11px] font-bold uppercase text-muted-foreground">Narration</div>
                             <div className="text-sm">{record.narration || '—'}</div>
+                            {manualExtraChargeItems.length > 0 && (
+                                <>
+                                    <div className="text-[11px] font-bold uppercase text-muted-foreground pt-2">Charge Breakup</div>
+                                    <div className="space-y-1">
+                                        {manualExtraChargeItems.map((item, index) => (
+                                            <div key={`${item.label}-${index}`} className="flex items-center justify-between gap-3 text-sm">
+                                                <span>{item.label}</span>
+                                                <span className="font-mono font-semibold">₹{fmt(parseMoney(item.amount))}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
                             <div className="text-[11px] font-bold uppercase text-muted-foreground pt-2">Amount In Words</div>
                             <div className="text-sm font-semibold text-primary">{numberToWords(billAmount)}</div>
                             {record.status === 'CANCELLED' && (
@@ -714,16 +921,15 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                                             <th className="text-left p-2 font-bold text-xs">SL</th>
                                             <th className="text-left p-2 font-bold text-xs">CN No</th>
                                             <th className="text-left p-2 font-bold text-xs">Date</th>
-                                            <th className="text-left p-2 font-bold text-xs">From</th>
-                                            <th className="text-left p-2 font-bold text-xs">To</th>
-                                            <th className="text-left p-2 font-bold text-xs">Truck No</th>
-                                            <th className="text-right p-2 font-bold text-xs">Rate PMT</th>
+                                            <th className="text-left p-2 font-bold text-xs">Invoice No</th>
+                                            <th className="text-left p-2 font-bold text-xs">Vehicle</th>
+                                            <th className="text-left p-2 font-bold text-xs">Loading</th>
+                                            <th className="text-left p-2 font-bold text-xs">Destination</th>
                                             <th className="text-right p-2 font-bold text-xs">Wt.</th>
+                                            <th className="text-right p-2 font-bold text-xs">Rate</th>
                                             <th className="text-right p-2 font-bold text-xs">Freight</th>
-                                            <th className="text-right p-2 font-bold text-xs">Halting</th>
-                                            <th className="text-right p-2 font-bold text-xs">Loading</th>
-                                            <th className="text-right p-2 font-bold text-xs">Unloading</th>
-                                            <th className="text-left p-2 font-bold text-xs">Slip No</th>
+                                            <th className="text-right p-2 font-bold text-xs">Detention</th>
+                                            <th className="text-right p-2 font-bold text-xs">Extra</th>
                                             <th className="text-right p-2 font-bold text-xs">Total</th>
                                         </tr>
                                     </thead>
@@ -733,21 +939,20 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                                                 <td className="p-2 text-xs">{index + 1}</td>
                                                 <td className="p-2 font-mono text-xs text-primary font-bold">{consignment.cn_no}</td>
                                                 <td className="p-2 text-xs">{fmtDate(consignment.bkg_date)}</td>
-                                                <td className="p-2 text-xs">{consignment.booking_branch || '—'}</td>
-                                                <td className="p-2 text-xs">{consignment.dest_branch || '—'}</td>
+                                                <td className="p-2 text-xs">{consignment.invoice_no || '—'}</td>
                                                 <td className="p-2 text-xs">{consignment.vehicle_no || '—'}</td>
-                                                <td className="p-2 text-right text-xs font-mono">{Number(consignment.freight_rate || 0) > 0 ? fmt(Number(consignment.freight_rate || 0)) : '0.00'}</td>
+                                                <td className="p-2 text-xs">{consignment.loading_point || consignment.booking_branch || '—'}</td>
+                                                <td className="p-2 text-xs">{consignment.delivery_point || consignment.dest_branch || '—'}</td>
                                                 <td className="p-2 text-right text-xs font-mono">{consignment.charged_weight || consignment.actual_weight || 0} {consignment.load_unit || ''}</td>
-                                                <td className="p-2 text-right text-xs font-mono">₹{fmt(Number(consignment.basic_freight || consignment.total_freight || 0))}</td>
-                                                <td className="p-2 text-right text-xs font-mono">₹0.00</td>
-                                                <td className="p-2 text-right text-xs font-mono">₹0.00</td>
-                                                <td className="p-2 text-right text-xs font-mono">₹0.00</td>
-                                                <td className="p-2 text-xs">—</td>
-                                                <td className="p-2 text-right text-xs font-mono">₹{fmt(Number(consignment.total_freight || 0))}</td>
+                                                <td className="p-2 text-right text-xs font-mono">{Number(consignment.freight_rate || 0) > 0 ? fmt(Number(consignment.freight_rate || 0)) : '0.00'}</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹{fmt(getConsignmentBaseFreight(consignment))}</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹{fmt(parseMoney(consignment.retention_charges))}</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹{fmt(getConsignmentExtraCharges(consignment))}</td>
+                                                <td className="p-2 text-right text-xs font-mono">₹{fmt(parseMoney(consignment.total_freight) || (getConsignmentBaseFreight(consignment) + parseMoney(consignment.retention_charges) + getConsignmentExtraCharges(consignment)))}</td>
                                             </tr>
                                         )) : (
                                             <tr>
-                                                <td colSpan={14} className="p-3 text-center text-xs text-muted-foreground">
+                                                <td colSpan={13} className="p-3 text-center text-xs text-muted-foreground">
                                                     No exact CN rows matched this bill. The PDF will still include the saved narration and bill amount.
                                                 </td>
                                             </tr>

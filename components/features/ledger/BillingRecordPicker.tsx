@@ -17,6 +17,9 @@ export interface BillingRecordOption {
     bill_ref_no?: string;
     narration: string;
     status: string;
+    covered_cn_nos?: string[];
+    settled_amount?: number;
+    remaining_amount?: number;
 }
 
 const fmt = (n: number) =>
@@ -57,6 +60,7 @@ export function BillingRecordPicker({
                 record.bill_ref_no || '',
                 record.billing_date,
                 record.narration,
+                (record.covered_cn_nos || []).join(' '),
                 String(record.amount || 0),
             ].join(' ').toLowerCase().includes(query)
         );
@@ -125,9 +129,24 @@ export function BillingRecordPicker({
                                                 <div className="mt-1 text-[11px] text-muted-foreground">
                                                     {fmtDate(record.billing_date)} • ₹{fmt(Number(record.amount || 0))}
                                                 </div>
+                                                {(record.covered_cn_nos || []).length > 0 && (
+                                                    <div className="mt-1 text-[11px] text-muted-foreground truncate">
+                                                        CNs: {(record.covered_cn_nos || []).join(', ')}
+                                                    </div>
+                                                )}
                                                 <div className="mt-1 text-[11px] text-muted-foreground truncate">
                                                     {record.narration || '—'}
                                                 </div>
+                                                {(record.settled_amount !== undefined || record.remaining_amount !== undefined) && (
+                                                    <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                                                        {record.settled_amount !== undefined && (
+                                                            <span className="font-semibold text-indigo-700">Paid ₹{fmt(Number(record.settled_amount || 0))}</span>
+                                                        )}
+                                                        {record.remaining_amount !== undefined && (
+                                                            <span className="font-semibold text-amber-700">Bal ₹{fmt(Number(record.remaining_amount || 0))}</span>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </button>
@@ -156,9 +175,21 @@ export function BillingRecordPicker({
                                     <div className="text-[11px] text-muted-foreground">
                                         {fmtDate(record.billing_date)} • {record.narration || '—'}
                                     </div>
+                                    {(record.covered_cn_nos || []).length > 0 && (
+                                        <div className="text-[11px] text-muted-foreground truncate">
+                                            CNs: {(record.covered_cn_nos || []).join(', ')}
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="text-xs font-semibold text-emerald-700 shrink-0">
-                                    ₹{fmt(Number(record.amount || 0))}
+                                <div className="text-right text-xs shrink-0">
+                                    <div className="font-semibold text-emerald-700">
+                                        ₹{fmt(Number(record.amount || 0))}
+                                    </div>
+                                    {record.remaining_amount !== undefined && (
+                                        <div className="text-[11px] text-amber-700">
+                                            Bal ₹{fmt(Number(record.remaining_amount || 0))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}

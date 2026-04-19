@@ -1,6 +1,24 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+const normalizeExtraChargeItems = (value: unknown) => {
+    if (!Array.isArray(value)) return [];
+
+    return value
+        .map((item) => {
+            const label = String((item as { label?: unknown })?.label || '').trim();
+            const amount = Number((item as { amount?: unknown })?.amount || 0);
+
+            if (!label || Number.isNaN(amount) || amount <= 0) return null;
+
+            return {
+                label,
+                amount: Number(amount.toFixed(2)),
+            };
+        })
+        .filter((item): item is { label: string; amount: number } => item !== null);
+};
+
 // POST /api/ledger/[partyId]/billing
 // Create a billing record for a party (admin only)
 export async function POST(
@@ -37,7 +55,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { billing_date, billing_period_from, billing_period_to, amount, bill_ref_no, narration, covered_cn_nos } = body;
+    const { billing_date, billing_period_from, billing_period_to, amount, bill_ref_no, narration, covered_cn_nos, extra_charge_items } = body;
 
     if (!billing_date || !bill_ref_no?.trim() || !amount) {
         return NextResponse.json({ error: 'billing_date, bill_ref_no and amount are required' }, { status: 400 });
@@ -49,6 +67,10 @@ export async function POST(
     }
 
     const normalizedNarration = narration?.trim() || `Freight bill ${bill_ref_no.trim()}`;
+    const normalizedCoveredCns = Array.isArray(covered_cn_nos)
+        ? covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
+        : null;
+    const normalizedExtraChargeItems = normalizeExtraChargeItems(extra_charge_items);
 
     const { data, error } = await supabase
         .from('party_billing_records')
@@ -61,7 +83,8 @@ export async function POST(
             amount: amountNum,
             bill_ref_no: bill_ref_no.trim(),
             narration: normalizedNarration,
-            covered_cn_nos: covered_cn_nos || null,
+            covered_cn_nos: normalizedCoveredCns,
+            extra_charge_items: normalizedExtraChargeItems,
             created_by: user.id,
         })
         .select()

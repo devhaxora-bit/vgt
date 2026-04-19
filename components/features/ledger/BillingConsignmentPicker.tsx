@@ -13,10 +13,22 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 export interface BillingConsignmentOption {
     id: string;
     cn_no: string;
+    invoice_no?: string;
     bkg_date: string;
     booking_branch: string;
     dest_branch: string;
+    loading_point?: string;
+    delivery_point?: string;
     total_freight: number;
+    basic_freight?: number;
+    unload_charges?: number;
+    retention_charges?: number;
+    extra_km_charges?: number;
+    mhc_charges?: number;
+    door_coll_charges?: number;
+    door_del_charges?: number;
+    other_charges?: number;
+    vehicle_no?: string;
 }
 
 const fmt = (n: number) =>
@@ -30,6 +42,31 @@ const fmtDate = (value?: string | null) => {
     const month = String(parsed.getMonth() + 1).padStart(2, '0');
     const year = parsed.getFullYear();
     return `${day}/${month}/${year}`;
+};
+
+const getConsignmentExtraCharges = (consignment: BillingConsignmentOption): number => {
+    const chargeValues: Array<number | undefined> = [
+        consignment.unload_charges,
+        consignment.extra_km_charges,
+        consignment.mhc_charges,
+        consignment.door_coll_charges,
+        consignment.door_del_charges,
+        consignment.other_charges,
+    ];
+
+    return chargeValues.reduce<number>((sum, value) => sum + (Number(value) || 0), 0);
+};
+
+const getConsignmentBaseFreight = (consignment: BillingConsignmentOption): number => {
+    const basicFreight = Number(consignment.basic_freight) || 0;
+    if (basicFreight > 0) return basicFreight;
+
+    const totalFreight = Number(consignment.total_freight) || 0;
+    const detention = Number(consignment.retention_charges) || 0;
+    const extraCharges = getConsignmentExtraCharges(consignment);
+    const derivedFreight = totalFreight - detention - extraCharges;
+
+    return derivedFreight > 0 ? derivedFreight : totalFreight;
 };
 
 export function BillingConsignmentPicker({
@@ -55,8 +92,12 @@ export function BillingConsignmentPicker({
         return consignments.filter((consignment) =>
             [
                 consignment.cn_no,
+                consignment.invoice_no,
                 consignment.booking_branch,
                 consignment.dest_branch,
+                consignment.loading_point,
+                consignment.delivery_point,
+                consignment.vehicle_no,
                 consignment.bkg_date,
             ].join(' ').toLowerCase().includes(query)
         );
@@ -70,7 +111,19 @@ export function BillingConsignmentPicker({
         onChange([...value, cnNo]);
     };
 
-    const selectedTotal = selectedConsignments.reduce(
+    const selectedFreightTotal = selectedConsignments.reduce<number>(
+        (sum, consignment) => sum + getConsignmentBaseFreight(consignment),
+        0
+    );
+    const selectedDetentionTotal = selectedConsignments.reduce<number>(
+        (sum, consignment) => sum + (Number(consignment.retention_charges) || 0),
+        0
+    );
+    const selectedExtraTotal = selectedConsignments.reduce<number>(
+        (sum, consignment) => sum + getConsignmentExtraCharges(consignment),
+        0
+    );
+    const selectedBillTotal = selectedConsignments.reduce<number>(
         (sum, consignment) => sum + (Number(consignment.total_freight) || 0),
         0
     );
@@ -121,10 +174,15 @@ export function BillingConsignmentPicker({
                                                     {checked && <Check className="h-4 w-4 text-primary shrink-0" />}
                                                 </div>
                                                 <div className="mt-1 text-[11px] text-muted-foreground">
-                                                    {fmtDate(consignment.bkg_date)} • {consignment.booking_branch} → {consignment.dest_branch}
+                                                    {fmtDate(consignment.bkg_date)} • {(consignment.loading_point || consignment.booking_branch)} → {(consignment.delivery_point || consignment.dest_branch)}
                                                 </div>
-                                                <div className="mt-1 text-[11px] font-semibold text-emerald-700">
-                                                    ₹{fmt(Number(consignment.total_freight || 0))}
+                                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                                                    <span className="font-semibold text-emerald-700">Freight ₹{fmt(getConsignmentBaseFreight(consignment))}</span>
+                                                    <span className="font-semibold text-amber-700">Detention ₹{fmt(Number(consignment.retention_charges || 0))}</span>
+                                                    {getConsignmentExtraCharges(consignment) > 0 && (
+                                                        <span className="font-semibold text-slate-700">Extra ₹{fmt(getConsignmentExtraCharges(consignment))}</span>
+                                                    )}
+                                                    <span className="font-semibold text-primary">Total ₹{fmt(Number(consignment.total_freight || 0))}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -140,24 +198,53 @@ export function BillingConsignmentPicker({
                 <div className="rounded-md border bg-muted/10">
                     <div className="flex items-center justify-between px-3 py-2 border-b">
                         <div className="text-[11px] font-bold uppercase text-muted-foreground">Selected CN Summary</div>
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                            ₹{fmt(selectedTotal)}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="font-mono text-[10px]">
+                                Freight ₹{fmt(selectedFreightTotal)}
+                            </Badge>
+                            <Badge variant="outline" className="font-mono text-[10px]">
+                                Det. ₹{fmt(selectedDetentionTotal)}
+                            </Badge>
+                            {selectedExtraTotal > 0 && (
+                                <Badge variant="outline" className="font-mono text-[10px]">
+                                    Extra ₹{fmt(selectedExtraTotal)}
+                                </Badge>
+                            )}
+                            <Badge variant="outline" className="font-mono text-[10px]">
+                                Total ₹{fmt(selectedBillTotal)}
+                            </Badge>
+                        </div>
                     </div>
                     <div className="divide-y">
-                        {selectedConsignments.map((consignment) => (
-                            <div key={consignment.id} className="px-3 py-2 flex items-center justify-between gap-3">
-                                <div className="min-w-0">
-                                    <div className="font-mono text-xs font-bold text-primary">{consignment.cn_no}</div>
-                                    <div className="text-[11px] text-muted-foreground">
-                                        {fmtDate(consignment.bkg_date)} • {consignment.booking_branch} → {consignment.dest_branch}
+                        {selectedConsignments.map((consignment) => {
+                            const extraCharges = getConsignmentExtraCharges(consignment);
+
+                            return (
+                                <div key={consignment.id} className="px-3 py-2 flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="font-mono text-xs font-bold text-primary">{consignment.cn_no}</div>
+                                        <div className="text-[11px] text-muted-foreground">
+                                            {fmtDate(consignment.bkg_date)} • {(consignment.loading_point || consignment.booking_branch)} → {(consignment.delivery_point || consignment.dest_branch)}
+                                        </div>
+                                        {(consignment.invoice_no || consignment.vehicle_no) && (
+                                            <div className="text-[11px] text-muted-foreground">
+                                                {consignment.invoice_no ? `Inv ${consignment.invoice_no}` : 'Inv —'}
+                                                {' • '}
+                                                {consignment.vehicle_no ? `Veh ${consignment.vehicle_no}` : 'Veh —'}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="shrink-0 text-right text-[11px]">
+                                        <div className="font-semibold text-emerald-700">Frt ₹{fmt(getConsignmentBaseFreight(consignment))}</div>
+                                        <div className="font-semibold text-amber-700">Det. ₹{fmt(Number(consignment.retention_charges || 0))}</div>
+                                        {extraCharges > 0 && (
+                                            <div className="font-semibold text-slate-700">Extra ₹{fmt(extraCharges)}</div>
+                                        )}
+                                        <div className="font-black text-primary">Total ₹{fmt(Number(consignment.total_freight || 0))}</div>
                                     </div>
                                 </div>
-                                <div className="text-xs font-semibold text-emerald-700 shrink-0">
-                                    ₹{fmt(Number(consignment.total_freight || 0))}
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
