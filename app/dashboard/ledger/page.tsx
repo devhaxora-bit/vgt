@@ -1,15 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
     Search,
     BookOpen,
     TrendingUp,
-    TrendingDown,
     DollarSign,
     AlertCircle,
-    Building2,
     RotateCcw,
     ChevronRight,
     Package,
@@ -20,7 +18,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -53,6 +50,7 @@ interface LedgerParty {
     total_billed: number;
     total_paid: number;
     unbilled_amount: number;
+    overbilled_amount?: number;
     outstanding: number;
 }
 
@@ -65,6 +63,7 @@ const hasLedgerActivity = (party: LedgerParty) =>
     Number(party.total_billed || 0) !== 0 ||
     Number(party.total_paid || 0) !== 0 ||
     Number(party.unbilled_amount || 0) !== 0 ||
+    Number(party.overbilled_amount || 0) !== 0 ||
     Number(party.outstanding || 0) !== 0;
 
 export default function LedgerPage() {
@@ -77,7 +76,7 @@ export default function LedgerPage() {
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
 
-    const fetchLedger = async () => {
+    const fetchLedger = useCallback(async () => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
@@ -92,9 +91,9 @@ export default function LedgerPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [branchFilter, outstandingOnly]);
 
-    useEffect(() => { fetchLedger(); }, [branchFilter, outstandingOnly]);
+    useEffect(() => { fetchLedger(); }, [fetchLedger]);
 
     useEffect(() => {
         fetch('/api/references/branches')
@@ -131,6 +130,7 @@ export default function LedgerPage() {
         cns: filtered.reduce((s, p) => s + (p.total_cns_amount || 0), 0),
         billed: filtered.reduce((s, p) => s + (p.total_billed || 0), 0),
         unbilled: filtered.reduce((s, p) => s + (p.unbilled_amount || 0), 0),
+        overbilled: filtered.reduce((s, p) => s + (p.overbilled_amount || 0), 0),
         outstanding: filtered.reduce((s, p) => s + (p.outstanding || 0), 0),
     }), [filtered]);
 
@@ -201,6 +201,9 @@ export default function LedgerPage() {
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Unbilled Amount</p>
                                 <p className="text-lg font-black text-amber-700">₹{fmt(totals.unbilled)}</p>
+                                {totals.overbilled > 0 && (
+                                    <p className="text-[10px] font-semibold text-red-700">Overbilled ₹{fmt(totals.overbilled)}</p>
+                                )}
                             </div>
                         </div>
                     </CardContent>
@@ -367,6 +370,10 @@ export default function LedgerPage() {
                                                 {(p.unbilled_amount || 0) > 0 ? (
                                                     <span className="font-mono font-bold text-sm text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
                                                         ₹{fmt(p.unbilled_amount)}
+                                                    </span>
+                                                ) : (p.overbilled_amount || 0) > 0 ? (
+                                                    <span className="font-mono font-bold text-sm text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                                                        OB ₹{fmt(p.overbilled_amount || 0)}
                                                     </span>
                                                 ) : (
                                                     <span className="text-muted-foreground/40 text-xs">—</span>

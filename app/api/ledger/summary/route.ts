@@ -8,6 +8,7 @@ const hasLedgerActivity = (row: {
     total_billed?: number | string | null;
     total_paid?: number | string | null;
     unbilled_amount?: number | string | null;
+    overbilled_amount?: number | string | null;
     outstanding?: number | string | null;
 }) => {
     const toNumber = (value: number | string | null | undefined) => Number(value || 0);
@@ -18,8 +19,24 @@ const hasLedgerActivity = (row: {
         toNumber(row.total_billed) !== 0 ||
         toNumber(row.total_paid) !== 0 ||
         toNumber(row.unbilled_amount) !== 0 ||
+        toNumber(row.overbilled_amount) !== 0 ||
         toNumber(row.outstanding) !== 0
     );
+};
+
+const normalizeLedgerSummaryRow = <T extends {
+    unbilled_amount?: number | string | null;
+    overbilled_amount?: number | string | null;
+}>(row: T) => {
+    const rawUnbilledAmount = Number(row.unbilled_amount || 0);
+    const derivedOverbilledAmount = rawUnbilledAmount < 0 ? Math.abs(rawUnbilledAmount) : 0;
+    const overbilledAmount = Number(row.overbilled_amount || derivedOverbilledAmount || 0);
+
+    return {
+        ...row,
+        unbilled_amount: Math.max(rawUnbilledAmount, 0),
+        overbilled_amount: overbilledAmount,
+    };
 };
 
 // GET /api/ledger/summary
@@ -58,7 +75,9 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const filteredData = (data || []).filter(hasLedgerActivity);
+    const filteredData = (data || [])
+        .map(normalizeLedgerSummaryRow)
+        .filter(hasLedgerActivity);
 
     return NextResponse.json(filteredData);
 }

@@ -16,6 +16,8 @@ type SummaryPaymentReceipt = {
     status: string;
 };
 
+const roundMoney = (value: number) => Number(value.toFixed(2));
+
 // GET /api/ledger/[partyId]
 // Returns full party ledger detail: party info, summary, CNS list, billing records, payment receipts
 export async function GET(
@@ -108,13 +110,17 @@ export async function GET(
     const totalCnBilled = allBills.reduce((sum, b) => sum + (parseFloat(String(b.cn_total_amount || 0)) || 0), 0);
     const totalPaid = allPayments.reduce((sum, p) => sum + (parseFloat(String(p.amount || 0)) || 0), 0);
     const openingBalance = parseFloat(account?.opening_balance || '0') || 0;
+    const rawUnbilledAmount = roundMoney(totalCnsAmount - totalCnBilled);
+    const unbilledAmount = Math.max(rawUnbilledAmount, 0);
+    const overbilledAmount = Math.max(-rawUnbilledAmount, 0);
 
     const summary = {
         total_cns_amount: totalCnsAmount,
         total_cns_count: allCns.length,
         total_billed: totalBilled,
         total_paid: totalPaid,
-        unbilled_amount: totalCnsAmount - totalCnBilled,
+        unbilled_amount: unbilledAmount,
+        overbilled_amount: overbilledAmount,
         outstanding: openingBalance + totalBilled - totalPaid,
         opening_balance: openingBalance,
     };

@@ -50,6 +50,7 @@ interface Summary {
     total_billed: number;
     total_paid: number;
     unbilled_amount: number;
+    overbilled_amount?: number;
     outstanding: number;
     opening_balance: number;
 }
@@ -1000,7 +1001,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         all_payment_receipts: PaymentReceipt[];
     }>({
         party: null, account: null,
-        summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, outstanding: 0, opening_balance: 0 },
+        summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0 },
         consignments: [], all_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
     });
     const [isLoading, setIsLoading] = useState(true);
@@ -1221,6 +1222,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     <KpiCard
                         label="Unbilled Amount"
                         value={`₹${fmt(summary.unbilled_amount)}`}
+                        sub={summary.overbilled_amount && summary.overbilled_amount > 0 ? `Overbilled ₹${fmt(summary.overbilled_amount)}` : undefined}
                         icon={AlertCircle}
                         iconBg="bg-amber-50"
                         valueClass="text-amber-700"
