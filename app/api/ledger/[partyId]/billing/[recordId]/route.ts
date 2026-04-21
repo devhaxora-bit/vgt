@@ -1,23 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-
-const normalizeExtraChargeItems = (value: unknown) => {
-    if (!Array.isArray(value)) return [];
-
-    return value
-        .map((item) => {
-            const label = String((item as { label?: unknown })?.label || '').trim();
-            const amount = Number((item as { amount?: unknown })?.amount || 0);
-
-            if (!label || Number.isNaN(amount) || amount <= 0) return null;
-
-            return {
-                label,
-                amount: Number(amount.toFixed(2)),
-            };
-        })
-        .filter((item): item is { label: string; amount: number } => item !== null);
-};
+import { findDuplicateBillRefNo, hasActiveLinkedPayments, prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
 
 // PATCH /api/ledger/[partyId]/billing/[recordId]
 // Update editable fields on a billing record (admin only)
@@ -42,15 +25,10 @@ export async function PATCH(
 
     const { partyId, recordId } = await params;
     const body = await request.json();
-    const { billing_date, billing_period_from, billing_period_to, amount, bill_ref_no, narration, covered_cn_nos, extra_charge_items } = body;
+    const { billing_date, billing_period_from, billing_period_to, bill_ref_no, narration, covered_cn_nos, added_other_charges_amount } = body;
 
     if (!billing_date) {
         return NextResponse.json({ error: 'billing_date is required' }, { status: 400 });
-    }
-
-    const amountNum = Number(amount);
-    if (Number.isNaN(amountNum) || amountNum <= 0) {
-        return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
     }
 
     const { data: record } = await supabase
@@ -65,12 +43,51 @@ export async function PATCH(
         return NextResponse.json({ error: 'Only active billing records can be edited' }, { status: 400 });
     }
 
+    const { hasLinkedPayments, error: linkedPaymentsError } = await hasActiveLinkedPayments(supabase, {
+        partyId,
+        billingRecordId: recordId,
+    });
+
+    if (linkedPaymentsError) {
+        return NextResponse.json({ error: linkedPaymentsError }, { status: 500 });
+    }
+
+    if (hasLinkedPayments) {
+        return NextResponse.json({ error: 'Bills with active linked payments cannot be edited. Reverse the linked payment first.' }, { status: 400 });
+    }
+
+    const { data: snapshotData, error: snapshotError } = await prepareBillingSnapshot(supabase, {
+        partyId,
+        coveredCnNos: covered_cn_nos,
+        addedOtherChargesAmount: added_other_charges_amount,
+        excludeBillingRecordId: recordId,
+    });
+
+    if (snapshotError || !snapshotData) {
+        return NextResponse.json({ error: snapshotError || 'Failed to prepare bill snapshot' }, { status: 400 });
+    }
+
+    if (snapshotData.finalBillAmount <= 0) {
+        return NextResponse.json({ error: 'Bill amount must be greater than zero' }, { status: 400 });
+    }
+
     const normalizedBillRefNo = bill_ref_no?.trim() || null;
+
+    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateBillRefNo(supabase, {
+        partyId,
+        billRefNo: normalizedBillRefNo,
+        excludeBillingRecordId: recordId,
+    });
+
+    if (duplicateBillRefError) {
+        return NextResponse.json({ error: duplicateBillRefError }, { status: 500 });
+    }
+
+    if (duplicateRecordId) {
+        return NextResponse.json({ error: 'Bill reference number already exists for this party' }, { status: 400 });
+    }
+
     const normalizedNarration = narration?.trim() || (normalizedBillRefNo ? `Freight bill ${normalizedBillRefNo}` : 'Freight bill');
-    const normalizedCoveredCns = Array.isArray(covered_cn_nos)
-        ? covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
-        : null;
-    const normalizedExtraChargeItems = normalizeExtraChargeItems(extra_charge_items);
 
     const { data, error } = await supabase
         .from('party_billing_records')
@@ -78,11 +95,14 @@ export async function PATCH(
             billing_date,
             billing_period_from: billing_period_from || null,
             billing_period_to: billing_period_to || null,
-            amount: Number(amountNum.toFixed(2)),
+            amount: snapshotData.finalBillAmount,
             bill_ref_no: normalizedBillRefNo,
             narration: normalizedNarration,
-            covered_cn_nos: normalizedCoveredCns,
-            extra_charge_items: normalizedExtraChargeItems,
+            covered_cn_nos: snapshotData.normalizedCoveredCnNos,
+            cn_total_amount: snapshotData.cnTotalAmount,
+            added_other_charges_amount: snapshotData.addedOtherChargesAmount,
+            consignment_snapshot: snapshotData.consignmentSnapshot,
+            extra_charge_items: [],
         })
         .eq('id', recordId)
         .eq('party_id', partyId)

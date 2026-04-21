@@ -106,7 +106,7 @@ export function BillingRecordPicker({
                         <div className="p-2 space-y-2">
                             {filteredBillingRecords.length === 0 ? (
                                 <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                                    No active bills found
+                                    No unpaid bills found
                                 </div>
                             ) : filteredBillingRecords.map((record) => {
                                 const checked = value.includes(record.id);

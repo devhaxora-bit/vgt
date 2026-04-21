@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { hasActiveLinkedPayments } from '@/lib/server/billingSnapshot';
 
 // POST /api/ledger/[partyId]/billing/[recordId]/cancel
 // Cancel a billing record (admin only)
@@ -40,6 +41,19 @@ export async function POST(
 
     if (!record) return NextResponse.json({ error: 'Billing record not found' }, { status: 404 });
     if (record.status === 'CANCELLED') return NextResponse.json({ error: 'Record is already cancelled' }, { status: 400 });
+
+    const { hasLinkedPayments, error: linkedPaymentsError } = await hasActiveLinkedPayments(supabase, {
+        partyId,
+        billingRecordId: recordId,
+    });
+
+    if (linkedPaymentsError) {
+        return NextResponse.json({ error: linkedPaymentsError }, { status: 500 });
+    }
+
+    if (hasLinkedPayments) {
+        return NextResponse.json({ error: 'Bills with active linked payments cannot be cancelled. Reverse the linked payment first.' }, { status: 400 });
+    }
 
     const { data, error } = await supabase
         .from('party_billing_records')

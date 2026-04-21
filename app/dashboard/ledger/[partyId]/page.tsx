@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, use, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, use, useCallback } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { composeBillRefNo, getBillRefPrefix } from '@/lib/billRef';
 import {
     ArrowLeft, Package, TrendingUp, AlertCircle, DollarSign,
     Search, RotateCcw, Plus, FileText,
@@ -74,6 +75,9 @@ interface BillingRecord {
     id: string; billing_date: string; billing_period_from?: string;
     billing_period_to?: string; amount: number; bill_ref_no?: string;
     narration: string; covered_cn_nos?: string[]; status: string;
+    cn_total_amount?: number;
+    added_other_charges_amount?: number;
+    consignment_snapshot?: Array<Record<string, unknown>>;
     extra_charge_items?: BillingExtraChargeItem[];
     settled_amount?: number;
     remaining_amount?: number;
@@ -172,24 +176,74 @@ const getConsignmentBaseFreight = (
     return derivedFreight > 0 ? derivedFreight : totalFreight;
 };
 
+const getConsignmentChargeBreakdown = (
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+) => {
+    const freight = getConsignmentBaseFreight(consignment);
+    const unloading = parseMoney(consignment.unload_charges);
+    const detention = parseMoney(consignment.retention_charges);
+    const extraKm = parseMoney(consignment.extra_km_charges);
+    const loading = parseMoney(consignment.mhc_charges);
+    const doorCollection = parseMoney(consignment.door_coll_charges);
+    const doorDelivery = parseMoney(consignment.door_del_charges);
+    const other = parseMoney(consignment.other_charges);
+    const total = parseMoney(consignment.total_freight) || (
+        freight
+        + unloading
+        + detention
+        + extraKm
+        + loading
+        + doorCollection
+        + doorDelivery
+        + other
+    );
+
+    return {
+        freight,
+        unloading,
+        detention,
+        extraKm,
+        loading,
+        doorCollection,
+        doorDelivery,
+        other,
+        total,
+    };
+};
+
 const buildConsignmentBreakup = (consignments: Consignment[], selectedCnNos: string[]) => {
     const selected = consignments.filter((consignment) => selectedCnNos.includes(consignment.cn_no));
 
-    const freightTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentBaseFreight(consignment), 0);
-    const detentionTotal = selected.reduce<number>((sum, consignment) => sum + parseMoney(consignment.retention_charges), 0);
-    const extraChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentExtraCharges(consignment), 0);
-    const cnChargeTotal = selected.reduce<number>((sum, consignment) => {
-        const totalFreight = parseMoney(consignment.total_freight);
-        return sum + (totalFreight > 0
-            ? totalFreight
-            : getConsignmentBaseFreight(consignment) + parseMoney(consignment.retention_charges) + getConsignmentExtraCharges(consignment));
-    }, 0);
+    const freightTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).freight, 0);
+    const unloadingTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).unloading, 0);
+    const detentionTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).detention, 0);
+    const extraKmTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).extraKm, 0);
+    const loadingChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).loading, 0);
+    const doorCollectionTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).doorCollection, 0);
+    const doorDeliveryTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).doorDelivery, 0);
+    const otherChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).other, 0);
+    const ancillaryChargeTotal = selected.reduce<number>((sum, consignment) => (
+        sum
+        + getConsignmentChargeBreakdown(consignment).unloading
+        + getConsignmentChargeBreakdown(consignment).extraKm
+        + getConsignmentChargeBreakdown(consignment).loading
+        + getConsignmentChargeBreakdown(consignment).doorCollection
+        + getConsignmentChargeBreakdown(consignment).doorDelivery
+        + getConsignmentChargeBreakdown(consignment).other
+    ), 0);
+    const cnChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).total, 0);
 
     return {
         selected,
         freightTotal,
+        unloadingTotal,
         detentionTotal,
-        extraChargeTotal,
+        extraKmTotal,
+        loadingChargeTotal,
+        doorCollectionTotal,
+        doorDeliveryTotal,
+        otherChargeTotal,
+        ancillaryChargeTotal,
         cnChargeTotal,
     };
 };
@@ -258,44 +312,32 @@ function AddBillingDialog({
         billing_date: new Date().toISOString().split('T')[0],
         amount: '', bill_ref_no: '', narration: '',
         covered_cn_nos: [] as string[],
-        extra_charge_items: [] as BillingExtraChargeDraftItem[],
     });
     const [saving, setSaving] = useState(false);
-    const previousSuggestedTotalRef = useRef(0);
 
     const consignmentBreakup = useMemo(
         () => buildConsignmentBreakup(consignments, form.covered_cn_nos),
         [consignments, form.covered_cn_nos]
     );
-
-    const normalizedExtraChargeItems = useMemo(
-        () => normalizeExtraChargeDraftItems(form.extra_charge_items),
-        [form.extra_charge_items]
+    const billRefPrefix = useMemo(
+        () => getBillRefPrefix(form.billing_date),
+        [form.billing_date]
     );
 
-    const extraChargeTotal = useMemo(
-        () => normalizedExtraChargeItems.reduce((sum, item) => sum + item.amount, 0),
-        [normalizedExtraChargeItems]
-    );
-
-    const suggestedBillTotal = consignmentBreakup.cnChargeTotal + extraChargeTotal;
-
-    useEffect(() => {
-        setForm((current) => {
-            const nextAmount = suggestedBillTotal > 0 ? suggestedBillTotal.toFixed(2) : '';
-            const currentAmount = parseMoney(current.amount);
-            const shouldSync = !current.amount || Math.abs(currentAmount - previousSuggestedTotalRef.current) < 0.01;
-            previousSuggestedTotalRef.current = suggestedBillTotal;
-
-            if (!shouldSync || current.amount === nextAmount) return current;
-            return { ...current, amount: nextAmount };
-        });
-    }, [suggestedBillTotal]);
+    const enteredOtherChargeAmount = roundMoney(parseMoney(form.amount));
+    const suggestedBillTotal = consignmentBreakup.cnChargeTotal;
+    const displayedExtraChargeTotal = roundMoney(consignmentBreakup.otherChargeTotal + enteredOtherChargeAmount);
+    const finalBillAmount = roundMoney(consignmentBreakup.cnChargeTotal + enteredOtherChargeAmount);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.bill_ref_no.trim() || !form.amount) {
-            toast.error('Bill No and Amount are required');
+        if (!form.bill_ref_no.trim()) {
+            toast.error('Bill No is required');
+            return;
+        }
+
+        if (finalBillAmount <= 0) {
+            toast.error('Bill amount must be greater than zero');
             return;
         }
         setSaving(true);
@@ -304,10 +346,11 @@ function AddBillingDialog({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    ...form,
-                    amount: parseFloat(form.amount),
+                    billing_date: form.billing_date,
+                    bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no),
+                    narration: form.narration,
+                    added_other_charges_amount: enteredOtherChargeAmount,
                     covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
-                    extra_charge_items: normalizedExtraChargeItems,
                 }),
             });
             if (!res.ok) {
@@ -317,8 +360,7 @@ function AddBillingDialog({
             toast.success('Billing record created successfully');
             onSuccess();
             onClose();
-            previousSuggestedTotalRef.current = 0;
-            setForm({ billing_date: new Date().toISOString().split('T')[0], amount: '', bill_ref_no: '', narration: '', covered_cn_nos: [], extra_charge_items: [] });
+            setForm({ billing_date: new Date().toISOString().split('T')[0], amount: '', bill_ref_no: '', narration: '', covered_cn_nos: [] });
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to create billing record');
         } finally {
@@ -334,7 +376,7 @@ function AddBillingDialog({
                         <FileText className="h-4 w-4 text-primary" /> Add Billing Record
                     </DialogTitle>
                     <DialogDescription>
-                        Record a manual billing entry for this party. Amount is immutable after saving.
+                        Record a billing entry for this party. The typed amount is added into the bill other-charges column.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -347,21 +389,32 @@ function AddBillingDialog({
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs font-bold uppercase text-muted-foreground">Bill No *</Label>
-                                    <Input placeholder="e.g. 1408-1" value={form.bill_ref_no} onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" required />
+                                    <div className="flex h-9 overflow-hidden rounded-md border bg-background shadow-sm">
+                                        <div className="flex items-center border-r bg-muted/40 px-3 text-xs font-bold text-muted-foreground">
+                                            {billRefPrefix}
+                                        </div>
+                                        <Input
+                                            placeholder="Enter bill number"
+                                            value={form.bill_ref_no}
+                                            onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))}
+                                            className="h-full border-0 shadow-none focus-visible:ring-0"
+                                            required
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
                             <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Amount (₹) *</Label>
-                                    <Input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" required />
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Add In Other Charges (₹)</Label>
+                                    <Input type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" />
                                 </div>
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => setForm((current) => ({ ...current, amount: suggestedBillTotal > 0 ? suggestedBillTotal.toFixed(2) : current.amount }))}
+                                    onClick={() => setForm((current) => ({ ...current, amount: '' }))}
                                 >
-                                    Use Calculated Total
+                                    Use CN Total
                                 </Button>
                             </div>
 
@@ -369,11 +422,6 @@ function AddBillingDialog({
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
                                 <Input placeholder="Optional description" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
                             </div>
-
-                            <BillingExtraChargesEditor
-                                items={form.extra_charge_items}
-                                onChange={(extra_charge_items) => setForm((current) => ({ ...current, extra_charge_items }))}
-                            />
                         </div>
                         <div className="space-y-4">
                             <div className="space-y-1.5">
@@ -388,7 +436,7 @@ function AddBillingDialog({
                             <div className="rounded-lg border bg-muted/10">
                                 <div className="border-b px-4 py-3">
                                     <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Bill Breakup Preview</div>
-                                    <div className="text-xs text-muted-foreground">Selected CNS charges plus manual bill additions.</div>
+                                    <div className="text-xs text-muted-foreground">Every freight-detail charge from the selected CNs is shown below. The entered amount is added on top and shown inside bill other charges.</div>
                                 </div>
                                 <div className="space-y-2 p-4 text-sm">
                                     <div className="flex items-center justify-between">
@@ -396,28 +444,52 @@ function AddBillingDialog({
                                         <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.freightTotal)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-muted-foreground">CN Detention</span>
+                                        <span className="text-muted-foreground">Unloading Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.unloadingTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Detention Charges</span>
                                         <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.detentionTotal)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-muted-foreground">CN Extra Charges</span>
-                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.extraChargeTotal)}</span>
+                                        <span className="text-muted-foreground">Extra KM Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.extraKmTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Loading Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.loadingChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Door Coll Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.doorCollectionTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Door Del Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.doorDeliveryTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Other Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.otherChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Added Other Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(enteredOtherChargeAmount)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Bill Other Charges Column</span>
+                                        <span className="font-mono font-semibold">₹{fmt(displayedExtraChargeTotal)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">CN Total</span>
                                         <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.cnChargeTotal)}</span>
                                     </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-muted-foreground">Manual Extra Charges</span>
-                                        <span className="font-mono font-semibold">₹{fmt(extraChargeTotal)}</span>
-                                    </div>
                                     <div className="flex items-center justify-between border-t pt-2 font-bold">
-                                        <span>Suggested Bill Total</span>
-                                        <span className="font-mono text-emerald-700">₹{fmt(suggestedBillTotal)}</span>
+                                        <span>Final Bill Amount</span>
+                                        <span className="font-mono text-emerald-700">₹{fmt(finalBillAmount)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-muted-foreground">Current Bill Amount</span>
-                                        <span className="font-mono font-black text-primary">₹{fmt(parseMoney(form.amount))}</span>
+                                        <span className="text-muted-foreground">CN Total Without Added Amount</span>
+                                        <span className="font-mono text-emerald-700">₹{fmt(suggestedBillTotal)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -450,7 +522,7 @@ function AddPaymentDialog({
 }) {
     interface PaymentBillAllocationDraft {
         billing_record_id: string;
-        received_amount: string;
+        settled_amount: string;
         deduction_items: BillingExtraChargeDraftItem[];
     }
 
@@ -479,7 +551,8 @@ function AddPaymentDialog({
                     settled_amount: settledAmount,
                     remaining_amount: remainingAmount,
                 };
-            }),
+            })
+            .filter((record) => parseMoney(record.remaining_amount) > 0.009),
         [billingRecords, settledBillAmountMap]
     );
 
@@ -496,11 +569,11 @@ function AddPaymentDialog({
             if (existingDraft) return existingDraft;
 
             const bill = payableBillingRecordMap.get(billId);
-            const defaultReceivedAmount = Math.max(parseMoney(bill?.remaining_amount ?? bill?.amount ?? 0), 0);
+            const defaultSettledAmount = Math.max(parseMoney(bill?.remaining_amount ?? bill?.amount ?? 0), 0);
 
             return {
                 billing_record_id: billId,
-                received_amount: defaultReceivedAmount > 0 ? defaultReceivedAmount.toFixed(2) : '',
+                settled_amount: defaultSettledAmount > 0 ? defaultSettledAmount.toFixed(2) : '',
                 deduction_items: [],
             };
         });
@@ -511,9 +584,9 @@ function AddPaymentDialog({
             .filter((allocation) => form.related_billing_record_ids.includes(allocation.billing_record_id))
             .map((allocation) => {
                 const deductionItems = normalizeExtraChargeDraftItems(allocation.deduction_items);
-                const receivedAmount = roundMoney(parseMoney(allocation.received_amount));
                 const deductionTotal = roundMoney(deductionItems.reduce((sum, item) => sum + item.amount, 0));
-                const settledAmount = roundMoney(receivedAmount + deductionTotal);
+                const settledAmount = roundMoney(parseMoney(allocation.settled_amount));
+                const receivedAmount = roundMoney(settledAmount - deductionTotal);
 
                 return {
                     billing_record_id: allocation.billing_record_id,
@@ -584,6 +657,11 @@ function AddPaymentDialog({
                     return;
                 }
 
+                if (allocation.received_amount < 0) {
+                    toast.error(`Deductions cannot exceed the settled amount for bill ${bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase()}`);
+                    return;
+                }
+
                 const remainingAmount = parseMoney(bill.remaining_amount ?? bill.amount);
                 if (allocation.settled_amount > remainingAmount + 0.009) {
                     toast.error(`Settled amount cannot exceed the remaining balance for bill ${bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase()}`);
@@ -637,7 +715,7 @@ function AddPaymentDialog({
                         <Banknote className="h-4 w-4 text-primary" /> Record Payment
                     </DialogTitle>
                     <DialogDescription>
-                        Link the receipt to bill numbers, split the actual received amount bill-wise, and add deduction breakup where the bill is settled for more than the cash received.
+                        Link the receipt to bill numbers, enter how much is settled against each bill, and keep deduction breakup inside that settled amount.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -672,9 +750,13 @@ function AddPaymentDialog({
                                 <div className="rounded-lg border bg-muted/10">
                                     <div className="border-b px-4 py-3">
                                         <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Receipt Summary</div>
-                                        <div className="text-xs text-muted-foreground">Main ledger impact uses the settled amount. Deduction lines explain the gap between cash received and bill settlement.</div>
+                                        <div className="text-xs text-muted-foreground">Main ledger impact uses the settled amount. Actual received is calculated after subtracting deduction breakup.</div>
                                     </div>
                                     <div className="space-y-2 p-4 text-sm">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-muted-foreground">Settled Amount</span>
+                                            <span className="font-mono font-semibold text-indigo-700">₹{fmt(selectedBillSettledTotal)}</span>
+                                        </div>
                                         <div className="flex items-center justify-between">
                                             <span className="text-muted-foreground">Actual Received</span>
                                             <span className="font-mono font-semibold">₹{fmt(selectedBillActualReceivedTotal)}</span>
@@ -684,7 +766,7 @@ function AddPaymentDialog({
                                             <span className="font-mono font-semibold">₹{fmt(selectedBillDeductionTotal)}</span>
                                         </div>
                                         <div className="flex items-center justify-between border-t pt-2 font-bold">
-                                            <span>Total Settled in Ledger</span>
+                                            <span>Receipt Posted To Ledger</span>
                                             <span className="font-mono text-indigo-700">₹{fmt(selectedBillSettledTotal)}</span>
                                         </div>
                                     </div>
@@ -726,16 +808,18 @@ function AddPaymentDialog({
                         <div className="space-y-4">
                             {selectedAllocationDrafts.length === 0 ? (
                                 <div className="rounded-lg border border-dashed bg-muted/10 p-6 text-sm text-muted-foreground">
-                                    Select one or more bill numbers to record bill-wise received amount and deduction breakup.
+                                    Select one or more unpaid bill numbers to record bill-wise settlement and deduction breakup.
                                 </div>
                             ) : selectedAllocationDrafts.map(({ bill, draft }) => {
                                 const deductionTotal = roundMoney(
                                     normalizeExtraChargeDraftItems(draft.deduction_items).reduce((sum, item) => sum + item.amount, 0)
                                 );
-                                const receivedAmount = roundMoney(parseMoney(draft.received_amount));
-                                const settledAmount = roundMoney(receivedAmount + deductionTotal);
+                                const settledAmount = roundMoney(parseMoney(draft.settled_amount));
+                                const receivedAmount = roundMoney(settledAmount - deductionTotal);
                                 const remainingBeforeReceipt = parseMoney(bill.remaining_amount ?? bill.amount);
                                 const remainingAfterReceipt = Math.max(roundMoney(remainingBeforeReceipt - settledAmount), 0);
+                                const hasOverDeduction = receivedAmount < 0;
+                                const hasOverSettlement = settledAmount > remainingBeforeReceipt + 0.009;
 
                                 return (
                                     <div key={bill.id} className="rounded-lg border bg-background shadow-sm">
@@ -763,43 +847,61 @@ function AddPaymentDialog({
 
                                         <div className="space-y-4 p-4">
                                             <div className="space-y-1.5">
-                                                <Label className="text-xs font-bold uppercase text-muted-foreground">Actual Received For This Bill (₹)</Label>
+                                                <Label className="text-xs font-bold uppercase text-muted-foreground">Settled For This Bill (₹)</Label>
                                                 <Input
                                                     type="number"
                                                     min="0"
                                                     step="0.01"
-                                                    value={draft.received_amount}
+                                                    max={remainingBeforeReceipt > 0 ? remainingBeforeReceipt : undefined}
+                                                    value={draft.settled_amount}
                                                     onChange={(e) => setForm((current) => ({
                                                         ...current,
                                                         bill_allocations: current.bill_allocations.map((allocation) => (
                                                             allocation.billing_record_id === draft.billing_record_id
-                                                                ? { ...allocation, received_amount: e.target.value }
+                                                                ? { ...allocation, settled_amount: e.target.value }
                                                                 : allocation
                                                         )),
                                                     }))}
                                                     className="h-9 font-mono"
                                                     placeholder="0.00"
                                                 />
+                                                <div className="text-[11px] text-muted-foreground">
+                                                    Max allowed for this bill: ₹{fmt(remainingBeforeReceipt)}
+                                                </div>
                                             </div>
 
                                             <div className="grid gap-3 text-sm md:grid-cols-4">
                                                 <div className="rounded-md border bg-muted/10 px-3 py-2">
+                                                    <div className="text-[11px] font-bold uppercase text-muted-foreground">Settled</div>
+                                                    <div className="font-mono font-semibold text-indigo-700">₹{fmt(settledAmount)}</div>
+                                                </div>
+                                                <div className="rounded-md border bg-muted/10 px-3 py-2">
                                                     <div className="text-[11px] font-bold uppercase text-muted-foreground">Received</div>
-                                                    <div className="font-mono font-semibold text-foreground">₹{fmt(receivedAmount)}</div>
+                                                    <div className={`font-mono font-semibold ${hasOverDeduction ? 'text-destructive' : 'text-foreground'}`}>
+                                                        ₹{fmt(Math.max(receivedAmount, 0))}
+                                                    </div>
                                                 </div>
                                                 <div className="rounded-md border bg-muted/10 px-3 py-2">
                                                     <div className="text-[11px] font-bold uppercase text-muted-foreground">Deductions</div>
                                                     <div className="font-mono font-semibold text-amber-700">₹{fmt(deductionTotal)}</div>
                                                 </div>
                                                 <div className="rounded-md border bg-muted/10 px-3 py-2">
-                                                    <div className="text-[11px] font-bold uppercase text-muted-foreground">Settled</div>
-                                                    <div className="font-mono font-semibold text-indigo-700">₹{fmt(settledAmount)}</div>
-                                                </div>
-                                                <div className="rounded-md border bg-muted/10 px-3 py-2">
                                                     <div className="text-[11px] font-bold uppercase text-muted-foreground">Balance After</div>
                                                     <div className="font-mono font-semibold text-emerald-700">₹{fmt(remainingAfterReceipt)}</div>
                                                 </div>
                                             </div>
+
+                                            {hasOverDeduction && (
+                                                <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                                                    Deductions cannot be greater than the settled amount for this bill.
+                                                </div>
+                                            )}
+
+                                            {hasOverSettlement && (
+                                                <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                                                    Settled amount cannot exceed this bill&apos;s remaining balance of ₹{fmt(remainingBeforeReceipt)}.
+                                                </div>
+                                            )}
 
                                             <BillingExtraChargesEditor
                                                 items={draft.deduction_items}
@@ -812,7 +914,7 @@ function AddPaymentDialog({
                                                     )),
                                                 }))}
                                                 title="Deduction Breakup"
-                                                description="Add positive deduction lines when the bill is being settled for more than the cash or bank amount actually received."
+                                                description="Add positive deduction lines inside this settled amount. Actual received becomes settled minus deductions."
                                                 emptyMessage="No deduction lines added for this bill."
                                                 lineLabel="Deduction"
                                                 descriptionPlaceholder="e.g. TDS / shortage / rate diff / damage recovery"
@@ -891,12 +993,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         account: LedgerAccount | null;
         summary: Summary;
         consignments: Consignment[];
+        all_consignments: Consignment[];
         billing_records: BillingRecord[];
         payment_receipts: PaymentReceipt[];
+        all_billing_records: BillingRecord[];
+        all_payment_receipts: PaymentReceipt[];
     }>({
         party: null, account: null,
         summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, outstanding: 0, opening_balance: 0 },
-        consignments: [], billing_records: [], payment_receipts: [],
+        consignments: [], all_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -978,24 +1083,25 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
     // Monthly summary (computed client-side from CNS + billing records + payments)
     const monthlySummary = useMemo(() => {
-        const map: Record<string, { month: string; cns_count: number; cns_amount: number; billed: number; paid: number }> = {};
+        const map: Record<string, { month: string; cns_count: number; cns_amount: number; billed: number; cn_billed: number; paid: number }> = {};
 
         data.consignments.forEach(c => {
             const m = c.bkg_date?.slice(0, 7) || 'unknown';
-            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, paid: 0 };
+            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].cns_count += 1;
             map[m].cns_amount += parseFloat(String(c.total_freight)) || 0;
         });
 
         data.billing_records.filter(b => b.status === 'ACTIVE').forEach(b => {
             const m = b.billing_date?.slice(0, 7) || 'unknown';
-            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, paid: 0 };
+            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].billed += parseFloat(String(b.amount)) || 0;
+            map[m].cn_billed += parseFloat(String(b.cn_total_amount ?? b.amount)) || 0;
         });
 
         data.payment_receipts.filter(p => p.status === 'ACTIVE').forEach(p => {
             const m = p.receipt_date?.slice(0, 7) || 'unknown';
-            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, paid: 0 };
+            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].paid += parseFloat(String(p.amount)) || 0;
         });
 
@@ -1579,9 +1685,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     <TableCell className="text-right font-mono font-bold text-emerald-700">₹{fmt(m.billed)}</TableCell>
                                                     <TableCell className="text-right font-mono font-bold text-indigo-700">₹{fmt(m.paid)}</TableCell>
                                                     <TableCell className="text-right">
-                                                        {m.cns_amount - m.billed > 0 ? (
+                                                        {m.cns_amount - m.cn_billed > 0 ? (
                                                             <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                                                                ₹{fmt(m.cns_amount - m.billed)}
+                                                                ₹{fmt(m.cns_amount - m.cn_billed)}
                                                             </span>
                                                         ) : (
                                                             <span className="text-emerald-700 font-mono font-bold">Fully Billed</span>
@@ -1612,22 +1718,22 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 partyId={partyId}
                 record={editingBillingRecord}
                 onSuccess={fetchData}
-                consignments={data.consignments}
+                consignments={data.all_consignments}
             />
             <AddPaymentDialog
                 open={showPaymentDialog}
                 onClose={() => setShowPaymentDialog(false)}
                 partyId={partyId}
                 onSuccess={fetchData}
-                billingRecords={data.billing_records}
-                paymentReceipts={data.payment_receipts}
+                billingRecords={data.all_billing_records}
+                paymentReceipts={data.all_payment_receipts}
             />
             <BillingRecordViewDialog
                 open={!!selectedBillingRecord}
                 onClose={() => setSelectedBillingRecord(null)}
                 party={party}
                 record={selectedBillingRecord}
-                consignments={data.consignments}
+                consignments={data.all_consignments}
                 isAdmin={isAdmin}
                 onEdit={() => {
                     if (!selectedBillingRecord) return;

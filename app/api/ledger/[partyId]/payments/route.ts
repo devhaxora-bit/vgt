@@ -27,15 +27,20 @@ const normalizeBillAllocations = (value: unknown) => {
     return value
         .map((item) => {
             const billingRecordId = String((item as { billing_record_id?: unknown })?.billing_record_id || '').trim();
-            const receivedAmount = Number((item as { received_amount?: unknown })?.received_amount || 0);
+            const settledAmountInput = Number((item as { settled_amount?: unknown })?.settled_amount);
+            const receivedAmountInput = Number((item as { received_amount?: unknown })?.received_amount || 0);
             const deductionItems = normalizeDeductionItems((item as { deduction_items?: unknown })?.deduction_items);
-            const settledAmount = roundMoney(receivedAmount + deductionItems.reduce((sum, deduction) => sum + deduction.amount, 0));
+            const deductionTotal = roundMoney(deductionItems.reduce((sum, deduction) => sum + deduction.amount, 0));
+            const settledAmount = !Number.isNaN(settledAmountInput)
+                ? roundMoney(settledAmountInput)
+                : roundMoney(receivedAmountInput + deductionTotal);
+            const receivedAmount = roundMoney(settledAmount - deductionTotal);
 
-            if (!billingRecordId || Number.isNaN(receivedAmount) || receivedAmount < 0 || settledAmount <= 0) return null;
+            if (!billingRecordId || settledAmount <= 0 || receivedAmount < 0) return null;
 
             return {
                 billing_record_id: billingRecordId,
-                received_amount: roundMoney(receivedAmount),
+                received_amount: receivedAmount,
                 settled_amount: settledAmount,
                 deduction_items: deductionItems,
             };
@@ -46,6 +51,44 @@ const normalizeBillAllocations = (value: unknown) => {
             settled_amount: number;
             deduction_items: Array<{ label: string; amount: number }>;
         } => item !== null);
+};
+
+const buildSettledBillAmountMap = (paymentReceipts: Array<{
+    amount?: number | null;
+    status?: string | null;
+    related_billing_record_ids?: string[] | null;
+    bill_allocations?: Array<{ billing_record_id?: string; settled_amount?: number | null }> | null;
+}>) => {
+    const billSettledMap = new Map<string, number>();
+
+    paymentReceipts
+        .filter((receipt) => receipt.status === 'ACTIVE')
+        .forEach((receipt) => {
+            if ((receipt.bill_allocations || []).length > 0) {
+                receipt.bill_allocations?.forEach((allocation) => {
+                    const billId = String(allocation.billing_record_id || '').trim();
+                    if (!billId) return;
+
+                    billSettledMap.set(
+                        billId,
+                        roundMoney((billSettledMap.get(billId) || 0) + Number(allocation.settled_amount || 0))
+                    );
+                });
+                return;
+            }
+
+            if ((receipt.related_billing_record_ids || []).length === 1) {
+                const billId = String(receipt.related_billing_record_ids?.[0] || '').trim();
+                if (!billId) return;
+
+                billSettledMap.set(
+                    billId,
+                    roundMoney((billSettledMap.get(billId) || 0) + Number(receipt.amount || 0))
+                );
+            }
+        });
+
+    return billSettledMap;
 };
 
 // POST /api/ledger/[partyId]/payments
@@ -91,6 +134,10 @@ export async function POST(
     }
 
     const normalizedBillAllocations = normalizeBillAllocations(bill_allocations);
+    if (Array.isArray(bill_allocations) && normalizedBillAllocations.length !== bill_allocations.length) {
+        return NextResponse.json({ error: 'Each selected bill must have a valid settled amount and deduction breakup' }, { status: 400 });
+    }
+
     const normalizedBillingRecordIdsFromBody = Array.isArray(related_billing_record_ids)
         ? related_billing_record_ids.map((value) => String(value).trim()).filter(Boolean)
         : [];
@@ -118,6 +165,17 @@ export async function POST(
         }
 
         if (normalizedBillAllocations.length > 0) {
+            const { data: existingReceipts, error: existingReceiptsError } = await supabase
+                .from('party_payment_receipts')
+                .select('amount, status, related_billing_record_ids, bill_allocations')
+                .eq('party_id', partyId)
+                .eq('status', 'ACTIVE');
+
+            if (existingReceiptsError) {
+                return NextResponse.json({ error: existingReceiptsError.message }, { status: 400 });
+            }
+
+            const alreadySettledMap = buildSettledBillAmountMap(existingReceipts || []);
             const billAmountMap = new Map(
                 billingRecords.map((record) => [record.id, Number(record.amount || 0)])
             );
@@ -130,8 +188,15 @@ export async function POST(
                 seenBillIds.add(allocation.billing_record_id);
 
                 const billAmount = billAmountMap.get(allocation.billing_record_id) || 0;
-                if (allocation.settled_amount > billAmount + 0.009) {
-                    return NextResponse.json({ error: 'Settled amount cannot exceed the selected bill amount' }, { status: 400 });
+                const alreadySettledAmount = alreadySettledMap.get(allocation.billing_record_id) || 0;
+                const remainingBillAmount = roundMoney(Math.max(billAmount - alreadySettledAmount, 0));
+
+                if (remainingBillAmount <= 0.009) {
+                    return NextResponse.json({ error: 'One or more selected bills are already fully settled' }, { status: 400 });
+                }
+
+                if (allocation.settled_amount > remainingBillAmount + 0.009) {
+                    return NextResponse.json({ error: 'Settled amount cannot exceed the remaining balance for the selected bill' }, { status: 400 });
                 }
             }
         }

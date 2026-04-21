@@ -1,23 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-
-const normalizeExtraChargeItems = (value: unknown) => {
-    if (!Array.isArray(value)) return [];
-
-    return value
-        .map((item) => {
-            const label = String((item as { label?: unknown })?.label || '').trim();
-            const amount = Number((item as { amount?: unknown })?.amount || 0);
-
-            if (!label || Number.isNaN(amount) || amount <= 0) return null;
-
-            return {
-                label,
-                amount: Number(amount.toFixed(2)),
-            };
-        })
-        .filter((item): item is { label: string; amount: number } => item !== null);
-};
+import { findDuplicateBillRefNo, prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
 
 // POST /api/ledger/[partyId]/billing
 // Create a billing record for a party (admin only)
@@ -55,22 +38,41 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { billing_date, billing_period_from, billing_period_to, amount, bill_ref_no, narration, covered_cn_nos, extra_charge_items } = body;
+    const { billing_date, billing_period_from, billing_period_to, bill_ref_no, narration, covered_cn_nos, added_other_charges_amount } = body;
+    const normalizedBillRefNo = String(bill_ref_no || '').trim();
 
-    if (!billing_date || !bill_ref_no?.trim() || !amount) {
-        return NextResponse.json({ error: 'billing_date, bill_ref_no and amount are required' }, { status: 400 });
+    if (!billing_date || !normalizedBillRefNo) {
+        return NextResponse.json({ error: 'billing_date and bill_ref_no are required' }, { status: 400 });
     }
 
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-        return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
+    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateBillRefNo(supabase, {
+        partyId,
+        billRefNo: normalizedBillRefNo,
+    });
+
+    if (duplicateBillRefError) {
+        return NextResponse.json({ error: duplicateBillRefError }, { status: 500 });
     }
 
-    const normalizedNarration = narration?.trim() || `Freight bill ${bill_ref_no.trim()}`;
-    const normalizedCoveredCns = Array.isArray(covered_cn_nos)
-        ? covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
-        : null;
-    const normalizedExtraChargeItems = normalizeExtraChargeItems(extra_charge_items);
+    if (duplicateRecordId) {
+        return NextResponse.json({ error: 'Bill reference number already exists for this party' }, { status: 400 });
+    }
+
+    const { data: snapshotData, error: snapshotError } = await prepareBillingSnapshot(supabase, {
+        partyId,
+        coveredCnNos: covered_cn_nos,
+        addedOtherChargesAmount: added_other_charges_amount,
+    });
+
+    if (snapshotError || !snapshotData) {
+        return NextResponse.json({ error: snapshotError || 'Failed to prepare bill snapshot' }, { status: 400 });
+    }
+
+    if (snapshotData.finalBillAmount <= 0) {
+        return NextResponse.json({ error: 'Bill amount must be greater than zero' }, { status: 400 });
+    }
+
+    const normalizedNarration = narration?.trim() || `Freight bill ${normalizedBillRefNo}`;
 
     const { data, error } = await supabase
         .from('party_billing_records')
@@ -80,11 +82,14 @@ export async function POST(
             billing_date,
             billing_period_from: billing_period_from || null,
             billing_period_to: billing_period_to || null,
-            amount: amountNum,
-            bill_ref_no: bill_ref_no.trim(),
+            amount: snapshotData.finalBillAmount,
+            bill_ref_no: normalizedBillRefNo,
             narration: normalizedNarration,
-            covered_cn_nos: normalizedCoveredCns,
-            extra_charge_items: normalizedExtraChargeItems,
+            covered_cn_nos: snapshotData.normalizedCoveredCnNos,
+            cn_total_amount: snapshotData.cnTotalAmount,
+            added_other_charges_amount: snapshotData.addedOtherChargesAmount,
+            consignment_snapshot: snapshotData.consignmentSnapshot,
+            extra_charge_items: [],
             created_by: user.id,
         })
         .select()
