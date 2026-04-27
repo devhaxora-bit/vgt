@@ -4,9 +4,10 @@ import React, { useState, useEffect, useMemo, use, useCallback } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { composeBillRefNo, getBillRefPrefix } from '@/lib/billRef';
+import { downloadPartyLedgerReportPdf } from '@/lib/ledgerReportPdf';
 import {
     ArrowLeft, Package, TrendingUp, AlertCircle, DollarSign,
-    Search, RotateCcw, Plus, FileText,
+    Search, RotateCcw, Plus, FileText, Download,
     Truck, CheckCircle2, XCircle, CreditCard, Banknote, Building2,
     Loader2, Eye, Pencil
 } from 'lucide-react';
@@ -276,6 +277,61 @@ const buildSettledBillAmountMap = (paymentReceipts: PaymentReceipt[]) => {
         });
 
     return billSettledMap;
+};
+
+const toDateInputValue = (value: Date) => format(value, 'yyyy-MM-dd');
+
+const getCurrentFinancialYearStart = (value = new Date()) => (
+    value.getMonth() >= 3 ? value.getFullYear() : value.getFullYear() - 1
+);
+
+const getMonthlyDateRange = (year: number, month: number) => {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+
+    return {
+        from: toDateInputValue(startDate),
+        to: toDateInputValue(endDate),
+        label: `${format(startDate, 'MMMM yyyy')}`,
+    };
+};
+
+const getQuarterDateRange = (financialYearStart: number, quarter: number) => {
+    const quarterOffsets = {
+        1: { startMonth: 3, endMonth: 5, yearOffset: 0, label: 'Q1 (Apr-Jun)' },
+        2: { startMonth: 6, endMonth: 8, yearOffset: 0, label: 'Q2 (Jul-Sep)' },
+        3: { startMonth: 9, endMonth: 11, yearOffset: 0, label: 'Q3 (Oct-Dec)' },
+        4: { startMonth: 0, endMonth: 2, yearOffset: 1, label: 'Q4 (Jan-Mar)' },
+    } as const;
+
+    const config = quarterOffsets[quarter as keyof typeof quarterOffsets] || quarterOffsets[1];
+    const startDate = new Date(financialYearStart + config.yearOffset, config.startMonth, 1);
+    const endDate = new Date(financialYearStart + config.yearOffset, config.endMonth + 1, 0);
+
+    return {
+        from: toDateInputValue(startDate),
+        to: toDateInputValue(endDate),
+        label: `${config.label} FY ${financialYearStart}-${String(financialYearStart + 1).slice(-2)}`,
+    };
+};
+
+const getFinancialYearDateRange = (financialYearStart: number) => {
+    const startDate = new Date(financialYearStart, 3, 1);
+    const endDate = new Date(financialYearStart + 1, 3, 0);
+
+    return {
+        from: toDateInputValue(startDate),
+        to: toDateInputValue(endDate),
+        label: `FY ${financialYearStart}-${String(financialYearStart + 1).slice(-2)}`,
+    };
+};
+
+const isWithinDateRange = (value: string | undefined | null, from: string, to: string) => {
+    const normalized = value?.slice(0, 10) || '';
+    if (!normalized) return false;
+    if (from && normalized < from) return false;
+    if (to && normalized > to) return false;
+    return true;
 };
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
@@ -988,6 +1044,8 @@ function CancelDialog({
 
 export default function PartyLedgerPage({ params }: { params: Promise<{ partyId: string }> }) {
     const { partyId } = use(params);
+    const currentDate = useMemo(() => new Date(), []);
+    const currentFinancialYearStart = useMemo(() => getCurrentFinancialYearStart(currentDate), [currentDate]);
 
     const [data, setData] = useState<{
         party: Party | null;
@@ -1010,11 +1068,17 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     // Filters
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [reportPreset, setReportPreset] = useState<'custom' | 'monthly' | 'quarterly' | 'yearly'>('custom');
+    const [reportYear, setReportYear] = useState(currentDate.getFullYear());
+    const [reportQuarterYear, setReportQuarterYear] = useState(currentFinancialYearStart);
+    const [reportMonth, setReportMonth] = useState(currentDate.getMonth() + 1);
+    const [reportQuarter, setReportQuarter] = useState(currentDate.getMonth() >= 3 ? Math.floor((currentDate.getMonth() - 3) / 3) + 1 : 4);
     const [cnsSearch, setCnsSearch] = useState('');
     const [billingSearch, setBillingSearch] = useState('');
     const [billingStatusFilter, setBillingStatusFilter] = useState<'all' | 'ACTIVE' | 'CANCELLED'>('all');
     const [billingDateFrom, setBillingDateFrom] = useState('');
     const [billingDateTo, setBillingDateTo] = useState('');
+    const [isDownloadingReport, setIsDownloadingReport] = useState(false);
 
     // Dialogs
     const [showBillingDialog, setShowBillingDialog] = useState(false);
@@ -1051,6 +1115,57 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             .then(r => setIsAdmin(r?.data?.role === 'admin'))
             .catch(console.error);
     }, []);
+
+    useEffect(() => {
+        if (reportPreset === 'custom') return;
+
+        const range = reportPreset === 'monthly'
+            ? getMonthlyDateRange(reportYear, reportMonth)
+            : reportPreset === 'quarterly'
+                ? getQuarterDateRange(reportQuarterYear, reportQuarter)
+                : getFinancialYearDateRange(reportQuarterYear);
+
+        setDateFrom(range.from);
+        setDateTo(range.to);
+    }, [reportMonth, reportPreset, reportQuarter, reportQuarterYear, reportYear]);
+
+    const reportPeriodLabel = useMemo(() => {
+        if (reportPreset === 'monthly') {
+            return getMonthlyDateRange(reportYear, reportMonth).label;
+        }
+
+        if (reportPreset === 'quarterly') {
+            return getQuarterDateRange(reportQuarterYear, reportQuarter).label;
+        }
+
+        if (reportPreset === 'yearly') {
+            return getFinancialYearDateRange(reportQuarterYear).label;
+        }
+
+        if (dateFrom || dateTo) {
+            return `${dateFrom || 'Start'} to ${dateTo || 'End'}`;
+        }
+
+        return 'All Dates';
+    }, [dateFrom, dateTo, reportMonth, reportPreset, reportQuarter, reportQuarterYear, reportYear]);
+
+    const monthOptions = useMemo(
+        () => Array.from({ length: 12 }, (_, index) => ({
+            value: String(index + 1),
+            label: format(new Date(2026, index, 1), 'MMMM'),
+        })),
+        []
+    );
+
+    const reportYearOptions = useMemo(
+        () => Array.from({ length: 6 }, (_, index) => currentDate.getFullYear() - 3 + index),
+        [currentDate]
+    );
+
+    const financialYearOptions = useMemo(
+        () => Array.from({ length: 6 }, (_, index) => currentFinancialYearStart - 3 + index),
+        [currentFinancialYearStart]
+    );
 
     const handleCancelBilling = async (reason: string) => {
         if (!cancelTarget) return;
@@ -1109,6 +1224,76 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         return Object.values(map).sort((a, b) => b.month.localeCompare(a.month));
     }, [data]);
 
+    const reportPayload = useMemo(() => {
+        if (!data.party) return null;
+
+        const reportConsignments = data.all_consignments.filter((record) => (
+            isWithinDateRange(record.bkg_date, dateFrom, dateTo)
+        ));
+        const reportBillingRecords = data.all_billing_records.filter((record) => (
+            isWithinDateRange(record.billing_date, dateFrom, dateTo)
+        ));
+        const reportPaymentReceipts = data.all_payment_receipts.filter((record) => (
+            isWithinDateRange(record.receipt_date, dateFrom, dateTo)
+        ));
+
+        const activeBills = reportBillingRecords.filter((record) => record.status === 'ACTIVE');
+        const activePayments = reportPaymentReceipts.filter((record) => record.status === 'ACTIVE');
+        const totalCnsAmount = roundMoney(reportConsignments.reduce((sum, record) => sum + parseMoney(record.total_freight), 0));
+        const totalBilled = roundMoney(activeBills.reduce((sum, record) => sum + parseMoney(record.amount), 0));
+        const totalCnBilled = roundMoney(activeBills.reduce((sum, record) => sum + parseMoney(record.cn_total_amount), 0));
+        const totalPaid = roundMoney(activePayments.reduce((sum, record) => sum + parseMoney(record.amount), 0));
+        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalCnBilled);
+        const openingBalance = roundMoney(parseMoney(data.account?.opening_balance));
+        const billingLookup = new Map(reportBillingRecords.map((record) => [record.id, record]));
+
+        return {
+            party: data.party,
+            periodLabel: reportPeriodLabel,
+            summary: {
+                totalCnsAmount,
+                totalCnsCount: reportConsignments.length,
+                totalBilled,
+                totalPaid,
+                unbilledAmount: Math.max(rawUnbilledAmount, 0),
+                overbilledAmount: Math.max(-rawUnbilledAmount, 0),
+                outstanding: roundMoney(openingBalance + totalBilled - totalPaid),
+            },
+            sections: {
+                cnsRows: reportConsignments.map((record) => ({
+                    cnNo: record.cn_no,
+                    date: fmtDate(record.bkg_date),
+                    route: `${record.loading_point || record.booking_branch || '—'} -> ${record.delivery_point || record.dest_branch || '—'}`,
+                    basis: record.bkg_basis,
+                    freight: `₹${fmt(parseMoney(record.total_freight))}`,
+                })),
+                billingRows: reportBillingRecords.map((record) => ({
+                    billNo: record.bill_ref_no || '—',
+                    date: fmtDate(record.billing_date),
+                    coveredCns: (record.covered_cn_nos || []).join(', ') || '—',
+                    cnTotal: `₹${fmt(parseMoney(record.cn_total_amount))}`,
+                    billed: `₹${fmt(parseMoney(record.amount))}`,
+                    status: record.status,
+                })),
+                paymentRows: reportPaymentReceipts.map((record) => ({
+                    date: fmtDate(record.receipt_date),
+                    mode: record.payment_mode || '—',
+                    reference: record.reference_no || '—',
+                    bills: ((record.bill_allocations || []).length > 0
+                        ? (record.bill_allocations || [])
+                            .map((allocation) => billingLookup.get(allocation.billing_record_id)?.bill_ref_no || billingLookup.get(allocation.billing_record_id)?.id.slice(0, 8).toUpperCase() || '—')
+                            .join(', ')
+                        : (record.related_billing_record_ids || [])
+                            .map((id) => billingLookup.get(id)?.bill_ref_no || billingLookup.get(id)?.id.slice(0, 8).toUpperCase() || '—')
+                            .join(', ')) || '—',
+                    settled: `₹${fmt(parseMoney(record.amount))}`,
+                    received: `₹${fmt(parseMoney(record.actual_received_amount ?? record.amount))}`,
+                    status: record.status,
+                })),
+            },
+        };
+    }, [data.account?.opening_balance, data.all_billing_records, data.all_consignments, data.all_payment_receipts, data.party, dateFrom, dateTo, reportPeriodLabel]);
+
     const filteredBillingRecords = useMemo(() => {
         const query = billingSearch.trim().toLowerCase();
 
@@ -1145,6 +1330,82 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     );
 
     const { party, summary } = data;
+
+    const handleDownloadLedgerReport = useCallback(async () => {
+        if (!reportPayload || !party) return;
+
+        const totalRows = reportPayload.sections.cnsRows.length
+            + reportPayload.sections.billingRows.length
+            + reportPayload.sections.paymentRows.length;
+
+        if (totalRows === 0) {
+            toast.error('No ledger entries found for the selected period');
+            return;
+        }
+
+        setIsDownloadingReport(true);
+        try {
+            await downloadPartyLedgerReportPdf({
+                party: {
+                    name: party.name,
+                    code: party.code,
+                    type: party.type,
+                    gstin: party.gstin,
+                    address: party.address,
+                    branch_code: party.branch_code,
+                },
+                periodLabel: reportPayload.periodLabel,
+                generatedAt: format(new Date(), 'dd/MM/yyyy HH:mm'),
+                summary: reportPayload.summary,
+                sections: [
+                    {
+                        title: 'CNS Entries',
+                        columns: [
+                            { key: 'cnNo', label: 'CN No', width: 28 },
+                            { key: 'date', label: 'Date', width: 22 },
+                            { key: 'route', label: 'Route', width: 120 },
+                            { key: 'basis', label: 'Basis', width: 35 },
+                            { key: 'freight', label: 'Freight', width: 30, align: 'right' },
+                        ],
+                        rows: reportPayload.sections.cnsRows,
+                        emptyMessage: 'No CNS entries for this period.',
+                    },
+                    {
+                        title: 'Billing Records',
+                        columns: [
+                            { key: 'billNo', label: 'Bill No', width: 35 },
+                            { key: 'date', label: 'Date', width: 22 },
+                            { key: 'coveredCns', label: 'Covered CNs', width: 105 },
+                            { key: 'cnTotal', label: 'CN Total', width: 30, align: 'right' },
+                            { key: 'billed', label: 'Billed', width: 30, align: 'right' },
+                            { key: 'status', label: 'Status', width: 25, align: 'center' },
+                        ],
+                        rows: reportPayload.sections.billingRows,
+                        emptyMessage: 'No billing records for this period.',
+                    },
+                    {
+                        title: 'Payment Receipts',
+                        columns: [
+                            { key: 'date', label: 'Date', width: 22 },
+                            { key: 'mode', label: 'Mode', width: 24 },
+                            { key: 'reference', label: 'Reference', width: 36 },
+                            { key: 'bills', label: 'Linked Bills', width: 95 },
+                            { key: 'settled', label: 'Settled', width: 28, align: 'right' },
+                            { key: 'received', label: 'Received', width: 28, align: 'right' },
+                            { key: 'status', label: 'Status', width: 25, align: 'center' },
+                        ],
+                        rows: reportPayload.sections.paymentRows,
+                        emptyMessage: 'No payment receipts for this period.',
+                    },
+                ],
+            });
+            toast.success('Ledger report downloaded');
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : 'Failed to download ledger report');
+        } finally {
+            setIsDownloadingReport(false);
+        }
+    }, [party, reportPayload]);
 
     if (isLoading && !party) {
         return (
@@ -1249,17 +1510,126 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     <CardContent className="p-4">
                         <div className="flex flex-wrap items-center gap-4">
                             <Label className="text-xs font-bold uppercase text-muted-foreground shrink-0">Date Filter</Label>
+                            <Select value={reportPreset} onValueChange={(value: 'custom' | 'monthly' | 'quarterly' | 'yearly') => setReportPreset(value)}>
+                                <SelectTrigger className="h-8 w-40 text-xs">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="custom">Custom Range</SelectItem>
+                                    <SelectItem value="monthly">Monthly</SelectItem>
+                                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                                    <SelectItem value="yearly">Yearly</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {reportPreset === 'monthly' && (
+                                <>
+                                    <Select value={String(reportMonth)} onValueChange={(value) => setReportMonth(Number(value))}>
+                                        <SelectTrigger className="h-8 w-36 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {monthOptions.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Select value={String(reportYear)} onValueChange={(value) => setReportYear(Number(value))}>
+                                        <SelectTrigger className="h-8 w-28 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {reportYearOptions.map((year) => (
+                                                <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </>
+                            )}
+
+                            {reportPreset === 'quarterly' && (
+                                <>
+                                    <Select value={String(reportQuarter)} onValueChange={(value) => setReportQuarter(Number(value))}>
+                                        <SelectTrigger className="h-8 w-40 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="1">Q1 (Apr-Jun)</SelectItem>
+                                            <SelectItem value="2">Q2 (Jul-Sep)</SelectItem>
+                                            <SelectItem value="3">Q3 (Oct-Dec)</SelectItem>
+                                            <SelectItem value="4">Q4 (Jan-Mar)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Select value={String(reportQuarterYear)} onValueChange={(value) => setReportQuarterYear(Number(value))}>
+                                        <SelectTrigger className="h-8 w-32 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {financialYearOptions.map((year) => (
+                                                <SelectItem key={year} value={String(year)}>
+                                                    FY {year}-{String(year + 1).slice(-2)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </>
+                            )}
+
+                            {reportPreset === 'yearly' && (
+                                <Select value={String(reportQuarterYear)} onValueChange={(value) => setReportQuarterYear(Number(value))}>
+                                    <SelectTrigger className="h-8 w-32 text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {financialYearOptions.map((year) => (
+                                            <SelectItem key={year} value={String(year)}>
+                                                FY {year}-{String(year + 1).slice(-2)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+
                             <div className="flex items-center gap-2">
-                                <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 w-36 text-xs" placeholder="From" />
+                                <Input
+                                    type="date"
+                                    value={dateFrom}
+                                    onChange={e => {
+                                        setReportPreset('custom');
+                                        setDateFrom(e.target.value);
+                                    }}
+                                    className="h-8 w-36 text-xs"
+                                    placeholder="From"
+                                />
                                 <span className="text-muted-foreground text-xs">to</span>
-                                <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 w-36 text-xs" placeholder="To" />
+                                <Input
+                                    type="date"
+                                    value={dateTo}
+                                    onChange={e => {
+                                        setReportPreset('custom');
+                                        setDateTo(e.target.value);
+                                    }}
+                                    className="h-8 w-36 text-xs"
+                                    placeholder="To"
+                                />
+                            </div>
+                            <div className="text-[11px] font-medium text-muted-foreground">
+                                {reportPeriodLabel}
                             </div>
                             {(dateFrom || dateTo) && (
                                 <Button variant="ghost" size="sm" className="h-8 text-muted-foreground gap-1"
-                                    onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                                    onClick={() => {
+                                        setReportPreset('custom');
+                                        setDateFrom('');
+                                        setDateTo('');
+                                    }}>
                                     <RotateCcw className="h-3 w-3" /> Clear
                                 </Button>
                             )}
+                            <Button size="sm" className="h-8 gap-2 ml-auto" onClick={() => void handleDownloadLedgerReport()} disabled={isDownloadingReport}>
+                                {isDownloadingReport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                                Download Ledger Report
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>

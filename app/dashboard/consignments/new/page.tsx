@@ -53,6 +53,21 @@ interface PackageItem {
     qty: number;
 }
 
+interface BranchCnSequenceState {
+    status: 'idle' | 'loading' | 'ready' | 'range_exhausted' | 'configuration_required' | 'error';
+    mode?: 'range' | 'legacy';
+    nextNo?: number | null;
+    rangeStart?: number | null;
+    rangeEnd?: number | null;
+    remainingCount?: number | null;
+    reservedCount?: number | null;
+    message?: string;
+}
+
+const idleCnSequenceState: BranchCnSequenceState = {
+    status: 'idle',
+};
+
 // We fetch branch options dynamically now, so just a helper if we ever need it static
 const getBranchLabel = (branchCode: string, options: { value: string, label: string }[]) => {
     const normalizedCode = branchCode.trim().toUpperCase();
@@ -148,6 +163,7 @@ function NewConsignmentForm() {
 
     // Dynamic branch fetching
     const [branchOptions, setBranchOptions] = useState<{ value: string, label: string }[]>([]);
+    const [cnSequenceState, setCnSequenceState] = useState<BranchCnSequenceState>(idleCnSequenceState);
 
     React.useEffect(() => {
         const fetchBranches = async () => {
@@ -263,19 +279,60 @@ function NewConsignmentForm() {
     // Fetch next CN no when branch changes
     React.useEffect(() => {
         const fetchNextCN = async () => {
+            setCnSequenceState({ status: 'loading' });
             try {
                 const response = await fetch(`/api/branches/next-cn?branch=${bookingBranchCode}`);
                 if (response.ok) {
                     const data = await response.json();
-                    setCnNo(data.nextNo.toString());
+                    if (data.status === 'ready') {
+                        setCnNo(data.nextNo ? data.nextNo.toString() : '');
+                        setCnSequenceState({
+                            status: 'ready',
+                            mode: data.mode,
+                            nextNo: data.nextNo ?? null,
+                            rangeStart: data.rangeStart ?? null,
+                            rangeEnd: data.rangeEnd ?? null,
+                            remainingCount: data.remainingCount ?? null,
+                            reservedCount: data.reservedCount ?? null,
+                            message: data.message,
+                        });
+                        return;
+                    }
+
+                    setCnNo('');
+                    setCnSequenceState({
+                        status: data.status || 'configuration_required',
+                        mode: data.mode,
+                        nextNo: data.nextNo ?? null,
+                        rangeStart: data.rangeStart ?? null,
+                        rangeEnd: data.rangeEnd ?? null,
+                        message: data.message || 'No active CN range is available for this branch.',
+                    });
+                    return;
                 }
+
+                throw new Error('Failed to fetch next CN number');
             } catch (error) {
                 console.error("Error fetching next CN No:", error);
+                setCnNo('');
+                setCnSequenceState({
+                    status: 'error',
+                    message: 'Failed to load the next CN number for this branch.',
+                });
             }
         };
 
         if (bookingBranchCode && !isEditMode) {
             fetchNextCN();
+            return;
+        }
+
+        if (!bookingBranchCode && !isEditMode) {
+            setCnNo('');
+        }
+
+        if (!isEditMode) {
+            setCnSequenceState(idleCnSequenceState);
         }
     }, [bookingBranchCode, isEditMode]);
 
@@ -506,13 +563,30 @@ function NewConsignmentForm() {
         if (isSaving) return;
 
         const fullCnNo = cnNo;
+        if (!bookingBranchCode) {
+            alert('Booking branch is required.');
+            return;
+        }
+
         if (!cnNo) {
             alert('CN No. is required.');
             return;
         }
 
+        if (!isEditMode) {
+            if (cnSequenceState.status !== 'ready') {
+                alert(cnSequenceState.message || 'This branch does not have an active CN number available.');
+                return;
+            }
 
-
+            if (
+                typeof cnSequenceState.nextNo === 'number'
+                && Number(cnNo) !== cnSequenceState.nextNo
+            ) {
+                alert(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
+                return;
+            }
+        }
         setIsSaving(true);
         try {
             const totalFrt = calculateFreight();
@@ -673,8 +747,13 @@ function NewConsignmentForm() {
                             <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
                                 {isEditMode ? (
                                     <>Editing CNS: <span className="text-primary">{cnNo || '---'}</span></>
+                                ) : bookingBranchCode && cnSequenceState.status === 'ready' ? (
+                                    <>
+                                        Next CN for <span className="text-primary">{bookingBranchCode.toUpperCase()}</span>:
+                                        <span className="text-primary">{cnNo || '---'}</span>
+                                    </>
                                 ) : (
-                                    <>Last entered: <span className="text-primary">801191</span> on 17/01/2026</>
+                                    <>Select a booking branch to load the next CN number.</>
                                 )}
                             </p>
                         </div>
@@ -732,7 +811,7 @@ function NewConsignmentForm() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-4">
                                     <div className="space-y-1">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Booking Branch</Label>
-                                        <Select value={bookingBranchCode} onValueChange={setBookingBranchCode}>
+                                        <Select value={bookingBranchCode} onValueChange={setBookingBranchCode} disabled={isEditMode}>
                                             <SelectTrigger className="h-9 bg-slate-50">
                                                 <SelectValue placeholder="Select Branch" />
                                             </SelectTrigger>
@@ -761,10 +840,61 @@ function NewConsignmentForm() {
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">CN No & Date</Label>
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
-                                                <Input className="h-9 font-mono font-bold" value={cnNo} onChange={(e) => setCnNo(e.target.value)} />
+                                                <Input
+                                                    className="h-9 font-mono font-bold bg-slate-50"
+                                                    value={cnNo}
+                                                    readOnly
+                                                />
                                             </div>
                                             <DatePicker className="w-40 h-9" value={cnDate} onChange={(val) => setCnDate(val)} />
                                         </div>
+                                        {!isEditMode && bookingBranchCode && (
+                                            <div className="mt-2 space-y-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {cnSequenceState.status === 'loading' && (
+                                                        <Badge variant="outline">Loading CN...</Badge>
+                                                    )}
+                                                    {cnSequenceState.status === 'ready' && cnSequenceState.mode === 'range' && (
+                                                        <>
+                                                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Branch Range</Badge>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Assigned range {cnSequenceState.rangeStart} - {cnSequenceState.rangeEnd}
+                                                            </span>
+                                                            {typeof cnSequenceState.remainingCount === 'number' && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {cnSequenceState.remainingCount} CNs left
+                                                                </span>
+                                                            )}
+                                                            {typeof cnSequenceState.reservedCount === 'number' && cnSequenceState.reservedCount > 0 && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {cnSequenceState.reservedCount} physical blocks excluded
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    {cnSequenceState.status === 'ready' && cnSequenceState.mode === 'legacy' && (
+                                                        <>
+                                                            <Badge variant="outline">Legacy Counter</Badge>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Configure this branch in Branch Management to enforce a branch-owned CN range.
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                    {cnSequenceState.status === 'range_exhausted' && (
+                                                        <Badge className="bg-amber-50 text-amber-700 border-amber-200">Range Exhausted</Badge>
+                                                    )}
+                                                    {cnSequenceState.status === 'configuration_required' && (
+                                                        <Badge className="bg-slate-100 text-slate-700 border-slate-200">Range Not Configured</Badge>
+                                                    )}
+                                                    {cnSequenceState.status === 'error' && (
+                                                        <Badge className="bg-red-50 text-red-700 border-red-200">CN Load Failed</Badge>
+                                                    )}
+                                                </div>
+                                                {cnSequenceState.message && cnSequenceState.status !== 'ready' && (
+                                                    <div className="text-xs text-muted-foreground">{cnSequenceState.message}</div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="space-y-1">

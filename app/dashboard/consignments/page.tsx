@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import {
     Search,
@@ -75,6 +75,10 @@ export default function ConsignmentsPage() {
     const [cnNoFilter, setCnNoFilter] = useState('');
     const [selectedConsignment, setSelectedConsignment] = useState<any>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(25);
 
     // Fetch consignments on mount
     const fetchConsignments = async () => {
@@ -187,6 +191,29 @@ export default function ConsignmentsPage() {
         });
     }, [searchTerm, appliedFilters, consignments]);
 
+    // Reset to page 1 whenever filters or rows-per-page change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filteredData, rowsPerPage]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredData.length / rowsPerPage));
+    const paginatedData = filteredData.slice(
+        (currentPage - 1) * rowsPerPage,
+        currentPage * rowsPerPage
+    );
+
+    const getPageNumbers = () => {
+        const pages: number[] = [];
+        const maxVisible = 5;
+        let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+        let end = Math.min(totalPages, start + maxVisible - 1);
+        if (end - start + 1 < maxVisible) {
+            start = Math.max(1, end - maxVisible + 1);
+        }
+        for (let i = start; i <= end; i++) pages.push(i);
+        return pages;
+    };
+
     const handleSearch = () => {
         setAppliedFilters({
             cnNo: cnNoFilter,
@@ -227,6 +254,51 @@ export default function ConsignmentsPage() {
         });
     };
 
+    const handleExportCSV = () => {
+        const columns = [
+            { header: 'CNs No',          key: 'cn_no' },
+            { header: 'Booking Branch',  key: 'booking_branch' },
+            { header: 'Booking Date',    key: 'bkg_date' },
+            { header: 'Dest Branch',     key: 'dest_branch' },
+            { header: 'Delivery Point',  key: 'delivery_point' },
+            { header: 'No of Pkgs',      key: 'no_of_pkg' },
+            { header: 'Actual Weight',   key: 'actual_weight' },
+            { header: 'Load Unit',       key: 'load_unit' },
+            { header: 'Delivery Type',   key: 'delivery_type' },
+            { header: 'Bkg Basis',       key: 'bkg_basis' },
+            { header: 'Total Freight',   key: 'total_freight' },
+            { header: 'Consignor',       key: 'consignor_name' },
+            { header: 'Consignee',       key: 'consignee_name' },
+        ];
+
+        const escape = (val: any) => {
+            if (val === null || val === undefined) return '';
+            const str = String(val);
+            // Wrap in quotes if it contains comma, quote, or newline
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+
+        const header = columns.map(c => escape(c.header)).join(',');
+        const rows = filteredData.map(item =>
+            columns.map(c => escape((item as any)[c.key])).join(',')
+        );
+
+        const csvContent = [header, ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const fileName = `consignments_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
+        link.setAttribute('href', url);
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <div className="p-6 space-y-6 animate-fadeIn">
             {/* Page Header */}
@@ -236,7 +308,13 @@ export default function ConsignmentsPage() {
                     <p className="text-muted-foreground">Comprehensive overview of all shipment bookings</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" className="gap-2 shadow-sm border-primary/20 hover:bg-primary/5">
+                    <Button
+                        variant="outline"
+                        className="gap-2 shadow-sm border-primary/20 hover:bg-primary/5"
+                        onClick={handleExportCSV}
+                        disabled={filteredData.length === 0}
+                        title={`Export ${filteredData.length} filtered rows as CSV`}
+                    >
                         <Download className="h-4 w-4 text-primary" /> Export Data
                     </Button>
                     <Link href="/dashboard/consignments/new">
@@ -419,8 +497,8 @@ export default function ConsignmentsPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredData.length > 0 ? (
-                                    filteredData.map((item) => (
+                                {paginatedData.length > 0 ? (
+                                    paginatedData.map((item) => (
                                         <TableRow key={item.id || item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
                                             <TableCell className="text-[12px] font-medium text-muted-foreground">{getFullBranchName(item.booking_branch, branchOptions)}</TableCell>
                                             <TableCell>
@@ -508,11 +586,21 @@ export default function ConsignmentsPage() {
                     {/* Enhanced Pagination */}
                     <div className="px-6 py-4 flex items-center justify-between border-t bg-muted/5">
                         <div className="flex items-center gap-4 text-xs text-muted-foreground font-medium">
-                            <span>Showing <strong>{filteredData.length}</strong> of <strong>{consignments.length}</strong> entries</span>
+                            <span>
+                                Showing{' '}
+                                <strong>{filteredData.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1}</strong>
+                                {' '}–{' '}
+                                <strong>{Math.min(currentPage * rowsPerPage, filteredData.length)}</strong>
+                                {' '}of{' '}
+                                <strong>{filteredData.length}</strong> entries
+                            </span>
                             <div className="h-4 w-[1px] bg-border" />
                             <div className="flex items-center gap-2">
                                 <span>Show</span>
-                                <Select defaultValue="10">
+                                <Select
+                                    value={String(rowsPerPage)}
+                                    onValueChange={(val) => setRowsPerPage(Number(val))}
+                                >
                                     <SelectTrigger className="h-7 w-16 bg-background">
                                         <SelectValue />
                                     </SelectTrigger>
@@ -520,18 +608,48 @@ export default function ConsignmentsPage() {
                                         <SelectItem value="10">10</SelectItem>
                                         <SelectItem value="25">25</SelectItem>
                                         <SelectItem value="50">50</SelectItem>
+                                        <SelectItem value="100">100</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <span>rows</span>
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" size="sm" disabled className="h-8 px-4 text-xs font-bold uppercase tracking-wider">Previous</Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                className="h-8 px-4 text-xs font-bold uppercase tracking-wider"
+                            >
+                                Previous
+                            </Button>
                             <div className="flex gap-1">
-                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-primary text-primary-foreground border-primary hover:bg-primary/90">1</Button>
-                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 hover:border-primary hover:text-primary transition-colors">2</Button>
+                                {getPageNumbers().map((page) => (
+                                    <Button
+                                        key={page}
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCurrentPage(page)}
+                                        className={`h-8 w-8 p-0 transition-colors ${
+                                            page === currentPage
+                                                ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
+                                                : 'hover:border-primary hover:text-primary'
+                                        }`}
+                                    >
+                                        {page}
+                                    </Button>
+                                ))}
                             </div>
-                            <Button variant="outline" size="sm" className="h-8 px-4 text-xs font-bold uppercase tracking-wider hover:border-primary hover:text-primary">Next</Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                className="h-8 px-4 text-xs font-bold uppercase tracking-wider hover:border-primary hover:text-primary"
+                            >
+                                Next
+                            </Button>
                         </div>
                     </div>
                 </CardContent>

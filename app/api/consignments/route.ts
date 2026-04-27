@@ -2,6 +2,73 @@ import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from "next/server";
 import { resolveBillingPartyId } from '@/lib/server/resolveBillingParty';
 
+type ManagedCnRange = {
+    id: string;
+    range_start: number;
+    range_end: number;
+    next_cn_no: number;
+    status: 'active' | 'exhausted' | 'inactive';
+};
+
+const parseCnInteger = (value: unknown) => {
+    const parsed = parseInt(String(value), 10);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClient>>, branchCode: string) => {
+    const { data: branch, error: branchError } = await supabase
+        .from('branches')
+        .select('id, code, next_cn_no')
+        .eq('code', branchCode)
+        .single();
+
+    if (branchError || !branch) {
+        return { error: `Booking branch ${branchCode} was not found.` };
+    }
+
+    const { data: cnRanges, error: cnRangesError } = await supabase
+        .from('branch_cn_ranges')
+        .select('id, range_start, range_end, next_cn_no, status')
+        .eq('branch_id', branch.id)
+        .order('created_at', { ascending: false });
+
+    if (cnRangesError) {
+        return { error: cnRangesError.message };
+    }
+
+    const activeRange = ((cnRanges || []) as ManagedCnRange[]).find((range) => range.status === 'active') || null;
+    const latestRange = ((cnRanges || []) as ManagedCnRange[])[0] || null;
+
+    if (activeRange) {
+        const { data: normalizedNextValue, error: normalizedNextError } = await supabase.rpc('next_available_branch_cn', {
+            p_range_id: activeRange.id,
+            p_candidate: activeRange.next_cn_no,
+        });
+
+        if (normalizedNextError) {
+            return { error: normalizedNextError.message };
+        }
+
+        const expectedCn = parseCnInteger(normalizedNextValue);
+
+        return {
+            branch,
+            mode: 'range' as const,
+            activeRange,
+            latestRange,
+            expectedCn,
+        };
+    }
+
+    return {
+        branch,
+        mode: (latestRange ? 'range' : 'legacy') as 'range' | 'legacy',
+        activeRange: null,
+        latestRange,
+        expectedCn: latestRange ? null : Number(branch.next_cn_no || 800001),
+    };
+};
+
 export async function GET(request: Request) {
     const supabase = await createClient();
 
@@ -164,6 +231,81 @@ export async function POST(request: Request) {
         insertData.billing_party_id = billingPartyId;
     }
 
+    if (typeof insertData.booking_branch !== "string" || !insertData.booking_branch) {
+        return NextResponse.json({ error: "Booking branch is required" }, { status: 400 });
+    }
+
+    const bookingBranchCode = insertData.booking_branch.toUpperCase();
+    const submittedCnNo = parseCnInteger(insertData.cn_no);
+    const branchCnContext = await getBranchCnContext(supabase, bookingBranchCode);
+
+    if (branchCnContext.error) {
+        return NextResponse.json({ error: branchCnContext.error }, { status: 400 });
+    }
+
+    if (branchCnContext.mode === 'range') {
+        if (!branchCnContext.activeRange) {
+            const exhaustedRange = branchCnContext.latestRange;
+            const message = exhaustedRange?.status === 'exhausted'
+                ? `CN range ${exhaustedRange.range_start}-${exhaustedRange.range_end} is exhausted for branch ${bookingBranchCode}. Update Branch Management with a new range before creating more CNs.`
+                : `No active CN range is configured for branch ${bookingBranchCode}. Update Branch Management before creating more CNs.`;
+
+            return NextResponse.json({ error: message }, { status: 409 });
+        }
+
+        if (submittedCnNo === null) {
+            return NextResponse.json({ error: 'CN number must be numeric for range-managed branches.' }, { status: 400 });
+        }
+
+        if (branchCnContext.expectedCn === null || branchCnContext.expectedCn > Number(branchCnContext.activeRange.range_end)) {
+            return NextResponse.json({
+                error: `CN range ${branchCnContext.activeRange.range_start}-${branchCnContext.activeRange.range_end} is exhausted for branch ${bookingBranchCode}. Update Branch Management with a new range before creating more CNs.`,
+            }, { status: 409 });
+        }
+
+        if (submittedCnNo !== branchCnContext.expectedCn) {
+            return NextResponse.json({
+                error: `CN Number "${insertData.cn_no}" is not the next available CN for branch ${bookingBranchCode}. Expected ${branchCnContext.expectedCn}.`,
+            }, { status: 409 });
+        }
+
+        const { error: advanceError } = await supabase.rpc('advance_branch_cn_sequence', {
+            p_branch_code: bookingBranchCode,
+            p_cn_no: submittedCnNo,
+        });
+
+        if (advanceError) {
+            return NextResponse.json({ error: advanceError.message }, { status: 409 });
+        }
+    } else {
+        if (submittedCnNo === null) {
+            return NextResponse.json({ error: 'CN number must be numeric.' }, { status: 400 });
+        }
+
+        if (submittedCnNo !== branchCnContext.expectedCn) {
+            return NextResponse.json({
+                error: `CN Number "${insertData.cn_no}" is not the next available legacy CN for branch ${bookingBranchCode}. Expected ${branchCnContext.expectedCn}.`,
+            }, { status: 409 });
+        }
+
+        const { data: legacyUpdateRows, error: legacyUpdateError } = await supabase
+            .from('branches')
+            .update({ next_cn_no: submittedCnNo + 1 })
+            .eq('code', bookingBranchCode)
+            .eq('next_cn_no', submittedCnNo)
+            .select('id');
+
+        if (legacyUpdateError) {
+            return NextResponse.json({ error: legacyUpdateError.message }, { status: 409 });
+        }
+
+        if (!legacyUpdateRows || legacyUpdateRows.length === 0) {
+            return NextResponse.json({
+                error: `CN Number "${insertData.cn_no}" is no longer available for branch ${bookingBranchCode}. Refresh the form and try again.`,
+            }, { status: 409 });
+        }
+    }
+
     const { data, error } = await supabase
         .from("consignments")
         .insert(insertData)
@@ -172,28 +314,15 @@ export async function POST(request: Request) {
 
     if (error) {
         console.error("Failed to create consignment:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
 
-    // Increment sequence in branches table if booking_branch matches a code
-    if (typeof insertData.booking_branch === "string" && insertData.booking_branch) {
-        const bookingBranchCode = insertData.booking_branch.toUpperCase();
-
-        // We use an RPC or just update it manually if no complex locking is needed
-        // Since this is a simple low-traffic POC, updating directly is fine
-        // First get the current next_cn_no to be safe
-        const { data: branchData } = await supabase
-            .from("branches")
-            .select("next_cn_no")
-            .eq("code", bookingBranchCode)
-            .single();
-
-        if (branchData) {
+        if (branchCnContext.mode === 'legacy' && submittedCnNo !== null) {
             await supabase
                 .from("branches")
-                .update({ next_cn_no: (branchData.next_cn_no || 0) + 1 })
+                .update({ next_cn_no: submittedCnNo })
                 .eq("code", bookingBranchCode);
         }
+
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json(data, { status: 201 });
