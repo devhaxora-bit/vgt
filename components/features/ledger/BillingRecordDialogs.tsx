@@ -795,9 +795,7 @@ export function BillingRecordViewDialog({
                 detention: formatTableAmount(row.detention),
                 extraKm: formatTableAmount(row.extra_km),
                 loading: formatTableAmount(row.loading),
-                doorCollection: formatTableAmount(row.door_collection),
-                doorDelivery: formatTableAmount(row.door_delivery),
-                otherCharges: formatSignedTableAmount(row.other_charges),
+                otherCharges: formatSignedTableAmount(row.other_charges + row.door_collection + row.door_delivery),
                 totalAmount: formatSignedTableAmount(row.total_amount),
             }))
             : [{
@@ -814,8 +812,6 @@ export function BillingRecordViewDialog({
                 detention: '',
                 extraKm: '',
                 loading: '',
-                doorCollection: '',
-                doorDelivery: '',
                 otherCharges: '',
                 totalAmount: fmt(displayTotal),
             }];
@@ -831,20 +827,16 @@ export function BillingRecordViewDialog({
                     <td class="center">${row.chargeWt}</td>
                     <td class="center">${row.rate}</td>
                     <td class="amount">${row.freight}</td>
-                    <td class="amount">${row.unloading}</td>
                     <td class="amount">${row.detention}</td>
-                    <td class="amount">${row.extraKm}</td>
                     <td class="amount">${row.loading}</td>
-                    <td class="amount">${row.doorCollection}</td>
-                    <td class="amount">${row.doorDelivery}</td>
+                    <td class="amount">${row.unloading}</td>
+                    <td class="amount">${row.extraKm}</td>
                     <td class="amount">${row.otherCharges}</td>
                     <td class="amount">${row.totalAmount}</td>
                 </tr>
             `).join('');
         const blankRows = Array.from({ length: Math.max(0, minimumDetailRows - detailRows.length) }, () => `
                 <tr class="item-row blank-row">
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
                     <td>&nbsp;</td>
                     <td>&nbsp;</td>
                     <td>&nbsp;</td>
@@ -884,16 +876,16 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .party-block { border-right: 1.2px solid #111; display: grid; grid-template-rows: minmax(34px, auto) minmax(34px, auto) minmax(52px, auto) minmax(34px, auto); }
 .party-line { border-bottom: 1.2px solid #111; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
 .party-line:last-child { border-bottom: none; text-align: center; padding-top: 6px; padding-bottom: 8px; }
-.right-block { display: grid; grid-template-rows: 58px 57px; }
-.branch-row { border-bottom: 1.2px solid #111; display: grid; grid-template-columns: 18% 82%; }
-.branch-label { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 800; line-height: 1.25; }
+.right-block { display: grid; grid-template-rows: 58px minmax(72px, 1fr); height: 100%; }
+.branch-row { border-bottom: 1.2px solid #111; display: grid; grid-template-columns: 18% 82%; align-items: stretch; }
+.branch-label { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 800; line-height: 1.25; display: flex; align-items: center; }
 .branch-value { display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
-.bill-row { display: grid; grid-template-columns: 40% 18% 42%; }
-.bill-cell { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 700; line-height: 1.2; }
+.bill-row { display: grid; grid-template-columns: 40% 18% 42%; align-items: stretch; min-height: 72px; }
+.bill-cell { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 700; line-height: 1.2; display: flex; align-items: center; }
 .bill-cell:last-child { border-right: none; }
-.bill-cell.center { text-align: center; }
+.bill-cell.center { text-align: center; justify-content: center; }
 .bill-cell.value { font-size: 12px; font-weight: 800; }
-.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; }
+.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #111; }
 .items-table th, .items-table td { border-right: 1.2px solid #111; border-bottom: 1.2px solid #111; padding: 5px 3px 6px; font-size: 8.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; }
@@ -957,30 +949,28 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         <table class="items-table">
             <thead>
                 <tr>
-                    <th style="width:5%;">Consignment<br/>Note No.</th>
-                    <th style="width:4.5%;">Date</th>
-                    <th style="width:10%;">Invoice<br/>No</th>
-                    <th style="width:6%;">Vehicle no.</th>
-                    <th style="width:7%;">Loading<br/>Station</th>
-                    <th style="width:7%;">Destination</th>
-                    <th style="width:4.5%;">Charge Wt.</th>
-                    <th style="width:4.5%;">Rate</th>
-                    <th style="width:6%;">Freight</th>
-                    <th style="width:5%;">Unload</th>
-                    <th style="width:4.5%;">Detention</th>
-                    <th style="width:5%;">Extra KM</th>
-                    <th style="width:5%;">Loading</th>
-                    <th style="width:5%;">Door Coll</th>
-                    <th style="width:5%;">Door Del</th>
-                    <th style="width:5.5%;">Other<br/>Charges</th>
-                    <th style="width:5.5%;">Total Billed<br/>Amount</th>
+                    <th style="width:6%;">CNS<br/>No</th>
+                    <th style="width:5%;">Date</th>
+                    <th style="width:11%;">Invoice<br/>No</th>
+                    <th style="width:7%;">Vehicle no.</th>
+                    <th style="width:8%;">Loading<br/>Station</th>
+                    <th style="width:8%;">Destination</th>
+                    <th style="width:5%;">Charge Wt.</th>
+                    <th style="width:5%;">Rate</th>
+                    <th style="width:7%;">Freight</th>
+                    <th style="width:6%;">Detention</th>
+                    <th style="width:6%;">Loading</th>
+                    <th style="width:6%;">Unload</th>
+                    <th style="width:6%;">Extra KM</th>
+                    <th style="width:7%;">Other<br/>Charges</th>
+                    <th style="width:7%;">Total Billed<br/>Amount</th>
                 </tr>
             </thead>
             <tbody>
                 ${coveredRows}
                 ${blankRows}
                 <tr class="total-row">
-                    <td colspan="15"></td>
+                    <td colspan="13"></td>
                     <td class="total-label">TOTAL</td>
                     <td class="amount">${fmt(displayTotal)}</td>
                 </tr>

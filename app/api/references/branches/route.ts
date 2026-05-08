@@ -7,6 +7,14 @@ const parseOptionalInteger = (value: unknown, fallback: number) => {
     return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
+    if (!error) return false;
+    if (error.code === '42P01' || error.code === '42883') return true;
+
+    const message = String(error.message || '').toLowerCase();
+    return message.includes('branch_cn_ranges') || message.includes('branch_cn_reserved_ranges');
+};
+
 export async function GET(request: Request) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -48,12 +56,20 @@ export async function GET(request: Request) {
             .order('created_at', { ascending: false }),
     ]);
 
-    if (cnRangesError) {
-        return NextResponse.json({ error: cnRangesError.message }, { status: 500 });
-    }
+    if (cnRangesError || reservedRangesError) {
+        if (isMissingCnManagementSchema(cnRangesError) || isMissingCnManagementSchema(reservedRangesError)) {
+            return NextResponse.json(data.map((branch) => ({
+                ...branch,
+                cn_mode: 'legacy',
+                cn_status: 'legacy',
+                active_cn_range: null,
+                latest_cn_range: null,
+                cn_ranges: [],
+                cn_reserved_ranges: [],
+            })));
+        }
 
-    if (reservedRangesError) {
-        return NextResponse.json({ error: reservedRangesError.message }, { status: 500 });
+        return NextResponse.json({ error: cnRangesError?.message || reservedRangesError?.message }, { status: 500 });
     }
 
     const cnRangesByBranch = new Map<string, typeof cnRanges>();

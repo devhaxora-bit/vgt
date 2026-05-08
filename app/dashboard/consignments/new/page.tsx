@@ -574,13 +574,17 @@ function NewConsignmentForm() {
         }
 
         if (!isEditMode) {
-            if (cnSequenceState.status !== 'ready') {
+            const isRangeManaged = cnSequenceState.mode === 'range';
+
+            if (isRangeManaged && cnSequenceState.status !== 'ready') {
                 alert(cnSequenceState.message || 'This branch does not have an active CN number available.');
                 return;
             }
 
             if (
-                typeof cnSequenceState.nextNo === 'number'
+                isRangeManaged
+                && cnSequenceState.status === 'ready'
+                && typeof cnSequenceState.nextNo === 'number'
                 && Number(cnNo) !== cnSequenceState.nextNo
             ) {
                 alert(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
@@ -843,7 +847,8 @@ function NewConsignmentForm() {
                                                 <Input
                                                     className="h-9 font-mono font-bold bg-slate-50"
                                                     value={cnNo}
-                                                    readOnly
+                                                    readOnly={!isEditMode && cnSequenceState.mode === 'range'}
+                                                    onChange={(e) => setCnNo(e.target.value)}
                                                 />
                                             </div>
                                             <DatePicker className="w-40 h-9" value={cnDate} onChange={(val) => setCnDate(val)} />

@@ -15,6 +15,37 @@ const parseCnInteger = (value: unknown) => {
     return Number.isNaN(parsed) ? null : parsed;
 };
 
+const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
+    if (!error) return false;
+    if (error.code === '42P01' || error.code === '42883') return true;
+
+    const message = String(error.message || '').toLowerCase();
+    return (
+        message.includes('branch_cn_ranges')
+        || message.includes('branch_cn_reserved_ranges')
+        || message.includes('next_available_branch_cn')
+        || message.includes('advance_branch_cn_sequence')
+    );
+};
+
+const normalizeNextAvailable = (
+    candidate: number,
+    rangeEnd: number,
+    reservedRanges: Array<{ range_start: number; range_end: number }>
+) => {
+    let next = candidate;
+
+    while (next <= rangeEnd) {
+        const reserved = reservedRanges.find((range) => next >= range.range_start && next <= range.range_end);
+        if (!reserved) {
+            return next;
+        }
+        next = reserved.range_end + 1;
+    }
+
+    return next;
+};
+
 const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClient>>, branchCode: string) => {
     const { data: branch, error: branchError } = await supabase
         .from('branches')
@@ -33,6 +64,16 @@ const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClie
         .order('created_at', { ascending: false });
 
     if (cnRangesError) {
+        if (isMissingCnManagementSchema(cnRangesError)) {
+            return {
+                branch,
+                mode: 'legacy' as const,
+                activeRange: null,
+                latestRange: null,
+                expectedCn: Number(branch.next_cn_no || 800001),
+            };
+        }
+
         return { error: cnRangesError.message };
     }
 
@@ -40,16 +81,36 @@ const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClie
     const latestRange = ((cnRanges || []) as ManagedCnRange[])[0] || null;
 
     if (activeRange) {
-        const { data: normalizedNextValue, error: normalizedNextError } = await supabase.rpc('next_available_branch_cn', {
-            p_range_id: activeRange.id,
-            p_candidate: activeRange.next_cn_no,
-        });
+        const { data: reservedRanges, error: reservedRangesError } = await supabase
+            .from('branch_cn_reserved_ranges')
+            .select('range_start, range_end')
+            .eq('branch_id', branch.id)
+            .lte('range_start', activeRange.range_end)
+            .gte('range_end', activeRange.range_start)
+            .order('range_start', { ascending: true });
 
-        if (normalizedNextError) {
-            return { error: normalizedNextError.message };
+        if (reservedRangesError) {
+            if (isMissingCnManagementSchema(reservedRangesError)) {
+                return {
+                    branch,
+                    mode: 'legacy' as const,
+                    activeRange: null,
+                    latestRange: null,
+                    expectedCn: Number(branch.next_cn_no || 800001),
+                };
+            }
+
+            return { error: reservedRangesError.message };
         }
 
-        const expectedCn = parseCnInteger(normalizedNextValue);
+        const expectedCn = normalizeNextAvailable(
+            Number(activeRange.next_cn_no),
+            Number(activeRange.range_end),
+            (reservedRanges || []).map((range) => ({
+                range_start: Number(range.range_start),
+                range_end: Number(range.range_end),
+            }))
+        );
 
         return {
             branch,
@@ -281,29 +342,6 @@ export async function POST(request: Request) {
         if (submittedCnNo === null) {
             return NextResponse.json({ error: 'CN number must be numeric.' }, { status: 400 });
         }
-
-        if (submittedCnNo !== branchCnContext.expectedCn) {
-            return NextResponse.json({
-                error: `CN Number "${insertData.cn_no}" is not the next available legacy CN for branch ${bookingBranchCode}. Expected ${branchCnContext.expectedCn}.`,
-            }, { status: 409 });
-        }
-
-        const { data: legacyUpdateRows, error: legacyUpdateError } = await supabase
-            .from('branches')
-            .update({ next_cn_no: submittedCnNo + 1 })
-            .eq('code', bookingBranchCode)
-            .eq('next_cn_no', submittedCnNo)
-            .select('id');
-
-        if (legacyUpdateError) {
-            return NextResponse.json({ error: legacyUpdateError.message }, { status: 409 });
-        }
-
-        if (!legacyUpdateRows || legacyUpdateRows.length === 0) {
-            return NextResponse.json({
-                error: `CN Number "${insertData.cn_no}" is no longer available for branch ${bookingBranchCode}. Refresh the form and try again.`,
-            }, { status: 409 });
-        }
     }
 
     const { data, error } = await supabase
@@ -315,14 +353,17 @@ export async function POST(request: Request) {
     if (error) {
         console.error("Failed to create consignment:", error);
 
-        if (branchCnContext.mode === 'legacy' && submittedCnNo !== null) {
-            await supabase
-                .from("branches")
-                .update({ next_cn_no: submittedCnNo })
-                .eq("code", bookingBranchCode);
-        }
-
         return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (branchCnContext.mode === 'legacy' && submittedCnNo !== null) {
+        const currentLegacyNext = Number(branchCnContext.expectedCn || 0);
+        const nextLegacyCn = Math.max(currentLegacyNext, submittedCnNo + 1);
+
+        await supabase
+            .from('branches')
+            .update({ next_cn_no: nextLegacyCn })
+            .eq('code', bookingBranchCode);
     }
 
     return NextResponse.json(data, { status: 201 });

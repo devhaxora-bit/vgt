@@ -6,6 +6,19 @@ const parseRangeValue = (value: unknown) => {
     return Number.isNaN(parsed) ? null : parsed;
 };
 
+const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
+    if (!error) return false;
+    if (error.code === '42P01' || error.code === '42883') return true;
+
+    const message = String(error.message || '').toLowerCase();
+    return (
+        message.includes('branch_cn_ranges')
+        || message.includes('branch_cn_reserved_ranges')
+        || message.includes('create_branch_cn_range')
+        || message.includes('create_branch_cn_reserved_range')
+    );
+};
+
 export async function POST(request: Request) {
     const supabase = await createClient();
     const {
@@ -43,6 +56,10 @@ export async function POST(request: Request) {
     });
 
     if (error) {
+        if (isMissingCnManagementSchema(error)) {
+            return NextResponse.json({ error: 'Apply the branch CN range migration first, then try again.' }, { status: 409 });
+        }
+
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 

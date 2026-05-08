@@ -6,6 +6,18 @@ type ReservedRange = {
     range_end: number;
 };
 
+const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
+    if (!error) return false;
+    if (error.code === '42P01' || error.code === '42883') return true;
+
+    const message = String(error.message || '').toLowerCase();
+    return (
+        message.includes('branch_cn_ranges')
+        || message.includes('branch_cn_reserved_ranges')
+        || message.includes('next_available_branch_cn')
+    );
+};
+
 const normalizeNextAvailable = (candidate: number, rangeEnd: number, reservedRanges: ReservedRange[]) => {
     let next = candidate;
 
@@ -74,6 +86,16 @@ export async function GET(request: Request) {
         .order('created_at', { ascending: false });
 
     if (cnRangesError) {
+        if (isMissingCnManagementSchema(cnRangesError)) {
+            return NextResponse.json({
+                status: 'ready',
+                mode: 'legacy',
+                prefix: branch.cn_prefix || 'S',
+                nextNo: Number(branch.next_cn_no || 800001),
+                message: `Branch ${branch.code} is using the legacy CN counter.`,
+            });
+        }
+
         console.error('Failed to fetch branch CN ranges:', cnRangesError);
         return NextResponse.json({ error: 'Failed to fetch branch CN range details' }, { status: 500 });
     }
