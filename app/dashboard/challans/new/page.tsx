@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -43,7 +43,7 @@ interface LinkedConsignment {
 }
 
 
-export default function NewChallanPage() {
+function NewChallanPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const editId = searchParams.get('edit');
@@ -310,9 +310,8 @@ export default function NewChallanPage() {
         setBrokerId(''); setBrokerName(''); setBrokerCode(''); setBrokerMobile(''); setBrokerAddress('');
         setBrokerFetching(false); setBrokerStatus(''); setBrokerSuggestions([]); setShowBrokerSuggestions(false);
         setSlipNo(''); setSlipDate('');
-        setDriverDlNo(''); setDriverName(''); setDriverDlValidity(''); setDriverMobile(''); setDriverRto('');
+        setDriverDlNo(''); setDriverName(''); setDriverDlValidity(''); setDriverMobile(''); setDriverAddress('');
         setPolicyNo(''); setPolicyValidity(''); setInsCompany(''); setInsCity(''); setFinanceDetail('');
-        setEwaybillNo(''); setEwaybillDate('');
         setItdsRefBranch(''); setItdsDeclareDate(''); setItdsFinYear('2025-2026');
         setRemarks(''); setTripTracking(false);
         setChallanDate(new Date().toISOString().split('T')[0]);
@@ -320,7 +319,7 @@ export default function NewChallanPage() {
         setHireDetails({
             noOfCns: 0, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
             rateType: 'mt', rate: 0, hire: 0,
-            extraOverWeight: 0, overHeight: 0, extraKmCharges: 0,
+            extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
             detentCharges: 0, totalExtra: 0, totalHire: 0,
             advPayment: 0, tdsPercent: 2, lessTds: 0, balAmount: 0,
         });
@@ -1388,5 +1387,13 @@ export default function NewChallanPage() {
                 </Tabs>
             </div>
         </div>
+    );
+}
+
+export default function NewChallanPage() {
+    return (
+        <Suspense fallback={<div className="flex justify-center items-center h-screen">Loading form details...</div>}>
+            <NewChallanPageContent />
+        </Suspense>
     );
 }
