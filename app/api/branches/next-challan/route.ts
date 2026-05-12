@@ -24,7 +24,6 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
-        prefix: data.challan_prefix || 'KC',
         nextNo: data.next_challan_no || 300066955
     });
 }

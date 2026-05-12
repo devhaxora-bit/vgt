@@ -4,19 +4,19 @@ import { z } from 'zod';
 
 // Validation schema for creating a challan
 const createChallanSchema = z.object({
+    challan_no: z.string().min(1, 'Challan number is required'),
     origin_branch_code: z.string().min(1, 'Origin branch is required'),
-    destination_branch_code: z.string().min(1, 'Destination branch is required'),
-    owner_type: z.string().default('MARKET'),
-    challan_type: z.enum(['MAIN', 'FOC']),
+    destination_branch_code: z.string().optional().nullable(),
+    engagement_type: z.enum(['broker', 'direct']).default('broker'),
     vehicle_no: z.string().min(1, 'Vehicle number is required'),
     driver_name: z.string().optional(),
     driver_mobile: z.string().optional(),
-    total_hire_amount: z.number().min(0).default(0),
-    extra_hire_amount: z.number().min(0).default(0),
-    advance_amount: z.number().min(0).default(0),
-    date_from: z.string().optional(), // ISO date string
-    date_to: z.string().optional(),   // ISO date string
-});
+    total_hire_amount: z.coerce.number().min(0).default(0),
+    extra_hire_amount: z.coerce.number().min(0).default(0),
+    advance_amount: z.coerce.number().min(0).default(0),
+    date_from: z.string().optional(),
+    date_to: z.string().optional(),
+}).passthrough();
 
 export async function GET(request: Request) {
     const supabase = await createClient();
@@ -47,8 +47,8 @@ export async function GET(request: Request) {
         query = query.or(`origin_branch_code.eq.${branch},destination_branch_code.eq.${branch}`);
     }
 
-    if (type) {
-        query = query.eq('challan_type', type);
+    if (type && type !== 'ALL') {
+        query = query.eq('engagement_type', type);
     }
 
     if (status) {
@@ -81,31 +81,27 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const parseResult = createChallanSchema.safeParse(await request.json());
+    if (!parseResult.success) {
+        return NextResponse.json(
+            { error: parseResult.error.issues[0]?.message || 'Invalid challan data' },
+            { status: 400 }
+        );
+    }
+
+    const body = parseResult.data;
 
     // Prepare insert data from body
-    const insertData: any = {
+    const insertData: Record<string, unknown> = {
         challan_no: body.challan_no,
         origin_branch_code: body.origin_branch_code,
-        destination_branch_code: body.destination_branch_code,
-        challan_mode: body.challan_type || 'MAIN',
-        sub_type: body.sub_type || 'Route',
-        owner_type: body.owner_type || 'MARKET',
+        destination_branch_code: body.destination_branch_code || null,
+        engagement_type: body.engagement_type || 'broker',
         vehicle_no: body.vehicle_no,
         driver_name: body.driver_name,
         driver_mobile: body.driver_mobile,
-        
-        // Lane Details
-        loading_at: body.loading_at,
-        unloading_at: body.unloading_at,
-        loading_branch_code: body.loading_branch_code,
-        unloading_branch_code: body.unloading_branch_code,
-        loading_pincode: body.loading_pincode,
-        unloading_pincode: body.unloading_pincode,
-        loading_area: body.loading_area,
-        unloading_area: body.unloading_area,
-        trip_distance: body.trip_distance || 0,
-        expected_trip_complete_at: body.expected_trip_complete_at,
+        loading_point: body.loading_point,
+        destination_point: body.destination_point,
 
         // Owner/Broker
         owner_pan: body.owner_pan,
@@ -176,9 +172,8 @@ export async function POST(request: Request) {
         petro_card_branch_code: body.petro_card_branch_code,
 
         // Others
-        engaged_by: body.engaged_by,
-        engaged_date: body.engaged_date,
         remarks: body.remarks,
+        linked_cn_nos: Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [],
 
         created_by: user.id,
         status: 'ACTIVE'
@@ -196,18 +191,18 @@ export async function POST(request: Request) {
     }
 
     // Increment sequence in branches table
-    if (insertData.origin_branch_code) {
+    if (body.origin_branch_code) {
         const { data: branchData } = await supabase
             .from("branches")
             .select("next_challan_no")
-            .eq("code", insertData.origin_branch_code.toUpperCase())
+            .eq("code", body.origin_branch_code.toUpperCase())
             .single();
 
         if (branchData) {
             await supabase
                 .from("branches")
                 .update({ next_challan_no: (branchData.next_challan_no || 0) + 1 })
-                .eq("code", insertData.origin_branch_code.toUpperCase());
+                .eq("code", body.origin_branch_code.toUpperCase());
         }
     }
 

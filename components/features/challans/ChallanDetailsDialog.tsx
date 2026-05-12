@@ -21,10 +21,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 
+interface ChallanDetails {
+    id: string;
+    challan_no: string;
+    challan_type: string;
+    challan_mode?: string;
+    status: string;
+    owner_type?: string;
+    date_from?: string | null;
+    date_to?: string | null;
+    vehicle_no: string;
+    driver_name?: string | null;
+    driver_mobile?: string | null;
+    total_hire_amount?: number | string | null;
+    extra_hire_amount?: number | string | null;
+    advance_amount?: number | string | null;
+    created_at: string;
+    unloading_area?: string | null;
+    origin_branch?: { name?: string | null; city?: string | null } | null;
+    destination_branch?: { name?: string | null; city?: string | null } | null;
+}
+
 interface ChallanDetailsDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    challan: any;
+    challan: ChallanDetails | null;
 }
 
 export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetailsDialogProps) {
@@ -34,11 +55,11 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
 
     const c = challan;
 
-    const formatDateSafe = (dateStr: any, formatStr: string) => {
+    const formatDateSafe = (dateStr: string | number | Date | null | undefined, formatStr: string) => {
         try {
             if (!dateStr) return '---';
             return format(new Date(dateStr), formatStr);
-        } catch (e) {
+        } catch {
             return '---';
         }
     };
@@ -133,7 +154,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
         </div>
         <div class="meta-cell">
             <div class="lbl">Challan Type</div>
-            <div class="val">${c.challan_type}</div>
+            <div class="val">${c.challan_mode || c.challan_type}</div>
         </div>
         <div class="meta-cell">
             <div class="lbl">Status</div>
@@ -150,7 +171,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
             </div>
             <div class="field-row field-row-highlight">
                 <div class="field-label">To</div>
-                <div class="field-value field-value-large">${c.destination_branch?.name || '---'}</div>
+                <div class="field-value field-value-large">${c.destination_branch?.name || c.unloading_area || '---'}</div>
             </div>
             <div class="field-row">
                 <div class="field-label">Owner Type</div>
@@ -184,7 +205,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
             </div>
             <div class="field-row">
                 <div class="field-label">Dest. City</div>
-                <div class="field-value">${c.destination_branch?.city || '---'}</div>
+                <div class="field-value">${c.destination_branch?.city || c.unloading_area || '---'}</div>
             </div>
         </div>
     </div>
@@ -283,7 +304,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
                         <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center border shadow-sm text-muted-foreground">→</div>
                         <div className="space-y-1 text-right">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">Destination</span>
-                            <div className="font-bold">{c.destination_branch?.name}</div>
+                            <div className="font-bold">{c.destination_branch?.name || c.unloading_area || '---'}</div>
                             <div className="text-xs text-muted-foreground">{c.destination_branch?.city}</div>
                         </div>
                     </div>
@@ -310,7 +331,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="p-4 space-y-3">
-                                <InfoItem label="Challan Type" value={c.challan_type} />
+                                <InfoItem label="Challan Type" value={c.challan_mode || c.challan_type} />
                                 <InfoItem label="Owner Type" value={c.owner_type} />
                                 <Separator />
                                 <div className="grid grid-cols-2 gap-2">
@@ -355,7 +376,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
     );
 }
 
-function InfoItem({ label, value }: { label: string, value: any }) {
+function InfoItem({ label, value }: { label: string, value: React.ReactNode }) {
     return (
         <div className="space-y-1">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wide">{label}</Label>

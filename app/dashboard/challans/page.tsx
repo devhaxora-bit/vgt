@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Calendar, Filter, FileText } from 'lucide-react';
+import { Plus, Search, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -21,21 +21,24 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { ChallanDetailsDialog } from '@/components/features/challans/ChallanDetailsDialog';
-import { Printer, Eye } from 'lucide-react';
+import { Printer } from 'lucide-react';
 
 interface Challan {
     id: string;
     challan_no: string;
+    engagement_type?: string;
     owner_type?: string;
     date_from: string;
     date_to?: string;
     origin_branch: { name: string; city: string };
-    destination_branch: { name: string; city: string };
+    destination_branch?: { name: string; city: string } | null;
+    unloading_area?: string;
     challan_type: string;
+    challan_mode?: string;
     vehicle_no: string;
     driver_name?: string;
     driver_mobile?: string;
@@ -58,11 +61,7 @@ export default function ChallanListPage() {
     const [selectedChallan, setSelectedChallan] = useState<Challan | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-    useEffect(() => {
-        fetchChallans();
-    }, [searchTerm, typeFilter, dateFrom, dateTo]);
-
-    const fetchChallans = async () => {
+    const fetchChallans = useCallback(async () => {
         setLoading(true);
         try {
             const params = new URLSearchParams();
@@ -81,7 +80,11 @@ export default function ChallanListPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [dateFrom, dateTo, searchTerm, typeFilter]);
+
+    useEffect(() => {
+        fetchChallans();
+    }, [fetchChallans]);
 
     const handleViewDetails = (challan: Challan) => {
         setSelectedChallan(challan);
@@ -123,15 +126,15 @@ export default function ChallanListPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <span className="text-xs font-medium text-muted-foreground">Challan Type</span>
+                        <span className="text-xs font-medium text-muted-foreground">Engagement Via</span>
                         <Select value={typeFilter} onValueChange={setTypeFilter}>
                             <SelectTrigger>
-                                <SelectValue placeholder="All Types" />
+                                <SelectValue placeholder="All" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="ALL">All Types</SelectItem>
-                                <SelectItem value="MAIN">MAIN</SelectItem>
-                                <SelectItem value="FOC">FOC</SelectItem>
+                                <SelectItem value="ALL">All</SelectItem>
+                                <SelectItem value="broker">Broker</SelectItem>
+                                <SelectItem value="direct">Direct</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -164,7 +167,7 @@ export default function ChallanListPage() {
                             <TableHead className="w-[120px]">Challan Branch</TableHead>
                             <TableHead>Challan No</TableHead>
                             <TableHead>Challan Date</TableHead>
-                            <TableHead>Owner Type</TableHead>
+                            <TableHead>Via</TableHead>
                             <TableHead>Dest Branch</TableHead>
                             <TableHead>Type</TableHead>
                             <TableHead>Vehicle No</TableHead>
@@ -190,10 +193,18 @@ export default function ChallanListPage() {
                                     <TableCell className="font-medium">{challan.origin_branch?.name || 'N/A'}</TableCell>
                                     <TableCell className="font-mono text-primary font-semibold">{challan.challan_no}</TableCell>
                                     <TableCell>{format(new Date(challan.created_at), 'dd/MM/yyyy')}</TableCell>
-                                    <TableCell>{challan.owner_type || 'MARKET'}</TableCell>
-                                    <TableCell>{challan.destination_branch?.name || 'N/A'}</TableCell>
                                     <TableCell>
-                                        <Badge variant="outline" className="font-mono">{challan.challan_type}</Badge>
+                                        <Badge variant="outline" className={
+                                            challan.engagement_type === 'direct'
+                                                ? 'border-blue-200 text-blue-700 bg-blue-50'
+                                                : 'border-orange-200 text-orange-700 bg-orange-50'
+                                        }>
+                                            {challan.engagement_type === 'direct' ? 'Direct' : 'Broker'}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell>{challan.destination_branch?.name || challan.unloading_area || 'N/A'}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className="font-mono">{challan.challan_mode || challan.challan_type}</Badge>
                                     </TableCell>
                                     <TableCell className="font-mono font-medium text-[#101828]">{challan.vehicle_no}</TableCell>
                                     <TableCell className="text-right font-mono">{challan.total_hire_amount}</TableCell>
