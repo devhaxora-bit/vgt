@@ -19,6 +19,20 @@ export async function GET(request: Request) {
         return NextResponse.json(data ?? []);
     }
 
+    const cns = searchParams.get('cns')?.trim();
+
+    // --- Batch lookup mode ---
+    if (cns) {
+        const cnArray = cns.split(',').map(c => c.trim()).filter(Boolean);
+        if (cnArray.length === 0) return NextResponse.json([]);
+        const { data, error } = await supabase
+            .from('consignments')
+            .select('id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point')
+            .in('cn_no', cnArray);
+        if (error) return NextResponse.json([], { status: 200 });
+        return NextResponse.json(data ?? []);
+    }
+
     // --- Exact lookup mode ---
     if (!cnNo) {
         return NextResponse.json({ error: 'CN number is required' }, { status: 400 });
