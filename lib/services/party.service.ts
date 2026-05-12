@@ -6,8 +6,7 @@ export const getParties = async (type?: PartyType, search?: string) => {
     let query = supabase
         .from('parties')
         .select('*')
-        .eq('is_active', true)
-        .order('name');
+        .eq('is_active', true);
 
     if (type) {
         if (type === 'consignor') {
@@ -22,10 +21,12 @@ export const getParties = async (type?: PartyType, search?: string) => {
         }
     }
 
-    if (search) {
-        query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%`);
+    if (search && search.trim()) {
+        const searchTerm = `%${search.trim()}%`;
+        query = query.or(`name.ilike.${searchTerm},code.ilike.${searchTerm}`);
     }
 
+    query = query.order('name');
     const { data, error } = await query;
 
     if (error) {

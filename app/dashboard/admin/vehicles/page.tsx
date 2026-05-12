@@ -22,9 +22,6 @@ interface Vehicle {
     chasis_no: string;
     permit_no: string;
     permit_validity: string;
-    tax_token_no: string;
-    tax_token_validity: string;
-    tax_token_issued_by: string;
     owner_name: string;
     owner_mobile: string;
     owner_pan: string;
@@ -35,24 +32,15 @@ interface Vehicle {
     insurance_company: string;
     insurance_city: string;
     finance_detail: string;
-    ewaybill_no: string;
-    ewaybill_date: string;
-    tds_percent: string;
-    itds_ref_branch: string;
-    itds_declare_date: string;
-    itds_financial_year: string;
     is_active: boolean;
 }
 
 const emptyForm = {
     vehicle_no: '', vehicle_type: 'open', vehicle_make: '', vehicle_model: '',
     engine_no: '', chasis_no: '', permit_no: '', permit_validity: '',
-    tax_token_no: '', tax_token_validity: '', tax_token_issued_by: '',
     owner_name: '', owner_mobile: '', owner_pan: '', owner_address: '', owner_tel: '',
     insurance_policy_no: '', insurance_validity: '', insurance_company: '',
     insurance_city: '', finance_detail: '',
-    ewaybill_no: '', ewaybill_date: '',
-    tds_percent: '0', itds_ref_branch: '', itds_declare_date: '', itds_financial_year: '2025-2026',
 };
 
 const labelCls = 'text-[11px] font-bold uppercase text-muted-foreground';
@@ -91,18 +79,11 @@ export default function VehiclesAdminPage() {
             vehicle_make: v.vehicle_make || '', vehicle_model: v.vehicle_model || '',
             engine_no: v.engine_no || '', chasis_no: v.chasis_no || '',
             permit_no: v.permit_no || '', permit_validity: d(v.permit_validity),
-            tax_token_no: v.tax_token_no || '', tax_token_validity: d(v.tax_token_validity),
-            tax_token_issued_by: v.tax_token_issued_by || '',
             owner_name: v.owner_name || '', owner_mobile: v.owner_mobile || '',
             owner_pan: v.owner_pan || '', owner_address: v.owner_address || '', owner_tel: v.owner_tel || '',
             insurance_policy_no: v.insurance_policy_no || '', insurance_validity: d(v.insurance_validity),
             insurance_company: v.insurance_company || '', insurance_city: v.insurance_city || '',
             finance_detail: v.finance_detail || '',
-            ewaybill_no: v.ewaybill_no || '', ewaybill_date: d(v.ewaybill_date),
-            tds_percent: v.tds_percent?.toString() || '0',
-            itds_ref_branch: v.itds_ref_branch || '',
-            itds_declare_date: d(v.itds_declare_date),
-            itds_financial_year: v.itds_financial_year || '2025-2026',
         });
         setDialogOpen(true);
     };
@@ -178,7 +159,6 @@ export default function VehiclesAdminPage() {
                                     <TableHead>PAN</TableHead>
                                     <TableHead>Permit Valid</TableHead>
                                     <TableHead>Insurance Valid</TableHead>
-                                    <TableHead>TDS %</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead className="text-right sticky right-0 bg-slate-50 border-l">Actions</TableHead>
                                 </TableRow>
@@ -206,7 +186,6 @@ export default function VehiclesAdminPage() {
                                         <TableCell className="font-mono text-xs">{v.owner_pan || '—'}</TableCell>
                                         <TableCell className="text-xs">{v.permit_validity?.split('T')[0] || '—'}</TableCell>
                                         <TableCell className="text-xs">{v.insurance_validity?.split('T')[0] || '—'}</TableCell>
-                                        <TableCell className="font-mono text-xs">{v.tds_percent ?? 0}%</TableCell>
                                         <TableCell>
                                             <Badge variant={v.is_active ? 'default' : 'secondary'}>{v.is_active ? 'Active' : 'Inactive'}</Badge>
                                         </TableCell>
@@ -284,18 +263,6 @@ export default function VehiclesAdminPage() {
                                     <Label className={labelCls}>Permit Validity</Label>
                                     <Input type="date" className={inputCls} value={form.permit_validity} onChange={(e) => set('permit_validity', e.target.value)} />
                                 </div>
-                                <div className="space-y-1">
-                                    <Label className={labelCls}>Tax Token No</Label>
-                                    <Input className={inputCls} value={form.tax_token_no} onChange={(e) => set('tax_token_no', e.target.value)} placeholder="Tax Token No" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className={labelCls}>Tax Token Validity</Label>
-                                    <Input type="date" className={inputCls} value={form.tax_token_validity} onChange={(e) => set('tax_token_validity', e.target.value)} />
-                                </div>
-                                <div className="space-y-1 md:col-span-2">
-                                    <Label className={labelCls}>Tax Token Issued By</Label>
-                                    <Input className={inputCls} value={form.tax_token_issued_by} onChange={(e) => set('tax_token_issued_by', e.target.value)} placeholder="RTO / Authority" />
-                                </div>
                             </div>
                         </div>
 
@@ -326,9 +293,9 @@ export default function VehiclesAdminPage() {
                             </div>
                         </div>
 
-                        {/* ── Insurance & eWaybill ── */}
+                        {/* ── Insurance ── */}
                         <div className="border rounded-md p-4 bg-slate-50/50">
-                            <p className={labelCls + ' mb-3 block'}>Insurance & eWaybill</p>
+                            <p className={labelCls + ' mb-3 block'}>Insurance Details</p>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div className="space-y-1 md:col-span-2">
                                     <Label className={labelCls}>Policy No</Label>
@@ -349,38 +316,6 @@ export default function VehiclesAdminPage() {
                                 <div className="space-y-1 md:col-span-2">
                                     <Label className={labelCls}>Finance Detail</Label>
                                     <Input className={inputCls} value={form.finance_detail} onChange={(e) => set('finance_detail', e.target.value)} placeholder="Financer / bank detail" />
-                                </div>
-                                <div className="space-y-1 md:col-span-2">
-                                    <Label className={labelCls}>eWaybill No</Label>
-                                    <Input className={inputCls} value={form.ewaybill_no} onChange={(e) => set('ewaybill_no', e.target.value)} placeholder="eWaybill No" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className={labelCls}>eWaybill Date</Label>
-                                    <Input type="date" className={inputCls} value={form.ewaybill_date} onChange={(e) => set('ewaybill_date', e.target.value)} />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* ── TDS / ITDS ── */}
-                        <div className="border rounded-md p-4 bg-slate-50/50">
-                            <p className={labelCls + ' mb-3 block'}>TDS / ITDS Declaration</p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="space-y-1">
-                                    <Label className={labelCls}>TDS %</Label>
-                                    <Input type="number" step="0.01" className={inputCls + ' font-mono'} value={form.tds_percent}
-                                        onChange={(e) => set('tds_percent', e.target.value)} placeholder="0.00" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className={labelCls}>ITDS Financial Year</Label>
-                                    <Input className={inputCls} value={form.itds_financial_year} onChange={(e) => set('itds_financial_year', e.target.value)} placeholder="2025-2026" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className={labelCls}>ITDS Ref Branch</Label>
-                                    <Input className={inputCls} value={form.itds_ref_branch} onChange={(e) => set('itds_ref_branch', e.target.value)} placeholder="Branch code" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className={labelCls}>ITDS Declare Date</Label>
-                                    <Input type="date" className={inputCls} value={form.itds_declare_date} onChange={(e) => set('itds_declare_date', e.target.value)} />
                                 </div>
                             </div>
                         </div>

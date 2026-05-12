@@ -1,100 +1,48 @@
 import { createClient } from '@/utils/supabase/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
 
-// Validation schema for creating a challan
-const createChallanSchema = z.object({
-    challan_no: z.string().min(1, 'Challan number is required'),
-    date_from: z.string().optional(),
-    origin_branch_code: z.string().min(1, 'Origin branch is required'),
-    destination_branch_code: z.string().optional().nullable(),
-    engagement_type: z.enum(['broker', 'direct']).default('broker'),
-    vehicle_no: z.string().min(1, 'Vehicle number is required'),
-    driver_name: z.string().optional(),
-    driver_mobile: z.string().optional(),
-    total_hire_amount: z.coerce.number().min(0).default(0),
-    extra_hire_amount: z.coerce.number().min(0).default(0),
-    advance_amount: z.coerce.number().min(0).default(0),
-}).passthrough();
-
-export async function GET(request: Request) {
+export async function GET(
+    _req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
     const supabase = await createClient();
-    const { searchParams } = new URL(request.url);
+    const { id } = await params;
 
-    // Filters
-    const search = searchParams.get('search');
-    const branch = searchParams.get('branch');
-    const type = searchParams.get('type');
-    const status = searchParams.get('status');
-    const dateFrom = searchParams.get('dateFrom');
-    const dateTo = searchParams.get('dateTo');
-
-    let query = supabase
+    const { data, error } = await supabase
         .from('challans')
         .select(`
             *,
             origin_branch:branches!origin_branch_code(name, city),
             destination_branch:branches!destination_branch_code(name, city)
         `)
-        .order('created_at', { ascending: false });
-
-    if (search) {
-        query = query.or(`challan_no.ilike.%${search}%,vehicle_no.ilike.%${search}%`);
-    }
-
-    if (branch) {
-        query = query.or(`origin_branch_code.eq.${branch},destination_branch_code.eq.${branch}`);
-    }
-
-    if (type && type !== 'ALL') {
-        query = query.eq('engagement_type', type);
-    }
-
-    if (status) {
-        query = query.eq('status', status);
-    }
-
-    if (dateFrom) {
-        query = query.gte('created_at', dateFrom);
-    }
-
-    if (dateTo) {
-        query = query.lte('created_at', dateTo);
-    }
-
-    const { data, error } = await query;
+        .eq('id', id)
+        .single();
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
     return NextResponse.json(data);
 }
 
-export async function POST(request: Request) {
+export async function PUT(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
     const supabase = await createClient();
 
-    // Check auth
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const parseResult = createChallanSchema.safeParse(await request.json());
-    if (!parseResult.success) {
-        return NextResponse.json(
-            { error: parseResult.error.issues[0]?.message || 'Invalid challan data' },
-            { status: 400 }
-        );
-    }
+    const { id } = await params;
+    const body = await request.json();
 
-    const body = parseResult.data;
-
-    // Prepare insert data from body
-    const insertData: Record<string, unknown> = {
+    const updateData: Record<string, unknown> = {
         challan_no: body.challan_no,
         challan_type: body.challan_type || 'MAIN',
-        date_from: body.date_from || new Date().toISOString().split('T')[0],
+        date_from: body.date_from,
         origin_branch_code: body.origin_branch_code,
         destination_branch_code: body.destination_branch_code || null,
         engagement_type: body.engagement_type || 'broker',
@@ -103,8 +51,6 @@ export async function POST(request: Request) {
         driver_mobile: body.driver_mobile,
         loading_point: body.loading_point,
         destination_point: body.destination_point,
-
-        // Owner/Broker
         owner_pan: body.owner_pan,
         owner_name: body.owner_name,
         owner_mobile: body.owner_mobile,
@@ -116,8 +62,6 @@ export async function POST(request: Request) {
         broker_address: body.broker_address,
         slip_no: body.slip_no,
         slip_date: body.slip_date,
-
-        // Vehicle
         vehicle_type: body.vehicle_type,
         permit_no: body.permit_no,
         permit_validity: body.permit_validity,
@@ -128,26 +72,18 @@ export async function POST(request: Request) {
         tax_token_validity: body.tax_token_validity,
         tax_token_issued_by: body.tax_token_issued_by,
         vehicle_model: body.vehicle_model,
-
-        // Insurance
         insurance_policy_no: body.insurance_policy_no,
         insurance_validity: body.insurance_validity,
         insurance_company_name: body.insurance_company_name,
         insurance_city: body.insurance_city,
         finance_detail: body.finance_detail,
-
-        // ITDS
         itds_ref_branch: body.itds_ref_branch,
         itds_declare_date: body.itds_declare_date,
         itds_financial_year: body.itds_financial_year,
-
-        // Driver
         driver_dl_no: body.driver_dl_no,
         driver_dl_validity: body.driver_dl_validity,
         driver_address: body.driver_address,
         trip_tracking_consent: body.trip_tracking_consent || false,
-
-        // Financials
         total_hire_amount: body.total_hire_amount || 0,
         extra_hire_amount: body.extra_hire_amount || 0,
         advance_amount: body.advance_amount || 0,
@@ -163,44 +99,22 @@ export async function POST(request: Request) {
         total_extra_charges: body.total_extra_charges || 0,
         tds_percent: body.tds_percent || 0,
         less_tds: body.less_tds || 0,
-
-        // Others
         remarks: body.remarks,
         linked_cn_nos: Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [],
-
-        created_by: user.id,
-        status: 'ACTIVE'
+        updated_at: new Date().toISOString(),
     };
 
     const { data, error } = await supabase
         .from('challans')
-        .insert(insertData)
+        .update(updateData)
+        .eq('id', id)
         .select()
         .single();
 
     if (error) {
-        console.error("Failed to create challan:", error);
-        if (error.code === '23505') {
-            return NextResponse.json({ error: `Challan number ${body.challan_no} already exists for this branch. Please use a different number.` }, { status: 409 });
-        }
+        console.error('Failed to update challan:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Increment sequence in branches table
-    if (body.origin_branch_code) {
-        const { data: branchData } = await supabase
-            .from("branches")
-            .select("next_challan_no")
-            .eq("code", body.origin_branch_code.toUpperCase())
-            .single();
-
-        if (branchData) {
-            await supabase
-                .from("branches")
-                .update({ next_challan_no: (branchData.next_challan_no || 0) + 1 })
-                .eq("code", body.origin_branch_code.toUpperCase());
-        }
-    }
-
-    return NextResponse.json(data, { status: 201 });
+    return NextResponse.json(data);
 }

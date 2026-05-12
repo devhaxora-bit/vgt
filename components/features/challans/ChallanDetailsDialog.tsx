@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     Truck,
     Info,
     FileText,
     Printer,
+    Download,
 } from 'lucide-react';
 import {
     Dialog,
@@ -45,11 +46,32 @@ interface ChallanDetails {
 interface ChallanDetailsDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    challan: ChallanDetails | null;
+    challan: any;
 }
 
 export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetailsDialogProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [logoBase64, setLogoBase64] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        let isMounted = true;
+        const loadLogo = async () => {
+            try {
+                const res = await fetch('/vgt_logo.png');
+                const blob = await res.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    if (isMounted) setLogoBase64(String(reader.result));
+                };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                console.error('Failed to load logo base64:', err);
+            }
+        };
+        loadLogo();
+        return () => { isMounted = false; };
+    }, []);
 
     if (!challan) return null;
 
@@ -64,219 +86,200 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
         }
     };
 
-    const handlePrint = () => {
-        const balance = ((Number(c.total_hire_amount) + Number(c.extra_hire_amount)) - Number(c.advance_amount));
+    const handlePrint = async (mode: 'print' | 'download' = 'print') => {
+        if (mode === 'download') setIsDownloading(true);
+        try {
+            const totalHireAmount = Number(c.total_hire_amount) || 0;
+            const advance = Number(c.advance_amount) || 0;
+            const lessTds = Number(c.less_tds || 0);
+            const balance = totalHireAmount - advance - lessTds;
 
-        const html = `<!DOCTYPE html>
+            const formatNumber = (val: any) => Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const toUpperValue = (value: any) => String(value ?? '').trim() ? String(value).toUpperCase() : '---';
+            const logoUrl = logoBase64 || `${window.location.origin}/vgt_logo.png`;
+
+            const html = `<!DOCTYPE html>
 <html>
 <head>
-<title>Challan - ${c.challan_no}</title>
+<title>CHALLAN - ${c.challan_no}</title>
 <style>
-@page { size: A4; margin: 10mm; }
+@page { size: A4 landscape; margin: 5mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; }
-
-.page { border: 2px solid #000; padding: 0; width: 100%; }
-
-/* ─── HEADER ─── */
-.header { display: flex; align-items: center; border-bottom: 2px solid #000; padding: 10px 15px; }
-.header-logo { font-size: 36px; font-weight: 900; color: #1a3764; border: 3px solid #1a3764; border-radius: 8px; padding: 4px 10px; margin-right: 15px; line-height: 1; }
-.header-text { flex: 1; }
-.header-text h1 { font-size: 26px; font-weight: 900; color: #1a3764; letter-spacing: 1px; margin-bottom: 40px; }
-.header-text p { font-size: 9px; color: #333; margin-top: 2px; }
-.header-right { text-align: right; font-size: 9px; line-height: 1.6; }
-.header-right .pan { font-weight: 700; font-size: 10px; }
-
-/* ─── TOP ROW: META ─── */
-.meta-row { display: flex; border-bottom: 2px solid #000; }
-.meta-cell { flex: 1; padding: 8px 12px; border-right: 1px solid #000; }
-.meta-cell:last-child { border-right: none; }
-.meta-cell .lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #555; margin-bottom: 2px; }
-.meta-cell .val { font-size: 14px; font-weight: 800; color: #1a3764; }
-
-/* ─── BODY GRID ─── */
-.body-grid { display: grid; grid-template-columns: 1fr 1fr; }
-.body-left { border-right: 2px solid #000; }
-.body-right { }
-
-.field-row { display: flex; border-bottom: 1px solid #aaa; min-height: 30px; }
-.field-label { width: 130px; font-size: 9px; font-weight: 700; padding: 6px 10px; text-transform: uppercase; color: #333; background: #f5f5f5; border-right: 1px solid #aaa; display: flex; align-items: center; }
-.field-value { flex: 1; font-size: 12px; font-weight: 600; padding: 6px 10px; display: flex; align-items: center; }
-
-.field-row-highlight { background: #eef4ff; }
-.field-value-large { font-size: 16px; font-weight: 800; color: #1a3764; }
-
-/* ─── CHARGES TABLE ─── */
-.charges-section { border-top: 2px solid #000; }
-.charges-title { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 6px 12px; background: #1a3764; color: #fff; letter-spacing: 1px; }
-.charges-grid { display: grid; grid-template-columns: 1fr 1fr; }
-.charge-cell { display: flex; border-bottom: 1px solid #aaa; border-right: 1px solid #aaa; }
-.charge-cell:nth-child(even) { border-right: none; }
-.charge-lbl { width: 120px; font-size: 9px; font-weight: 600; padding: 5px 10px; background: #f9f9f9; border-right: 1px solid #aaa; }
-.charge-val { flex: 1; font-size: 11px; font-weight: 700; padding: 5px 10px; text-align: right; font-family: monospace; }
-
-.total-row { display: flex; border-top: 2px solid #000; background: #eef4ff; }
-.total-lbl { flex: 1; font-size: 12px; font-weight: 800; padding: 10px 15px; text-transform: uppercase; }
-.total-val { font-size: 18px; font-weight: 900; padding: 10px 15px; color: #1a3764; font-family: monospace; }
-
-/* ─── FOOTER ─── */
-.footer { display: flex; justify-content: space-between; border-top: 2px solid #000; padding: 15px; }
-.sig-box { text-align: center; width: 180px; }
-.sig-line { border-top: 1px solid #000; margin-top: 50px; padding-top: 5px; font-size: 9px; font-weight: 700; }
-.gen-info { font-size: 8px; color: #888; text-align: center; padding-top: 60px; }
+body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; }
+.page { position: relative; background: #ffffff; width: 274mm; min-height: 189mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; box-shadow: inset 0 0 0 2px #1d2f7a; }
+.row { display: flex; width: 100%; }
+.box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
+.tiny { font-size: 11px; line-height: 1.25; }
+.lbl { font-size: 11px; font-weight: 700; color: #1d2f7a; }
+.strong { font-weight: 700; }
+.head-blue { color: #17308b; font-weight: 800; }
+.lr-red { color: #cc1a1a; font-weight: 900; font-size: 20px; letter-spacing: 1px; }
+.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 20px; }
+.logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; }
+.logo-box img { width: 100%; height: 100%; object-fit: contain; }
+.top-grid { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
+.mid-grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
+.right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }
+.right-stack > div:last-child { border-bottom: none; }
+.main-table { width:100%; border-collapse: collapse; }
+.main-table th, .main-table td { border:1px solid #1d2f7a; padding: 6px 8px; vertical-align: middle; }
+.main-table th { background: rgba(255,255,255,0.65); color:#122d7a; font-size: 13px; font-weight: 700; text-align: left; }
+.ink { font-family: Arial, Helvetica, sans-serif; color: #132b94; font-weight: 700; letter-spacing: 0.2px; }
+.note-section { border-top: 1px solid #1d2f7a; padding: 10px; }
+.note-box { border: 1px solid #1d2f7a; padding: 8px; font-size: 12px; line-height: 1.5; }
+.footer-signs { display:flex; justify-content:space-between; padding:20px 20px 5px; font-size: 14px; font-weight: bold; }
 </style>
 </head>
 <body>
 <div class="page">
-    <!-- HEADER -->
-    <div class="header">
-        <div class="header-logo">VGT</div>
-        <div class="header-text">
-            <h1>Visakha Golden Transport</h1>
-            <p>D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</p>
-            <p>Cell: 9701523640 | Website: https://visakhagolden.com | Email: support@visakhagolden.com</p>
-        </div>
-        <div class="header-right">
-            <div class="pan">PAN NO: AAWFV7670H</div>
-            <div>GSTIN: 37AAWFV7670H1Z8</div>
-        </div>
-    </div>
-
-    <!-- META ROW -->
-    <div class="meta-row">
-        <div class="meta-cell">
-            <div class="lbl">Challan No</div>
-            <div class="val">${c.challan_no}</div>
-        </div>
-        <div class="meta-cell">
-            <div class="lbl">Date</div>
-            <div class="val">${formatDateSafe(c.created_at, 'dd/MM/yyyy')}</div>
-        </div>
-        <div class="meta-cell">
-            <div class="lbl">Challan Type</div>
-            <div class="val">${c.challan_mode || c.challan_type}</div>
-        </div>
-        <div class="meta-cell">
-            <div class="lbl">Status</div>
-            <div class="val">${c.status}</div>
-        </div>
-    </div>
-
-    <!-- BODY GRID -->
-    <div class="body-grid">
-        <div class="body-left">
-            <div class="field-row field-row-highlight">
-                <div class="field-label">From</div>
-                <div class="field-value field-value-large">${c.origin_branch?.name || '---'}</div>
-            </div>
-            <div class="field-row field-row-highlight">
-                <div class="field-label">To</div>
-                <div class="field-value field-value-large">${c.destination_branch?.name || c.unloading_area || '---'}</div>
-            </div>
-            <div class="field-row">
-                <div class="field-label">Owner Type</div>
-                <div class="field-value">${c.owner_type || 'MARKET'}</div>
-            </div>
-            <div class="field-row">
-                <div class="field-label">Reporting Date</div>
-                <div class="field-value">${formatDateSafe(c.date_from, 'dd/MM/yyyy')}</div>
-            </div>
-            <div class="field-row">
-                <div class="field-label">Release Date</div>
-                <div class="field-value">${formatDateSafe(c.date_to, 'dd/MM/yyyy')}</div>
-            </div>
-        </div>
-        <div class="body-right">
-            <div class="field-row">
-                <div class="field-label">Vehicle No.</div>
-                <div class="field-value" style="font-size:16px; font-weight:900; letter-spacing:2px;">${c.vehicle_no}</div>
-            </div>
-            <div class="field-row">
-                <div class="field-label">Driver Name</div>
-                <div class="field-value">${c.driver_name || '---'}</div>
-            </div>
-            <div class="field-row">
-                <div class="field-label">Driver Mobile</div>
-                <div class="field-value">${c.driver_mobile || '---'}</div>
-            </div>
-            <div class="field-row">
-                <div class="field-label">Origin City</div>
-                <div class="field-value">${c.origin_branch?.city || '---'}</div>
-            </div>
-            <div class="field-row">
-                <div class="field-label">Dest. City</div>
-                <div class="field-value">${c.destination_branch?.city || c.unloading_area || '---'}</div>
+    <div class="hdr">
+        <div class="row" style="gap:10px; align-items:center;">
+            <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
+            <div style="flex:1; text-align:center;">
+                <div class="head-blue" style="font-size:48px; line-height:1; margin-bottom:15px;">Visakha Golden Transport</div>
+                <div class="strong" style="font-size:14px; margin-bottom:4px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
+                <div style="font-size:13px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
         </div>
     </div>
-
-    <!-- CHARGES -->
-    <div class="charges-section">
-        <div class="charges-title">Financial Details</div>
-        <div class="charges-grid">
-            <div class="charge-cell">
-                <div class="charge-lbl">Total Hire Amt</div>
-                <div class="charge-val">₹ ${Number(c.total_hire_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-            </div>
-            <div class="charge-cell">
-                <div class="charge-lbl">Extra Hire Amt</div>
-                <div class="charge-val">₹ ${Number(c.extra_hire_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-            </div>
-            <div class="charge-cell">
-                <div class="charge-lbl">Advance Paid</div>
-                <div class="charge-val" style="color: #c00;">- ₹ ${Number(c.advance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-            </div>
-            <div class="charge-cell">
-                <div class="charge-lbl">Balance Amount</div>
-                <div class="charge-val" style="font-weight:900; color:#1a3764;">₹ ${balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-            </div>
+    <div class="top-grid">
+        <div class="box right-stack tiny">
+             <div style="text-align:center; background:#17308b; color:#fff; font-weight:900; font-size:18px; padding:6px 0;">TRUCK CHALLAN</div>
+             <div><span class="lbl">Date: </span><span class="strong ink" style="font-size:16px;">${formatDateSafe(c.created_at, 'dd/MM/yyyy')}</span></div>
+             <div><span class="lbl">Status: </span><span class="strong ink">${toUpperValue(c.status)}</span></div>
         </div>
-        <div class="total-row">
-            <div class="total-lbl">Balance Payable</div>
-            <div class="total-val">₹ ${balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+        <div class="box right-stack tiny" style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
+             <div style="border:none;"><span class="lbl" style="font-size:16px;">Challan No: </span><span class="lr-red" style="font-size:32px;">${c.challan_no}</span></div>
+             <div style="border:none; margin-top:5px;"><span class="lbl">Mode: </span><span class="strong ink">${toUpperValue(c.challan_mode || c.challan_type)}</span></div>
+        </div>
+        <div class="box right-stack tiny">
+            <div><span class="lbl">PAN NO : </span><span class="strong ink">AAWFV7670H</span></div>
+            <div><span class="lbl">GSTIN : </span><span class="strong ink">37AAWFV7670H1Z8</span></div>
+            <div><span class="lbl">Load Date : </span><span class="strong ink">${formatDateSafe(c.date_from, 'dd/MM/yyyy')}</span></div>
         </div>
     </div>
-
-    <!-- FOOTER -->
-    <div class="footer">
-        <div class="sig-box">
-            <div class="sig-line">Authorized Signatory</div>
+    <div class="mid-grid">
+        <div class="box right-stack tiny">
+            <div style="background:#f0f4ff;"><span class="lbl">ROUTE / TRIP INFO</span></div>
+            <div><span class="lbl">Loading Point:</span><br/><span class="strong ink" style="font-size:16px;">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
+            <div><span class="lbl">Destination Point:</span><br/><span class="strong ink" style="font-size:16px;">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
         </div>
-        <div class="gen-info">Generated: ${new Date().toLocaleString('en-IN')}</div>
-        <div class="sig-box">
-            <div class="sig-line">Driver Signature</div>
+        <div class="box right-stack tiny">
+            <div style="background:#f0f4ff;"><span class="lbl">VEHICLE & DRIVER INFO</span></div>
+            <div><span class="lbl">Vehicle Number:</span><br/><span class="strong ink" style="font-size:18px; letter-spacing:1px;">${toUpperValue(c.vehicle_no)}</span></div>
+            <div><span class="lbl">Driver Name:</span><br/><span class="strong ink" style="font-size:15px;">${toUpperValue(c.driver_name)}</span></div>
+            <div><span class="lbl">Driver Mobile:</span><br/><span class="strong ink" style="font-size:15px;">${toUpperValue(c.driver_mobile)}</span></div>
         </div>
+        <div class="box right-stack tiny">
+            <div style="background:#f0f4ff;"><span class="lbl">BROKER / OWNER INFO</span></div>
+            <div><span class="lbl">Broker Name:</span><br/><span class="strong ink" style="font-size:15px;">${toUpperValue(c.broker_name)}</span></div>
+            <div><span class="lbl">Broker Mobile:</span><br/><span class="strong ink">${toUpperValue(c.broker_mobile)}</span></div>
+            <div><span class="lbl">Slip / Order No:</span><br/><span class="strong ink">${toUpperValue(c.slip_no)}</span></div>
+        </div>
+    </div>
+    <div style="padding: 6px;">
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th style="width:35%">Financial Particulars</th>
+                    <th style="width:15%; text-align:center;">Rate Type</th>
+                    <th style="width:15%; text-align:right;">Quantity/Value</th>
+                    <th style="width:35%; text-align:right;">Line Amount (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="strong">Basic Lorry Hire / Freight</td>
+                    <td style="text-align:center;">MT / Fixed</td>
+                    <td style="text-align:right;">${c.hire_rate_per_kg || '---'}</td>
+                    <td class="ink" style="text-align:right; font-size:14px;">${formatNumber(c.hire_amount)}</td>
+                </tr>
+                <tr>
+                    <td class="strong">Extra Charges (Weight/Height/Dim.)</td>
+                    <td style="text-align:center;">Combined</td>
+                    <td style="text-align:right;">---</td>
+                    <td class="ink" style="text-align:right;">${formatNumber(Number(c.extra_over_weight || 0) + Number(c.extra_over_height || 0) + Number(c.extra_over_length || 0) + Number(c.extra_over_width || 0))}</td>
+                </tr>
+                <tr>
+                    <td class="strong">Extra KM / Detention Charges</td>
+                    <td style="text-align:center;">Combined</td>
+                    <td style="text-align:right;">---</td>
+                    <td class="ink" style="text-align:right;">${formatNumber(Number(c.extra_km_charges || 0) + Number(c.detent_charges || 0))}</td>
+                </tr>
+                <tr style="background:#f9fafb; border-top:2px solid #1d2f7a;">
+                    <td colspan="3" class="strong" style="font-size:16px; text-align:right;">TOTAL LORRY HIRE (GROSS)</td>
+                    <td class="ink" style="text-align:right; font-size:18px; color:#111;">₹ ${formatNumber(totalHireAmount)}</td>
+                </tr>
+                <tr>
+                    <td colspan="3" class="strong" style="text-align:right; color:#c2410c;">Less: TDS Dedn (${c.tds_percent || 0}%)</td>
+                    <td class="ink" style="text-align:right; color:#c2410c;">- ₹ ${formatNumber(lessTds)}</td>
+                </tr>
+                <tr>
+                    <td colspan="3" class="strong" style="text-align:right; color:#c2410c;">Less: Advance Paid</td>
+                    <td class="ink" style="text-align:right; color:#c2410c;">- ₹ ${formatNumber(advance)}</td>
+                </tr>
+                <tr style="background:#eef2ff;">
+                    <td colspan="3" class="strong" style="font-size:18px; text-align:right; color:#1a3764;">NET BALANCE PAYABLE</td>
+                    <td class="ink" style="text-align:right; font-size:24px; color:#1a3764; border: 2px solid #1a3764;">₹ ${formatNumber(balance)}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="note-section">
+        <div style="font-size:14px; font-weight:bold; margin-bottom:5px;">Truck Should reach on Date ......................</div>
+        <div class="note-box">
+            <div style="font-weight:bold; text-decoration:underline; margin-bottom:4px;">NOTE :</div>
+            <div>1. Materials Should Be Delivered On Or Before Schedule Date &Time As Mentioned Above Other Wise Delay DeliveyCharges 2% Per Day On Total Lorry Hire Well Be Deducted.</div>
+            <div>2. Goods Loaded In Good & Sound Condition Hence All Risks & Responsblities For Safe Movement and Safe Delivery of Goods Rest With Lorry Owner / Driver / Agent</div>
+            <div>3. Recerved Sign Acknowledgement Should be deposited in 20 days Otherwise Penaity of Rs. 100/- per day will be deducted from Balance Hire</div>
+            <div style="margin-top:8px; font-weight:bold; font-style:italic;">Weagree to all The Terms & Conditions Mentioned Above And Overleaf</div>
+        </div>
+    </div>
+    <div class="footer-signs">
+        <div>Agent : _____________________</div>
+        <div style="text-align:right;">Driver : _____________________</div>
     </div>
 </div>
 </body>
 </html>`;
 
-        // Use hidden iframe to avoid screen blink
-        const iframe = iframeRef.current;
-        if (!iframe) return;
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!doc) return;
-        doc.open();
-        doc.write(html);
-        doc.close();
+            const iframe = iframeRef.current;
+            if (!iframe) return;
+            const doc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (!doc) return;
+            doc.open();
+            doc.write(html);
+            doc.close();
 
-        // Wait for content to render, then print
-        iframe.onload = () => {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
-        };
-        // Trigger onload for already-loaded content
-        setTimeout(() => {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
-        }, 300);
+            await new Promise((resolve) => setTimeout(resolve, 800));
+
+            if (mode === 'print') {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+            } else {
+                const page = doc.querySelector('.page') as HTMLElement;
+                const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+                    import('html2canvas'),
+                    import('jspdf'),
+                ]);
+                const canvas = await html2canvas(page, { scale: 2, useCORS: true });
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('l', 'mm', 'a4');
+                pdf.addImage(imgData, 'PNG', 5, 5, 287, 200);
+                pdf.save(`challan-${c.challan_no}.pdf`);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Action failed");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-2xl">
-                {/* Hidden iframe for printing */}
-                <iframe ref={iframeRef} style={{ position: 'absolute', width: 0, height: 0, border: 'none', overflow: 'hidden' }} />
+            <DialogContent className="max-w-[95vw] md:max-w-5xl lg:max-w-6xl max-h-[90vh] overflow-y-auto">
+                <iframe ref={iframeRef} style={{ position: 'fixed', left: '-10000px', top: 0, width: '1400px', height: '1000px', opacity: 0 }} />
 
                 <DialogHeader>
                     <div className="flex justify-between items-start">
@@ -285,27 +288,22 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
                                 <FileText className="h-5 w-5 text-primary" />
                                 Challan: {c.challan_no}
                             </DialogTitle>
-                            <DialogDescription>
-                                Detailed view of the lorry challan
-                            </DialogDescription>
+                            <DialogDescription>Detailed view of the lorry challan</DialogDescription>
                         </div>
                         <Badge variant="outline" className="font-mono">{c.status}</Badge>
                     </div>
                 </DialogHeader>
 
                 <div className="space-y-6">
-                    {/* Location Info */}
                     <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border">
                         <div className="space-y-1">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">Origin</span>
-                            <div className="font-bold">{c.origin_branch?.name}</div>
-                            <div className="text-xs text-muted-foreground">{c.origin_branch?.city}</div>
+                            <div className="font-bold">{c.origin_branch?.name || '---'}</div>
                         </div>
                         <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center border shadow-sm text-muted-foreground">→</div>
                         <div className="space-y-1 text-right">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">Destination</span>
                             <div className="font-bold">{c.destination_branch?.name || c.unloading_area || '---'}</div>
-                            <div className="text-xs text-muted-foreground">{c.destination_branch?.city}</div>
                         </div>
                     </div>
 
@@ -323,7 +321,6 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
                                 <InfoItem label="Driver Mobile" value={c.driver_mobile} />
                             </CardContent>
                         </Card>
-
                         <Card>
                             <CardHeader className="py-2 px-4 bg-slate-50 border-b">
                                 <CardTitle className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
@@ -341,32 +338,16 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; 
                             </CardContent>
                         </Card>
                     </div>
-
-                    <Card className="border-emerald-100 bg-emerald-50/20">
-                        <CardHeader className="py-2 px-4 bg-emerald-50 border-b border-emerald-100">
-                            <CardTitle className="text-xs font-bold text-emerald-800 uppercase flex items-center gap-2">
-                                Financial Details
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <InfoItem label="Total Hire" value={`₹ ${Number(c.total_hire_amount).toLocaleString()}`} />
-                            <InfoItem label="Extra Hire" value={`₹ ${Number(c.extra_hire_amount).toLocaleString()}`} />
-                            <InfoItem label="Advance Paid" value={`₹ ${Number(c.advance_amount).toLocaleString()}`} />
-                            <div>
-                                <Label className="text-[10px] uppercase font-bold text-emerald-700">Balance</Label>
-                                <div className="text-sm font-black text-emerald-800">
-                                    ₹ {((Number(c.total_hire_amount) + Number(c.extra_hire_amount)) - Number(c.advance_amount)).toLocaleString()}
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </div>
 
                 <div className="flex justify-between items-center mt-6 pt-4 border-t">
                     <span className="text-[10px] font-bold text-muted-foreground uppercase">Created: {formatDateSafe(c.created_at, 'dd/MM/yyyy HH:mm')}</span>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handlePrint('print')} className="gap-2">
                             <Printer className="h-4 w-4" /> Print PDF
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handlePrint('download')} disabled={isDownloading} className="gap-2">
+                            <Download className="h-4 w-4" /> {isDownloading ? 'Exporting...' : 'Download PDF'}
                         </Button>
                         <Button size="sm" onClick={onClose}>Close</Button>
                     </div>

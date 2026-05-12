@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ArrowLeft, Save, RotateCcw, FileText, Truck, Users,
-    Shield, CreditCard, Info, Link2, X
+    Shield, CreditCard, Info, Link2, X, Download
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,8 +45,13 @@ interface LinkedConsignment {
 
 export default function NewChallanPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const editId = searchParams.get('edit');
+    const isEditMode = !!editId;
+
     const [branches, setBranches] = useState<Branch[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isLoading, setIsLoading] = useState(isEditMode);
     // Basic Details
     const [originBranch, setOriginBranch] = useState('MRG');
     const [challanNo, setChallanNo] = useState('');
@@ -101,7 +106,7 @@ export default function NewChallanPage() {
     const [driverName, setDriverName] = useState('');
     const [driverDlValidity, setDriverDlValidity] = useState('');
     const [driverMobile, setDriverMobile] = useState('');
-    const [driverRto, setDriverRto] = useState('');
+    const [driverAddress, setDriverAddress] = useState('');
 
     // Insurance & eWaybill
     const [policyNo, setPolicyNo] = useState('');
@@ -109,8 +114,6 @@ export default function NewChallanPage() {
     const [insCompany, setInsCompany] = useState('');
     const [insCity, setInsCity] = useState('');
     const [financeDetail, setFinanceDetail] = useState('');
-    const [ewaybillNo, setEwaybillNo] = useState('');
-    const [ewaybillDate, setEwaybillDate] = useState('');
 
     // ITDS Declaration
     const [itdsRefBranch, setItdsRefBranch] = useState('');
@@ -125,7 +128,7 @@ export default function NewChallanPage() {
     const [hireDetails, setHireDetails] = useState({
         noOfCns: 0, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
         rateType: 'mt', rate: 0, hire: 0,
-        extraOverWeight: 0, overHeight: 0, extraKmCharges: 0,
+        extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
         detentCharges: 0, totalExtra: 0, totalHire: 0,
         advPayment: 0, tdsPercent: 2, lessTds: 0,
         balAmount: 0,
@@ -134,19 +137,28 @@ export default function NewChallanPage() {
     // Auto-recalculate aggregates from linked CNs
     useEffect(() => {
         const count = linkedConsignments.length;
-        const totalPkg = linkedConsignments.reduce((sum, c) => sum + (Number(c.no_of_pkg || c.total_qty) || 0), 0);
+        const totalPkg = linkedConsignments.reduce((sum, c) => {
+            let pCount = 0;
+            if (Array.isArray(c.packages) && c.packages.length > 0) {
+                pCount = c.packages.reduce((acc, p) => acc + (Number(p.qty) || 0), 0);
+            }
+            if (pCount === 0) pCount = Number(c.no_of_pkg || c.total_qty) || 0;
+            return sum + pCount;
+        }, 0);
         const totalWt = linkedConsignments.reduce((sum, c) => sum + (Number(c.actual_weight) || 0), 0);
+        const totalChargeWt = linkedConsignments.reduce((sum, c) => sum + (Number(c.charged_weight) || 0), 0);
 
         setHireDetails(prev => {
             let next = {
                 ...prev,
                 noOfCns: count,
                 noOfPackage: totalPkg,
-                actualWeight: totalWt
+                actualWeight: totalWt,
+                chargeWeight: totalChargeWt
             };
             
             // Trigger general update step to ripple effect derived calculations if dependent
-            next.totalExtra = (next.extraOverWeight || 0) + (next.overHeight || 0) + (next.extraKmCharges || 0);
+            next.totalExtra = (next.extraOverWeight || 0) + (next.overLength || 0) + (next.overWidth || 0) + (next.overHeight || 0) + (next.extraKmCharges || 0);
             if (next.rateType === 'mt') {
                 next.hire = Math.round((next.chargeWeight || 0) * (next.rate || 0));
             }
@@ -156,6 +168,103 @@ export default function NewChallanPage() {
             return next;
         });
     }, [linkedConsignments]);
+
+    // Load challan data for edit mode
+    useEffect(() => {
+        if (isEditMode && editId) {
+            const loadChallan = async () => {
+                try {
+                    const res = await fetch(`/api/challans/${editId}`);
+                    if (!res.ok) throw new Error('Failed to load challan');
+                    const data = await res.json();
+                    populateFormData(data);
+                } catch (error) {
+                    console.error('Failed to load challan:', error);
+                    toast.error('Failed to load challan data');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            loadChallan();
+        } else {
+            setIsLoading(false);
+        }
+    }, [editId, isEditMode]);
+
+    const populateFormData = (data: any) => {
+        setChallanNo(data.challan_no || '');
+        setChallanDate(data.date_from?.split('T')[0] || new Date().toISOString().split('T')[0]);
+        setOriginBranch(data.origin_branch_code || 'MRG');
+        setLoadingPoint(data.loading_point || '');
+        setDestinationPoint(data.destination_point || '');
+        setVehicleNo(data.vehicle_no || '');
+        setVehicleType(data.vehicle_type || 'open');
+        setVehicleMake(data.vehicle_make || 'tata');
+        setVehicleModel(data.vehicle_model || 'lpt');
+        setEngineNo(data.engine_no || '');
+        setChasisNo(data.chasis_no || '');
+        setPermitNo(data.permit_no || '');
+        setPermitValidity(data.permit_validity || '');
+        setTaxTokenNo(data.tax_token_no || '');
+        setTaxTokenValidity(data.tax_token_validity || '');
+        setTaxTokenIssuedBy(data.tax_token_issued_by || '');
+
+        setOwnerPan(data.owner_pan || '');
+        setOwnerName(data.owner_name || '');
+        setOwnerMobile(data.owner_mobile || '');
+        setOwnerAddress(data.owner_address || '');
+        setOwnerTel(data.owner_tel || '');
+
+        setEngagementType(data.engagement_type || 'broker');
+        setBrokerId(data.broker_id || '');
+        setBrokerName(data.broker_name || '');
+        setBrokerCode(data.broker_code || '');
+        setBrokerMobile(data.broker_mobile || '');
+        setBrokerAddress(data.broker_address || '');
+        setSlipNo(data.slip_no || '');
+        setSlipDate(data.slip_date || '');
+
+        setDriverDlNo(data.driver_dl_no || '');
+        setDriverName(data.driver_name || '');
+        setDriverDlValidity(data.driver_dl_validity || '');
+        setDriverMobile(data.driver_mobile || '');
+        setDriverAddress(data.driver_address || '');
+
+        setPolicyNo(data.insurance_policy_no || '');
+        setPolicyValidity(data.insurance_validity || '');
+        setInsCompany(data.insurance_company_name || '');
+        setInsCity(data.insurance_city || '');
+        setFinanceDetail(data.finance_detail || '');
+
+        setItdsRefBranch(data.itds_ref_branch || '');
+        setItdsDeclareDate(data.itds_declare_date || '');
+        setItdsFinYear(data.itds_financial_year || '2025-2026');
+
+        setRemarks(data.remarks || '');
+        setTripTracking(data.trip_tracking_consent || false);
+
+        setHireDetails({
+            noOfCns: data.linked_cn_nos?.length || 0,
+            noOfPackage: 0,
+            actualWeight: 0,
+            chargeWeight: 0,
+            rateType: 'mt',
+            rate: data.hire_rate_per_kg || 0,
+            hire: data.hire_amount || 0,
+            extraOverWeight: data.extra_over_weight || 0,
+            overLength: data.extra_over_length || 0,
+            overWidth: data.extra_over_width || 0,
+            overHeight: data.extra_over_height || 0,
+            extraKmCharges: data.extra_km_charges || 0,
+            detentCharges: data.detent_charges || 0,
+            totalExtra: data.total_extra_charges || 0,
+            totalHire: data.total_hire_amount || 0,
+            advPayment: data.advance_amount || 0,
+            tdsPercent: data.tds_percent || 2,
+            lessTds: data.less_tds || 0,
+            balAmount: 0,
+        });
+    };
 
     useEffect(() => {
         const fetchBranches = async () => {
@@ -243,27 +352,28 @@ export default function NewChallanPage() {
         setInsCompany(v.insurance_company || '');
         setInsCity(v.insurance_city || '');
         setFinanceDetail(v.finance_detail || '');
-        setEwaybillNo(v.ewaybill_no || '');
-        setEwaybillDate(v.ewaybill_date ? String(v.ewaybill_date).slice(0, 10) : '');
 
         // TDS / ITDS
         setItdsRefBranch(v.itds_ref_branch || '');
         setItdsDeclareDate(v.itds_declare_date ? String(v.itds_declare_date).slice(0, 10) : '');
-        setItdsFinYear(v.itds_financial_year || '2025-2026');
-        
-        // Default to 2% if data is missing or 0
-        const fetchedTds = Number(v.tds_percent);
-        const tdsPercent = (!isNaN(fetchedTds) && fetchedTds > 0) ? fetchedTds : 2;
-
-        setHireDetails((prev) => {
-            const next = { ...prev, tdsPercent };
-            next.lessTds = Math.round(next.totalHire * (next.tdsPercent / 100));
-            next.balAmount = next.totalHire - (next.advPayment || 0) - next.lessTds;
-            return next;
-        });
+        setItdsFinYear(v.itds_financial_year || '');
 
         setVehicleOwnerStatus('✓ Vehicle details auto-filled from master');
     };
+
+    // Auto-cut TDS based on ITDS Declaration presence
+    useEffect(() => {
+        const hasItds = itdsRefBranch.trim() || itdsDeclareDate || itdsFinYear.trim();
+        const autoTdsPercent = hasItds ? 0 : 2;
+        
+        setHireDetails(prev => {
+            if (prev.tdsPercent === autoTdsPercent) return prev;
+            const next = { ...prev, tdsPercent: autoTdsPercent };
+            next.lessTds = Math.round(next.totalHire * ((Number(next.tdsPercent) || 0) / 100));
+            next.balAmount = next.totalHire - (Number(next.advPayment) || 0) - next.lessTds;
+            return next;
+        });
+    }, [itdsRefBranch, itdsDeclareDate, itdsFinYear]);
 
     useEffect(() => {
         const normalizedVehicleNo = vehicleNo.trim().toUpperCase();
@@ -367,7 +477,7 @@ export default function NewChallanPage() {
             }
 
             // 2. Recalculate derived fields: Extras
-            next.totalExtra = (Number(next.extraOverWeight) || 0) + (Number(next.overHeight) || 0) + (Number(next.extraKmCharges) || 0);
+            next.totalExtra = (Number(next.extraOverWeight) || 0) + (Number(next.overLength) || 0) + (Number(next.overWidth) || 0) + (Number(next.overHeight) || 0) + (Number(next.extraKmCharges) || 0);
             
             // 3. Recalculate Total Hire
             next.totalHire = (Number(next.hire) || 0) + (next.totalExtra || 0) + (Number(next.detentCharges) || 0);
@@ -401,6 +511,31 @@ export default function NewChallanPage() {
             setLinkedCnInput('');
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Failed to fetch CN');
+        }
+    };
+
+    const generatePDF = async () => {
+        if (!challanNo) {
+            toast.error('Save challan first to generate PDF');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/challans/${editId || challanNo}/pdf`);
+            if (!response.ok) throw new Error('Failed to generate PDF');
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `challan-${challanNo}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success('PDF downloaded successfully');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to generate PDF');
         }
     };
 
@@ -455,8 +590,6 @@ export default function NewChallanPage() {
                 insurance_company_name: insCompany,
                 insurance_city: insCity,
                 finance_detail: financeDetail,
-                ewaybill_no: ewaybillNo,
-                ewaybill_date: ewaybillDate || null,
 
                 // ITDS
                 itds_ref_branch: itdsRefBranch,
@@ -466,7 +599,7 @@ export default function NewChallanPage() {
                 // Driver
                 driver_dl_no: driverDlNo,
                 driver_dl_validity: driverDlValidity || null,
-                driver_rto: driverRto,
+                driver_address: driverAddress,
                 trip_tracking_consent: tripTracking,
 
                 // Financials
@@ -476,6 +609,8 @@ export default function NewChallanPage() {
                 hire_rate_per_kg: hireDetails.rate, // Repurposed for rate
                 hire_amount: hireDetails.hire,
                 extra_over_weight: hireDetails.extraOverWeight,
+                extra_over_length: hireDetails.overLength,
+                extra_over_width: hireDetails.overWidth,
                 extra_over_height: hireDetails.overHeight,
                 extra_km_charges: hireDetails.extraKmCharges,
                 detent_charges: hireDetails.detentCharges,
@@ -488,18 +623,21 @@ export default function NewChallanPage() {
                 linked_cn_nos: linkedConsignments.map((item) => item.cn_no)
             };
 
-            const res = await fetch('/api/challans', {
-                method: 'POST',
+            const method = isEditMode ? 'PUT' : 'POST';
+            const url = isEditMode ? `/api/challans/${editId}` : '/api/challans';
+
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
 
             if (!res.ok) {
                 const error = await res.json();
-                throw new Error(error.error || 'Failed to save challan');
+                throw new Error(error.error || `Failed to ${isEditMode ? 'update' : 'save'} challan`);
             }
 
-            toast.success('Challan saved successfully!');
+            toast.success(`Challan ${isEditMode ? 'updated' : 'saved'} successfully!`);
             router.push('/dashboard/challans');
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Failed to save');
@@ -525,18 +663,24 @@ export default function NewChallanPage() {
                             </Button>
                         </Link>
                         <div>
-                            <h1 className="text-lg font-bold tracking-tight">Challan Entry</h1>
+                            <h1 className="text-lg font-bold tracking-tight">
+                                {isLoading ? 'Loading...' : isEditMode ? 'Edit Challan' : 'New Challan'}
+                            </h1>
                             <p className="text-xs text-muted-foreground font-medium">
-                                Next Challan No. <span className="text-primary font-bold">{challanNo || '---'}</span>
+                                {isEditMode ? (
+                                    <>Challan No. <span className="text-primary font-bold">{challanNo || '---'}</span></>
+                                ) : (
+                                    <>Next Challan No. <span className="text-primary font-bold">{challanNo || '---'}</span></>
+                                )}
                             </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" onClick={handleReset} className="gap-2 h-9 text-sm">
+                        <Button variant="outline" onClick={handleReset} className="gap-2 h-9 text-sm" disabled={isLoading}>
                             <RotateCcw className="h-4 w-4" /> Reset
                         </Button>
-                        <Button onClick={handleSave} disabled={isSubmitting} className="gap-2 h-9 shadow-lg shadow-primary/20 text-sm">
-                            <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Challan'}
+                        <Button onClick={handleSave} disabled={isSubmitting || isLoading} className="gap-2 h-9 shadow-lg shadow-primary/20 text-sm">
+                            <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : isEditMode ? 'Update' : 'Save Challan'}
                         </Button>
                     </div>
                 </div>
@@ -947,11 +1091,11 @@ export default function NewChallanPage() {
                                 </CardContent>
                             </Card>
 
-                            {/* ---- SECTION 5: Insurance & eWaybill ---- */}
+                            {/* ---- SECTION 5: Insurance ---- */}
                             <Card className="border-none shadow-md overflow-hidden bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
-                                        <Shield className="h-4 w-4" /> Insurance & eWaybill Information
+                                        <Shield className="h-4 w-4" /> Insurance Details
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-4 md:p-6">
@@ -974,13 +1118,6 @@ export default function NewChallanPage() {
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Finance Detail</Label>
                                             <Input className={inputCls + " bg-slate-100"} value={financeDetail} readOnly placeholder="Auto-filled" />
-                                        </div>
-                                        <div className="space-y-1 lg:col-span-2">
-                                            <Label className={labelCls}>Cons. eWaybill No & Date</Label>
-                                            <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1 bg-slate-100"} value={ewaybillNo} readOnly placeholder="Auto-filled" />
-                                                <Input type="date" className={inputCls + " w-36 bg-slate-100"} value={ewaybillDate} readOnly />
-                                            </div>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -1012,8 +1149,8 @@ export default function NewChallanPage() {
                                             <Input className={inputCls} value={driverMobile} onChange={(e) => setDriverMobile(e.target.value)} placeholder="Driver Mobile" />
                                         </div>
                                         <div className="space-y-1 lg:col-span-2">
-                                            <Label className={labelCls}>Driver RTO</Label>
-                                            <Input className={inputCls} value={driverRto} onChange={(e) => setDriverRto(e.target.value)} placeholder="Issuing RTO" />
+                                            <Label className={labelCls}>Driver Address</Label>
+                                            <Input className={inputCls} value={driverAddress} onChange={(e) => setDriverAddress(e.target.value)} placeholder="Driver Address" />
                                         </div>
                                         <div className="flex items-end pb-1 h-9 space-y-1">
                                             <label className="flex items-center gap-2 cursor-pointer">
@@ -1065,19 +1202,19 @@ export default function NewChallanPage() {
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b pb-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>No Of CNs</Label>
-                                            <Input type="number" className={inputCls + " bg-slate-50"} value={hireDetails.noOfCns} readOnly />
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-slate-50"} value={hireDetails.noOfCns} readOnly />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>No Of Package</Label>
-                                            <Input type="number" className={inputCls + " bg-slate-50"} value={hireDetails.noOfPackage} readOnly />
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-slate-50"} value={hireDetails.noOfPackage} readOnly />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Actual Weight</Label>
-                                            <Input type="number" className={inputCls + " bg-slate-50"} value={hireDetails.actualWeight} readOnly />
+                                            <Label className={labelCls}>Actual Weight (MT)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-slate-50"} value={hireDetails.actualWeight} readOnly />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Charged Weight</Label>
-                                            <Input type="number" className={inputCls} placeholder="Enter Weight"
+                                            <Label className={labelCls}>Charged Weight (MT)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="Enter Weight"
                                                 value={hireDetails.chargeWeight}
                                                 onChange={(e) => updateHire('chargeWeight', Number(e.target.value))} />
                                         </div>
@@ -1101,7 +1238,7 @@ export default function NewChallanPage() {
                                         {hireDetails.rateType === 'mt' ? (
                                             <div className="space-y-1">
                                                 <Label className={labelCls}>Rate (Per MT)</Label>
-                                                <Input type="number" className={inputCls + " bg-white"} placeholder="0.00"
+                                                <Input type="text" inputMode="numeric" className={inputCls + " bg-white"} placeholder="0.00"
                                                     value={hireDetails.rate}
                                                     onChange={(e) => updateHire('rate', Number(e.target.value))} />
                                             </div>
@@ -1118,7 +1255,7 @@ export default function NewChallanPage() {
                                                     {hireDetails.hire}
                                                 </div>
                                             ) : (
-                                                <Input type="number" className={redValueCls + " bg-white font-bold text-lg"} placeholder="Enter Hire Amt"
+                                                <Input type="text" inputMode="numeric" className={redValueCls + " bg-white font-bold text-lg"} placeholder="Enter Hire Amt"
                                                     value={hireDetails.hire}
                                                     onChange={(e) => updateHire('hire', Number(e.target.value))} />
                                             )}
@@ -1128,26 +1265,38 @@ export default function NewChallanPage() {
                                     {/* 3. Additional Charges */}
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Detention Charge</Label>
-                                            <Input type="number" className={inputCls} placeholder="0"
-                                                value={hireDetails.detentCharges}
-                                                onChange={(e) => updateHire('detentCharges', Number(e.target.value))} />
+                                            <Label className={labelCls}>Over Length (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.overLength}
+                                                onChange={(e) => updateHire('overLength', Number(e.target.value))} />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Extra KM Charge</Label>
-                                            <Input type="number" className={inputCls} placeholder="0"
-                                                value={hireDetails.extraKmCharges}
-                                                onChange={(e) => updateHire('extraKmCharges', Number(e.target.value))} />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Height Charge</Label>
-                                            <Input type="number" className={inputCls} placeholder="0"
+                                            <Label className={labelCls}>Over Height (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
                                                 value={hireDetails.overHeight}
                                                 onChange={(e) => updateHire('overHeight', Number(e.target.value))} />
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Extra Height Weight</Label>
-                                            <Input type="number" className={inputCls} placeholder="0"
+                                            <Label className={labelCls}>Over Width (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.overWidth}
+                                                onChange={(e) => updateHire('overWidth', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Extra KM Charges (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.extraKmCharges}
+                                                onChange={(e) => updateHire('extraKmCharges', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Detention Charge</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.detentCharges}
+                                                onChange={(e) => updateHire('detentCharges', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Extra Weight (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
                                                 value={hireDetails.extraOverWeight}
                                                 onChange={(e) => updateHire('extraOverWeight', Number(e.target.value))} />
                                         </div>
@@ -1162,7 +1311,7 @@ export default function NewChallanPage() {
 
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Advance Payment</Label>
-                                            <Input type="number" className={inputCls + " bg-white font-bold text-green-700"}
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-white font-bold text-green-700"}
                                                 value={hireDetails.advPayment}
                                                 onChange={(e) => updateHire('advPayment', Number(e.target.value))} />
                                         </div>
@@ -1171,7 +1320,7 @@ export default function NewChallanPage() {
                                             <Label className={labelCls}>TDS Deduction</Label>
                                             <div className="flex gap-2 items-center">
                                                 <div className="relative flex-1">
-                                                    <Input type="number" className={inputCls + " bg-white pr-6"}
+                                                    <Input type="text" inputMode="numeric" className={inputCls + " bg-white pr-6"}
                                                         value={hireDetails.tdsPercent}
                                                         onChange={(e) => updateHire('tdsPercent', Number(e.target.value))} />
                                                     <span className="absolute right-2 top-2 text-xs text-slate-400">%</span>

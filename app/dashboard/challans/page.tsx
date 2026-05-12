@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, Search, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { ChallanDetailsDialog } from '@/components/features/challans/ChallanDetailsDialog';
-import { Printer } from 'lucide-react';
+import { Printer, Pencil } from 'lucide-react';
 
 interface Challan {
     id: string;
@@ -51,6 +52,7 @@ interface Challan {
 }
 
 export default function ChallanListPage() {
+    const router = useRouter();
     const [challans, setChallans] = useState<Challan[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -231,6 +233,15 @@ export default function ChallanListPage() {
                                                 title="View & Print"
                                             >
                                                 <Printer className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                                onClick={() => router.push(`/dashboard/challans/new?edit=${challan.id}`)}
+                                                title="Edit Challan"
+                                            >
+                                                <Pencil className="h-4 w-4" />
                                             </Button>
                                         </div>
                                     </TableCell>
