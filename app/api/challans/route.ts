@@ -5,6 +5,7 @@ import { z } from 'zod';
 // Validation schema for creating a challan
 const createChallanSchema = z.object({
     challan_no: z.string().min(1, 'Challan number is required'),
+    date_from: z.string().optional(),
     origin_branch_code: z.string().min(1, 'Origin branch is required'),
     destination_branch_code: z.string().optional().nullable(),
     engagement_type: z.enum(['broker', 'direct']).default('broker'),
@@ -14,8 +15,6 @@ const createChallanSchema = z.object({
     total_hire_amount: z.coerce.number().min(0).default(0),
     extra_hire_amount: z.coerce.number().min(0).default(0),
     advance_amount: z.coerce.number().min(0).default(0),
-    date_from: z.string().optional(),
-    date_to: z.string().optional(),
 }).passthrough();
 
 export async function GET(request: Request) {
@@ -94,6 +93,7 @@ export async function POST(request: Request) {
     // Prepare insert data from body
     const insertData: Record<string, unknown> = {
         challan_no: body.challan_no,
+        date_from: body.date_from || new Date().toISOString().split('T')[0],
         origin_branch_code: body.origin_branch_code,
         destination_branch_code: body.destination_branch_code || null,
         engagement_type: body.engagement_type || 'broker',
@@ -187,6 +187,9 @@ export async function POST(request: Request) {
 
     if (error) {
         console.error("Failed to create challan:", error);
+        if (error.code === '23505') {
+            return NextResponse.json({ error: `Challan number ${body.challan_no} already exists for this branch. Please use a different number.` }, { status: 409 });
+        }
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

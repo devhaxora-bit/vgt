@@ -26,17 +26,28 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const body = await req.json();
 
+    const code = String(body.code || '').trim().toUpperCase();
+    const name = String(body.name || '').trim();
+
+    if (!code) return NextResponse.json({ error: 'Broker code is required' }, { status: 400 });
+    if (!name) return NextResponse.json({ error: 'Broker name is required' }, { status: 400 });
+
     const { data, error } = await supabase
         .from('brokers')
         .insert({
-            code: body.code?.toUpperCase(),
-            name: body.name,
-            mobile: body.mobile,
-            address: body.address,
+            code,
+            name,
+            mobile: body.mobile || null,
+            address: body.address || null,
         })
         .select()
         .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) {
+        if (error.code === '23505') {
+            return NextResponse.json({ error: `Broker with code ${code} already exists.` }, { status: 409 });
+        }
+        return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json(data, { status: 201 });
 }

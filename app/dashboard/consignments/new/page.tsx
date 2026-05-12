@@ -147,7 +147,10 @@ function NewConsignmentForm() {
                     .single();
 
                 const name = profile?.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || '';
-                if (name) setLoggedInUserName(name);
+                if (name) {
+                    setLoggedInUserName(name);
+                    setDocPreparedBy(name);
+                }
             } catch { /* ignore */ }
         };
         void loadLoggedInUser();
@@ -219,7 +222,7 @@ function NewConsignmentForm() {
     // Others fields
     const [businessType, setBusinessType] = useState("regular");
     const [transportMode, setTransportMode] = useState("road");
-    const [docPreparedBy, setDocPreparedBy] = useState("amit");
+    const [docPreparedBy, setDocPreparedBy] = useState("");
     const [remarks, setRemarks] = useState("");
     const [otherPrivateMark, setOtherPrivateMark] = useState("");
 
@@ -564,12 +567,12 @@ function NewConsignmentForm() {
 
         const fullCnNo = cnNo;
         if (!bookingBranchCode) {
-            alert('Booking branch is required.');
+            toast.error('Booking branch is required.');
             return;
         }
 
         if (!cnNo) {
-            alert('CN No. is required.');
+            toast.error('CN No. is required.');
             return;
         }
 
@@ -577,7 +580,7 @@ function NewConsignmentForm() {
             const isRangeManaged = cnSequenceState.mode === 'range';
 
             if (isRangeManaged && cnSequenceState.status !== 'ready') {
-                alert(cnSequenceState.message || 'This branch does not have an active CN number available.');
+                toast.error(cnSequenceState.message || 'This branch does not have an active CN number available.');
                 return;
             }
 
@@ -587,7 +590,7 @@ function NewConsignmentForm() {
                 && typeof cnSequenceState.nextNo === 'number'
                 && Number(cnNo) !== cnSequenceState.nextNo
             ) {
-                alert(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
+                toast.error(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
                 return;
             }
         }
@@ -602,7 +605,7 @@ function NewConsignmentForm() {
             const billingStationValue = billingMode === 'manual' ? manualBillingStation.trim() : billingBranch.toUpperCase();
 
             if (bkgBasis === 'tbb' && billingMode === 'manual' && (!billingName || !billingAddressValue)) {
-                alert('Manual billing requires name and address.');
+                toast.error('Manual billing requires name and address.');
                 return;
             }
 
@@ -699,7 +702,7 @@ function NewConsignmentForm() {
 
                 business_type: businessType === 'regular' ? 'REGULAR' : businessType,
                 transport_mode: transportMode === 'road' ? 'BY ROAD' : transportMode,
-                doc_prepared_by: docPreparedBy === 'amit' ? 'AMIT PANDEY [A8644]' : docPreparedBy,
+                doc_prepared_by: docPreparedBy,
                 remarks: remarks,
             };
 
@@ -722,13 +725,13 @@ function NewConsignmentForm() {
                 throw new Error(errMsg || 'Failed to save consignment');
             }
 
-            alert(`Consignment ${fullCnNo} ${isEditMode ? 'updated' : 'saved'} successfully!`);
+            toast.success(`Consignment ${fullCnNo} ${isEditMode ? 'updated' : 'saved'} successfully!`);
 
             router.push('/dashboard/consignments');
             router.refresh();
         } catch (error: unknown) {
             console.error('Save error:', error);
-            alert((error as Error).message || 'Failed to save consignment');
+            toast.error((error as Error).message || 'Failed to save consignment');
         } finally {
             setIsSaving(false);
         }
@@ -763,10 +766,32 @@ function NewConsignmentForm() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" className="gap-2 h-9">
+                        <Button variant="outline" className="gap-2 h-9" onClick={() => {
+                            if (!confirm('Reset the form? All entered data will be cleared.')) return;
+                            setConsignor(null); setConsignee(null); setBillingParty(null);
+                            setBillingMode('party'); setBillingBranch(''); setManualBillingName(''); setManualBillingAddress(''); setManualBillingGst(''); setManualBillingStation('');
+                            setIsLoose(false); setPackages([]); setCurrentPackageQty(''); setCurrentPackageMethod('box');
+                            setIsFreightPending(false); setFreightType('per_tone'); setFreightRate(''); setBasicFreight(''); setChargedWeight('');
+                            setCharges({ unloading: '', detention: '', extraKm: '', loading: '', doorColl: '', doorDel: '', other: '' });
+                            setHsnDesc(''); setGoodsDesc(''); setActualWeight(''); setLoadUnit('mt');
+                            setDimL(''); setDimW(''); setDimH(''); setVolume(''); setPrivateMark('');
+                            setInvoiceNo(''); setInvoiceDate(''); setInvoiceAmt(''); setEwayBill(''); setEwayFrom(''); setEwayTo('');
+                            setInsuranceComp('not-known'); setPolicyNo(''); setPolicyDate(''); setPolicyAmount('');
+                            setPoNo(''); setPoDate(''); setStfNo(''); setStfDate(''); setStfValidUpto('');
+                            setRemarks(''); setAdvanceAmount(''); setVehicleNo(''); setLoadingPoint(''); setDeliveryPoint('');
+                            setIsOwnersRisk(true); setIsDoorCollection(false); setIsCancelCn(false);
+                            setBkgBasis(''); setDeliveryType('dd');
+                            setDestBranch(''); setBookingBranchCode('');
+                            setCnNo(''); setCnDate(new Date().toISOString().split('T')[0]);
+                            setCnSequenceState(idleCnSequenceState);
+                        }}>
                             <RotateCcw className="h-4 w-4" /> Reset Form
                         </Button>
-                        <Button className="gap-2 h-9 shadow-lg shadow-primary/20" onClick={handleSave} disabled={isSaving}>
+                        <Button
+                            className="gap-2 h-9 shadow-lg shadow-primary/20"
+                            onClick={handleSave}
+                            disabled={isSaving || (!isEditMode && bookingBranchCode !== '' && cnSequenceState.status !== 'idle' && cnSequenceState.status !== 'ready' && cnSequenceState.status !== 'loading')}
+                        >
                             <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : (isEditMode ? 'Update Consignment' : 'Save Consignment')}
                         </Button>
                     </div>

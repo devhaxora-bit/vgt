@@ -13,7 +13,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         .select()
         .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) {
+        if (error.code === '23505') {
+            return NextResponse.json({ error: `Vehicle number already exists in the master.` }, { status: 409 });
+        }
+        return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json(data);
 }
 

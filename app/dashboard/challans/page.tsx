@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useDebounce } from '@/hooks/use-debounce';
 import Link from 'next/link';
 import { Plus, Search, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -56,6 +57,7 @@ export default function ChallanListPage() {
     const [typeFilter, setTypeFilter] = useState('ALL');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const debouncedSearch = useDebounce(searchTerm, 300);
 
     // State for Details Dialog
     const [selectedChallan, setSelectedChallan] = useState<Challan | null>(null);
@@ -65,7 +67,7 @@ export default function ChallanListPage() {
         setLoading(true);
         try {
             const params = new URLSearchParams();
-            if (searchTerm) params.append('search', searchTerm);
+            if (debouncedSearch) params.append('search', debouncedSearch);
             if (typeFilter !== 'ALL') params.append('type', typeFilter);
             if (dateFrom) params.append('dateFrom', dateFrom);
             if (dateTo) params.append('dateTo', dateTo);
@@ -80,7 +82,7 @@ export default function ChallanListPage() {
         } finally {
             setLoading(false);
         }
-    }, [dateFrom, dateTo, searchTerm, typeFilter]);
+    }, [dateFrom, dateTo, debouncedSearch, typeFilter]);
 
     useEffect(() => {
         fetchChallans();

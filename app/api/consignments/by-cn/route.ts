@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     if (search) {
         const { data, error } = await supabase
             .from('consignments')
-            .select('id, cn_no, packages, no_of_pkg, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point')
+            .select('id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point')
             .ilike('cn_no', `%${search}%`)
             .limit(8);
 

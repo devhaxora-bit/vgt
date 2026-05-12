@@ -31,12 +31,22 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const body = await req.json();
 
+    const vehicleNo = String(body.vehicle_no || '').trim().toUpperCase();
+    if (!vehicleNo) {
+        return NextResponse.json({ error: 'vehicle_no is required' }, { status: 400 });
+    }
+
     const { data, error } = await supabase
         .from('vehicles')
-        .insert({ ...body, vehicle_no: body.vehicle_no?.toUpperCase() })
+        .insert({ ...body, vehicle_no: vehicleNo })
         .select()
         .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) {
+        if (error.code === '23505') {
+            return NextResponse.json({ error: `Vehicle ${vehicleNo} already exists in the master.` }, { status: 409 });
+        }
+        return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json(data, { status: 201 });
 }

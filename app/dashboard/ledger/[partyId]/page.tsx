@@ -1093,7 +1093,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             const params = new URLSearchParams();
             if (dateFrom) params.set('dateFrom', dateFrom);
             if (dateTo) params.set('dateTo', dateTo);
-            if (cnsSearch) params.set('search', cnsSearch);
 
             const res = await fetch(`/api/ledger/${partyId}?${params.toString()}`);
             if (!res.ok) throw new Error('Failed to fetch');
@@ -1105,7 +1104,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         } finally {
             setIsLoading(false);
         }
-    }, [partyId, dateFrom, dateTo, cnsSearch]);
+    }, [partyId, dateFrom, dateTo]);
 
     useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -1323,6 +1322,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             return haystack.includes(query);
         });
     }, [billingSearch, billingStatusFilter, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
+
+    const filteredConsignments = useMemo(() => {
+        const query = cnsSearch.trim().toLowerCase();
+        if (!query) return data.consignments;
+        return data.consignments.filter((c) =>
+            String(c.cn_no || '').toLowerCase().includes(query) ||
+            String(c.goods_desc || '').toLowerCase().includes(query)
+        );
+    }, [cnsSearch, data.consignments]);
 
     const billingRecordMap = useMemo(
         () => new Map(data.billing_records.map((record) => [record.id, record])),
@@ -1678,17 +1686,17 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {data.consignments.length === 0 ? (
+                                        {filteredConsignments.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={7} className="h-24 text-center text-muted-foreground text-sm">
-                                                    No CNS entries found for this party
+                                                    {cnsSearch ? `No CNS entries match "${cnsSearch}"` : 'No CNS entries found for this party'}
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            data.consignments.map(c => (
+                                            filteredConsignments.map(c => (
                                                 <TableRow key={c.id} className="hover:bg-primary/5 transition-colors border-b last:border-0">
                                                     <TableCell>
-                                                        <Link href={`/dashboard/consignments`}
+                                                        <Link href={`/dashboard/consignments/new?edit=${c.id}`}
                                                             className="font-bold text-primary text-xs hover:underline font-mono">
                                                             {c.cn_no}
                                                         </Link>

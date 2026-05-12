@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { useDebounce } from '@/hooks/use-debounce';
 
 // Branch interface
 interface Branch {
@@ -58,7 +59,8 @@ export default function NewChallanPage() {
     const [cnSuggestions, setCnSuggestions] = useState<LinkedConsignment[]>([]);
     const [showCnSuggestions, setShowCnSuggestions] = useState(false);
     const [vehicleOwnerStatus, setVehicleOwnerStatus] = useState('');
-    
+    const [vehicleSuggestions, setVehicleSuggestions] = useState<any[]>([]);
+    const [showVehicleSuggestions, setShowVehicleSuggestions] = useState(false);
 
 
     // Owner/Broker
@@ -76,6 +78,8 @@ export default function NewChallanPage() {
     const [brokerAddress, setBrokerAddress] = useState('');
     const [brokerFetching, setBrokerFetching] = useState(false);
     const [brokerStatus, setBrokerStatus] = useState('');
+    const [brokerSuggestions, setBrokerSuggestions] = useState<any[]>([]);
+    const [showBrokerSuggestions, setShowBrokerSuggestions] = useState(false);
     const [slipNo, setSlipNo] = useState('');
     const [slipDate, setSlipDate] = useState('');
 
@@ -97,7 +101,7 @@ export default function NewChallanPage() {
     const [driverName, setDriverName] = useState('');
     const [driverDlValidity, setDriverDlValidity] = useState('');
     const [driverMobile, setDriverMobile] = useState('');
-    const [driverAddress, setDriverAddress] = useState('');
+    const [driverRto, setDriverRto] = useState('');
 
     // Insurance & eWaybill
     const [policyNo, setPolicyNo] = useState('');
@@ -185,75 +189,173 @@ export default function NewChallanPage() {
         if (originBranch) fetchNextChallan();
     }, [originBranch]);
 
+    const handleReset = () => {
+        setLoadingPoint(''); setDestinationPoint('');
+        setLinkedCnInput(''); setLinkedConsignments([]); setCnSuggestions([]); setShowCnSuggestions(false);
+        setVehicleNo(''); setVehicleOwnerStatus(''); setVehicleSuggestions([]); setShowVehicleSuggestions(false);
+        setVehicleType('open'); setVehicleMake('tata'); setVehicleModel('lpt');
+        setPermitNo(''); setPermitValidity(''); setEngineNo(''); setChasisNo('');
+        setTaxTokenNo(''); setTaxTokenValidity(''); setTaxTokenIssuedBy('');
+        setOwnerPan(''); setOwnerName(''); setOwnerMobile(''); setOwnerAddress(''); setOwnerTel('');
+        setEngagementType('broker');
+        setBrokerId(''); setBrokerName(''); setBrokerCode(''); setBrokerMobile(''); setBrokerAddress('');
+        setBrokerFetching(false); setBrokerStatus(''); setBrokerSuggestions([]); setShowBrokerSuggestions(false);
+        setSlipNo(''); setSlipDate('');
+        setDriverDlNo(''); setDriverName(''); setDriverDlValidity(''); setDriverMobile(''); setDriverRto('');
+        setPolicyNo(''); setPolicyValidity(''); setInsCompany(''); setInsCity(''); setFinanceDetail('');
+        setEwaybillNo(''); setEwaybillDate('');
+        setItdsRefBranch(''); setItdsDeclareDate(''); setItdsFinYear('2025-2026');
+        setRemarks(''); setTripTracking(false);
+        setChallanDate(new Date().toISOString().split('T')[0]);
+        setChallanTime(new Date().toTimeString().slice(0, 5));
+        setHireDetails({
+            noOfCns: 0, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
+            rateType: 'mt', rate: 0, hire: 0,
+            extraOverWeight: 0, overHeight: 0, extraKmCharges: 0,
+            detentCharges: 0, totalExtra: 0, totalHire: 0,
+            advPayment: 0, tdsPercent: 2, lessTds: 0, balAmount: 0,
+        });
+    };
+
+    const applyVehicleDetails = (v: any) => {
+        // Owner
+        setOwnerPan(v.owner_pan || '');
+        setOwnerName(v.owner_name || '');
+        setOwnerMobile(v.owner_mobile || '');
+        setOwnerAddress(v.owner_address || '');
+        setOwnerTel(v.owner_tel || '');
+
+        // Vehicle details
+        setVehicleType(v.vehicle_type || 'open');
+        setVehicleMake(v.vehicle_make || '');
+        setVehicleModel(v.vehicle_model || '');
+        setEngineNo(v.engine_no || '');
+        setChasisNo(v.chasis_no || '');
+        setPermitNo(v.permit_no || '');
+        setPermitValidity(v.permit_validity ? String(v.permit_validity).slice(0, 10) : '');
+        setTaxTokenNo(v.tax_token_no || '');
+        setTaxTokenValidity(v.tax_token_validity ? String(v.tax_token_validity).slice(0, 10) : '');
+        setTaxTokenIssuedBy(v.tax_token_issued_by || '');
+
+        // Insurance & eWaybill
+        setPolicyNo(v.insurance_policy_no || '');
+        setPolicyValidity(v.insurance_validity ? String(v.insurance_validity).slice(0, 10) : '');
+        setInsCompany(v.insurance_company || '');
+        setInsCity(v.insurance_city || '');
+        setFinanceDetail(v.finance_detail || '');
+        setEwaybillNo(v.ewaybill_no || '');
+        setEwaybillDate(v.ewaybill_date ? String(v.ewaybill_date).slice(0, 10) : '');
+
+        // TDS / ITDS
+        setItdsRefBranch(v.itds_ref_branch || '');
+        setItdsDeclareDate(v.itds_declare_date ? String(v.itds_declare_date).slice(0, 10) : '');
+        setItdsFinYear(v.itds_financial_year || '2025-2026');
+        
+        // Default to 2% if data is missing or 0
+        const fetchedTds = Number(v.tds_percent);
+        const tdsPercent = (!isNaN(fetchedTds) && fetchedTds > 0) ? fetchedTds : 2;
+
+        setHireDetails((prev) => {
+            const next = { ...prev, tdsPercent };
+            next.lessTds = Math.round(next.totalHire * (next.tdsPercent / 100));
+            next.balAmount = next.totalHire - (next.advPayment || 0) - next.lessTds;
+            return next;
+        });
+
+        setVehicleOwnerStatus('✓ Vehicle details auto-filled from master');
+    };
+
     useEffect(() => {
         const normalizedVehicleNo = vehicleNo.trim().toUpperCase();
-        if (normalizedVehicleNo.length < 4) {
+        if (normalizedVehicleNo.length < 2) {
             setVehicleOwnerStatus('');
+            setVehicleSuggestions([]);
+            setShowVehicleSuggestions(false);
             return;
         }
 
         const timeout = window.setTimeout(async () => {
             try {
-                const res = await fetch(`/api/vehicles?no=${encodeURIComponent(normalizedVehicleNo)}`);
-                if (!res.ok) {
-                    setVehicleOwnerStatus('⚠ Vehicle not found in master. Add it in Admin → Vehicle Management.');
-                    return;
-                }
+                const res = await fetch(`/api/vehicles?q=${encodeURIComponent(normalizedVehicleNo)}`);
+                if (!res.ok) return;
 
-                const v = await res.json();
-
-                // Owner
-                setOwnerPan(v.owner_pan || '');
-                setOwnerName(v.owner_name || '');
-                setOwnerMobile(v.owner_mobile || '');
-                setOwnerAddress(v.owner_address || '');
-                setOwnerTel(v.owner_tel || '');
-
-                // Vehicle details
-                setVehicleType(v.vehicle_type || 'open');
-                setVehicleMake(v.vehicle_make || '');
-                setVehicleModel(v.vehicle_model || '');
-                setEngineNo(v.engine_no || '');
-                setChasisNo(v.chasis_no || '');
-                setPermitNo(v.permit_no || '');
-                setPermitValidity(v.permit_validity ? String(v.permit_validity).slice(0, 10) : '');
-                setTaxTokenNo(v.tax_token_no || '');
-                setTaxTokenValidity(v.tax_token_validity ? String(v.tax_token_validity).slice(0, 10) : '');
-                setTaxTokenIssuedBy(v.tax_token_issued_by || '');
-
-                // Insurance & eWaybill
-                setPolicyNo(v.insurance_policy_no || '');
-                setPolicyValidity(v.insurance_validity ? String(v.insurance_validity).slice(0, 10) : '');
-                setInsCompany(v.insurance_company || '');
-                setInsCity(v.insurance_city || '');
-                setFinanceDetail(v.finance_detail || '');
-                setEwaybillNo(v.ewaybill_no || '');
-                setEwaybillDate(v.ewaybill_date ? String(v.ewaybill_date).slice(0, 10) : '');
-
-                // TDS / ITDS
-                setItdsRefBranch(v.itds_ref_branch || '');
-                setItdsDeclareDate(v.itds_declare_date ? String(v.itds_declare_date).slice(0, 10) : '');
-                setItdsFinYear(v.itds_financial_year || '2025-2026');
+                const data = await res.json();
                 
-                // Default to 2% if data is missing or 0
-                const fetchedTds = Number(v.tds_percent);
-                const tdsPercent = (!isNaN(fetchedTds) && fetchedTds > 0) ? fetchedTds : 2;
-
-                setHireDetails((prev) => {
-                    const next = { ...prev, tdsPercent };
-                    next.lessTds = Math.round(next.totalHire * (next.tdsPercent / 100));
-                    next.balAmount = next.totalHire - (next.advPayment || 0) - next.lessTds;
-                    return next;
-                });
-
-                setVehicleOwnerStatus('✓ Vehicle details auto-filled from master');
+                if (Array.isArray(data)) {
+                    setVehicleSuggestions(data);
+                    setShowVehicleSuggestions(true);
+                    
+                    const exactMatch = data.find(v => v.vehicle_no === normalizedVehicleNo);
+                    if (exactMatch) {
+                        applyVehicleDetails(exactMatch);
+                    } else if (data.length === 0) {
+                        setVehicleOwnerStatus('⚠ Vehicle not found in master.');
+                    } else {
+                        setVehicleOwnerStatus('Type to search or select from list.');
+                    }
+                }
             } catch {
                 setVehicleOwnerStatus('Failed to fetch vehicle details');
             }
-        }, 500);
+        }, 300);
 
         return () => window.clearTimeout(timeout);
     }, [vehicleNo]);
+
+    const debouncedCnInput = useDebounce(linkedCnInput, 300);
+    const debouncedBrokerName = useDebounce(brokerName, 300);
+
+    // Debounced CN Fetch
+    useEffect(() => {
+        const val = debouncedCnInput.trim().toUpperCase();
+        if (val.length < 2) {
+            setCnSuggestions([]);
+            setShowCnSuggestions(false);
+            return;
+        }
+        const fetchCns = async () => {
+            try {
+                const res = await fetch(`/api/consignments/by-cn?search=${encodeURIComponent(val)}`);
+                if (!res.ok) return;
+                const list = await res.json();
+                const already = linkedConsignments.map(c => c.cn_no);
+                setCnSuggestions((list as LinkedConsignment[]).filter(c => !already.includes(c.cn_no)));
+                setShowCnSuggestions(true);
+            } catch { /* silent */ }
+        };
+        fetchCns();
+    }, [debouncedCnInput, linkedConsignments]);
+
+    // Debounced Broker Fetch
+    useEffect(() => {
+        const val = debouncedBrokerName.trim();
+        if (val.length < 2 || engagementType === 'direct') {
+            setBrokerSuggestions([]);
+            setShowBrokerSuggestions(false);
+            return;
+        }
+        // Only fetch if we don't already have an exact matched broker selected
+        if (brokerId && brokerName === val) return;
+
+        const fetchBrokers = async () => {
+            setBrokerFetching(true);
+            try {
+                const res = await fetch(`/api/brokers?q=${encodeURIComponent(val)}`);
+                const list = await res.json();
+                if (Array.isArray(list)) {
+                    setBrokerSuggestions(list);
+                    setShowBrokerSuggestions(true);
+                    if (list.length === 0) setBrokerStatus('No broker found');
+                    else setBrokerStatus(`${list.length} brokers found`);
+                }
+            } catch {
+                setBrokerStatus('Error fetching brokers');
+            } finally {
+                setBrokerFetching(false);
+            }
+        };
+        fetchBrokers();
+    }, [debouncedBrokerName, engagementType, brokerId]);
 
     const updateHire = (field: string, value: number | string) => {
         setHireDetails(prev => {
@@ -312,6 +414,7 @@ export default function NewChallanPage() {
         try {
             const body = {
                 challan_no: challanNo,
+                date_from: challanDate,
                 origin_branch_code: originBranch,
                 destination_branch_code: null,
                 engagement_type: engagementType,
@@ -363,7 +466,7 @@ export default function NewChallanPage() {
                 // Driver
                 driver_dl_no: driverDlNo,
                 driver_dl_validity: driverDlValidity || null,
-                driver_address: driverAddress,
+                driver_rto: driverRto,
                 trip_tracking_consent: tripTracking,
 
                 // Financials
@@ -429,7 +532,7 @@ export default function NewChallanPage() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" className="gap-2 h-9 text-sm">
+                        <Button variant="outline" onClick={handleReset} className="gap-2 h-9 text-sm">
                             <RotateCcw className="h-4 w-4" /> Reset
                         </Button>
                         <Button onClick={handleSave} disabled={isSubmitting} className="gap-2 h-9 shadow-lg shadow-primary/20 text-sm">
@@ -492,10 +595,41 @@ export default function NewChallanPage() {
                                             <Label className={labelCls}>Challan No</Label>
                                             <Input className={inputCls + " font-mono font-bold bg-yellow-50/60 border-yellow-200"} value={challanNo} onChange={(e) => setChallanNo(e.target.value)} placeholder="Auto Generated" />
                                         </div>
-                                        <div className="space-y-1 lg:col-span-2">
+                                        <div className="space-y-1 lg:col-span-2 relative">
                                             <Label className={labelCls}>Vehicle No</Label>
-                                            <Input className={inputCls + " uppercase"} value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value.toUpperCase())} placeholder="Vehicle No." />
-                                            {vehicleOwnerStatus && <p className="text-[11px] text-muted-foreground">{vehicleOwnerStatus}</p>}
+                                            <Input
+                                                className={inputCls + " uppercase"}
+                                                value={vehicleNo}
+                                                onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
+                                                onFocus={() => { if (vehicleSuggestions.length > 0) setShowVehicleSuggestions(true); }}
+                                                onBlur={() => setTimeout(() => setShowVehicleSuggestions(false), 200)}
+                                                placeholder="Type to search Vehicle No."
+                                                autoComplete="off"
+                                            />
+                                            {showVehicleSuggestions && vehicleSuggestions.length > 0 && (
+                                                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg overflow-hidden max-h-60 overflow-y-auto">
+                                                    {vehicleSuggestions.map((v) => (
+                                                        <button
+                                                            key={v.id}
+                                                            type="button"
+                                                            className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b last:border-b-0 flex flex-col gap-1"
+                                                            onMouseDown={() => {
+                                                                setVehicleNo(v.vehicle_no);
+                                                                applyVehicleDetails(v);
+                                                                setVehicleSuggestions([]);
+                                                                setShowVehicleSuggestions(false);
+                                                            }}
+                                                        >
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="font-mono font-bold text-primary">{v.vehicle_no}</span>
+                                                                <span className="text-muted-foreground uppercase">{v.vehicle_type}</span>
+                                                            </div>
+                                                            <div className="text-slate-500 truncate">{v.owner_name} {v.owner_mobile ? `(${v.owner_mobile})` : ''}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {vehicleOwnerStatus && <p className="text-[11px] text-muted-foreground mt-1">{vehicleOwnerStatus}</p>}
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Loading Point</Label>
@@ -522,22 +656,7 @@ export default function NewChallanPage() {
                                             <Input
                                                 className={inputCls + " font-mono uppercase"}
                                                 value={linkedCnInput}
-                                                onChange={async (e) => {
-                                                    const val = e.target.value.toUpperCase();
-                                                    setLinkedCnInput(val);
-                                                    if (val.length < 2) {
-                                                        setCnSuggestions([]);
-                                                        setShowCnSuggestions(false);
-                                                        return;
-                                                    }
-                                                    try {
-                                                        const res = await fetch(`/api/consignments/by-cn?search=${encodeURIComponent(val)}`);
-                                                        const list = await res.json();
-                                                        const already = linkedConsignments.map(c => c.cn_no);
-                                                        setCnSuggestions((list as LinkedConsignment[]).filter(c => !already.includes(c.cn_no)));
-                                                        setShowCnSuggestions(true);
-                                                    } catch { /* silent */ }
-                                                }}
+                                                onChange={(e) => setLinkedCnInput(e.target.value.toUpperCase())}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') { e.preventDefault(); handleAddCn(); }
                                                     if (e.key === 'Escape') setShowCnSuggestions(false);
@@ -674,33 +793,42 @@ export default function NewChallanPage() {
                                                             className={inputCls + (engagementType === 'direct' ? ' bg-slate-100 opacity-60' : '')}
                                                             value={brokerName}
                                                             disabled={engagementType === 'direct'}
-                                                            onChange={async (e) => {
-                                                                const val = e.target.value;
-                                                                setBrokerName(val);
+                                                            onChange={(e) => {
+                                                                setBrokerName(e.target.value);
                                                                 setBrokerId(''); setBrokerCode(''); setBrokerAddress('');
                                                                 setBrokerStatus('');
-                                                                if (val.length < 2) return;
-                                                                setBrokerFetching(true);
-                                                                try {
-                                                                    const res = await fetch(`/api/brokers?q=${encodeURIComponent(val)}`);
-                                                                    const list = await res.json();
-                                                                    if (list.length === 1) {
-                                                                        setBrokerId(list[0].id);
-                                                                        setBrokerName(list[0].name);
-                                                                        setBrokerCode(list[0].code);
-                                                                        setBrokerAddress(list[0].address || '');
-                                                                        setBrokerStatus('Broker details auto-filled');
-                                                                    } else if (list.length > 1) {
-                                                                        setBrokerStatus(`${list.length} brokers found — type more to narrow`);
-                                                                    } else {
-                                                                        setBrokerStatus('No broker found with this name');
-                                                                    }
-                                                                } catch { /* silent */ }
-                                                                finally { setBrokerFetching(false); }
                                                             }}
+                                                            onFocus={() => { if (brokerSuggestions.length > 0) setShowBrokerSuggestions(true); }}
+                                                            onBlur={() => setTimeout(() => setShowBrokerSuggestions(false), 200)}
                                                             placeholder={engagementType === 'direct' ? 'Not applicable' : 'Type broker name to search...'}
+                                                            autoComplete="off"
                                                         />
                                                         {brokerFetching && <span className="absolute right-2 top-2 text-[10px] text-muted-foreground animate-pulse">Searching...</span>}
+                                                        
+                                                        {showBrokerSuggestions && brokerSuggestions.length > 0 && (
+                                                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg overflow-hidden max-h-60 overflow-y-auto">
+                                                                {brokerSuggestions.map((b) => (
+                                                                    <button
+                                                                        key={b.id}
+                                                                        type="button"
+                                                                        className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b last:border-b-0 flex flex-col gap-1"
+                                                                        onMouseDown={() => {
+                                                                            setBrokerId(b.id);
+                                                                            setBrokerName(b.name);
+                                                                            setBrokerCode(b.code);
+                                                                            setBrokerMobile(b.mobile || '');
+                                                                            setBrokerAddress(b.address || '');
+                                                                            setBrokerStatus('Broker details auto-filled');
+                                                                            setBrokerSuggestions([]);
+                                                                            setShowBrokerSuggestions(false);
+                                                                        }}
+                                                                    >
+                                                                        <div className="font-bold text-primary">{b.name} <span className="text-muted-foreground text-[10px] ml-1">({b.code})</span></div>
+                                                                        <div className="text-slate-500 truncate">{b.mobile} {b.address ? `- ${b.address}` : ''}</div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     {brokerStatus && <p className="text-[11px] text-muted-foreground">{brokerStatus}</p>}
                                                 </div>
@@ -884,8 +1012,8 @@ export default function NewChallanPage() {
                                             <Input className={inputCls} value={driverMobile} onChange={(e) => setDriverMobile(e.target.value)} placeholder="Driver Mobile" />
                                         </div>
                                         <div className="space-y-1 lg:col-span-2">
-                                            <Label className={labelCls}>Driver Address</Label>
-                                            <Input className={inputCls} value={driverAddress} onChange={(e) => setDriverAddress(e.target.value)} placeholder="Driver address" />
+                                            <Label className={labelCls}>Driver RTO</Label>
+                                            <Input className={inputCls} value={driverRto} onChange={(e) => setDriverRto(e.target.value)} placeholder="Issuing RTO" />
                                         </div>
                                         <div className="flex items-end pb-1 h-9 space-y-1">
                                             <label className="flex items-center gap-2 cursor-pointer">
@@ -1081,7 +1209,7 @@ export default function NewChallanPage() {
                             {/* Bottom Action Bar */}
                             <div className="flex justify-end gap-3 py-4">
                                 <Button type="button" variant="outline" onClick={() => router.back()} className="min-w-[100px]">Cancel</Button>
-                                <Button type="button" variant="outline" className="gap-2"><RotateCcw className="h-4 w-4" /> Reset</Button>
+                                <Button type="button" variant="outline" onClick={handleReset} className="gap-2"><RotateCcw className="h-4 w-4" /> Reset</Button>
                                 <Button onClick={handleSave} disabled={isSubmitting} className="gap-2 min-w-[140px] shadow-lg shadow-primary/20">
                                     <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Challan'}
                                 </Button>
