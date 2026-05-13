@@ -129,7 +129,7 @@ function NewChallanPageContent() {
         noOfCns: 0, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
         rateType: 'mt', rate: 0, hire: 0,
         extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
-        detentCharges: 0, totalExtra: 0, totalHire: 0,
+        detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
         advPayment: 0, tdsPercent: 2, lessTds: 0,
         balAmount: 0,
     });
@@ -158,7 +158,7 @@ function NewChallanPageContent() {
             };
             
             // Trigger general update step to ripple effect derived calculations if dependent
-            next.totalExtra = (next.extraOverWeight || 0) + (next.overLength || 0) + (next.overWidth || 0) + (next.overHeight || 0) + (next.extraKmCharges || 0);
+            next.totalExtra = (next.extraOverWeight || 0) + (next.overLength || 0) + (next.overWidth || 0) + (next.overHeight || 0) + (next.extraKmCharges || 0) + (next.unloadingCharges || 0);
             if (next.rateType === 'mt') {
                 next.hire = Math.round((next.chargeWeight || 0) * (next.rate || 0));
             }
@@ -257,6 +257,7 @@ function NewChallanPageContent() {
             overHeight: data.extra_over_height || 0,
             extraKmCharges: data.extra_km_charges || 0,
             detentCharges: data.detent_charges || 0,
+            unloadingCharges: data.unloading_charges || 0,
             totalExtra: data.total_extra_charges || 0,
             totalHire: data.total_hire_amount || 0,
             advPayment: data.advance_amount || 0,
@@ -282,8 +283,9 @@ function NewChallanPageContent() {
         fetchBranches();
     }, []);
 
-    // Fetch next Challan No when origin branch changes
+    // Fetch next Challan No when origin branch changes — skip in edit mode
     useEffect(() => {
+        if (isEditMode) return;
         const fetchNextChallan = async () => {
             try {
                 const res = await fetch(`/api/branches/next-challan?branch=${originBranch}`);
@@ -296,7 +298,7 @@ function NewChallanPageContent() {
             }
         };
         if (originBranch) fetchNextChallan();
-    }, [originBranch]);
+    }, [originBranch, isEditMode]);
 
     const handleReset = () => {
         setLoadingPoint(''); setDestinationPoint('');
@@ -320,7 +322,7 @@ function NewChallanPageContent() {
             noOfCns: 0, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
             rateType: 'mt', rate: 0, hire: 0,
             extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
-            detentCharges: 0, totalExtra: 0, totalHire: 0,
+            detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
             advPayment: 0, tdsPercent: 2, lessTds: 0, balAmount: 0,
         });
     };
@@ -377,24 +379,29 @@ function NewChallanPageContent() {
     useEffect(() => {
         const normalizedVehicleNo = vehicleNo.trim().toUpperCase();
         if (normalizedVehicleNo.length < 2) {
+            // Batch these into one state update to avoid multiple re-renders
             setVehicleOwnerStatus('');
             setVehicleSuggestions([]);
             setShowVehicleSuggestions(false);
             return;
         }
 
+        // Use a longer debounce and only update if component is still mounted
+        let cancelled = false;
         const timeout = window.setTimeout(async () => {
+            if (cancelled) return;
             try {
                 const res = await fetch(`/api/vehicles?q=${encodeURIComponent(normalizedVehicleNo)}`);
-                if (!res.ok) return;
+                if (!res.ok || cancelled) return;
 
                 const data = await res.json();
-                
+                if (cancelled) return;
+
                 if (Array.isArray(data)) {
                     setVehicleSuggestions(data);
-                    setShowVehicleSuggestions(true);
-                    
-                    const exactMatch = data.find(v => v.vehicle_no === normalizedVehicleNo);
+                    setShowVehicleSuggestions(data.length > 0);
+
+                    const exactMatch = data.find((v: any) => v.vehicle_no === normalizedVehicleNo);
                     if (exactMatch) {
                         applyVehicleDetails(exactMatch);
                     } else if (data.length === 0) {
@@ -404,11 +411,14 @@ function NewChallanPageContent() {
                     }
                 }
             } catch {
-                setVehicleOwnerStatus('Failed to fetch vehicle details');
+                if (!cancelled) setVehicleOwnerStatus('Failed to fetch vehicle details');
             }
-        }, 300);
+        }, 500);
 
-        return () => window.clearTimeout(timeout);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeout);
+        };
     }, [vehicleNo]);
 
     const debouncedCnInput = useDebounce(linkedCnInput, 300);
@@ -476,7 +486,7 @@ function NewChallanPageContent() {
             }
 
             // 2. Recalculate derived fields: Extras
-            next.totalExtra = (Number(next.extraOverWeight) || 0) + (Number(next.overLength) || 0) + (Number(next.overWidth) || 0) + (Number(next.overHeight) || 0) + (Number(next.extraKmCharges) || 0);
+            next.totalExtra = (Number(next.extraOverWeight) || 0) + (Number(next.overLength) || 0) + (Number(next.overWidth) || 0) + (Number(next.overHeight) || 0) + (Number(next.extraKmCharges) || 0) + (Number(next.unloadingCharges) || 0);
             
             // 3. Recalculate Total Hire
             next.totalHire = (Number(next.hire) || 0) + (next.totalExtra || 0) + (Number(next.detentCharges) || 0);
@@ -613,6 +623,7 @@ function NewChallanPageContent() {
                 extra_over_height: hireDetails.overHeight,
                 extra_km_charges: hireDetails.extraKmCharges,
                 detent_charges: hireDetails.detentCharges,
+                unloading_charges: hireDetails.unloadingCharges,
                 total_extra_charges: hireDetails.totalExtra,
                 tds_percent: hireDetails.tdsPercent,
                 less_tds: hireDetails.lessTds,
@@ -716,9 +727,9 @@ function NewChallanPageContent() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan Branch</Label>
-                                            <Select value={originBranch} onValueChange={setOriginBranch}>
+                                            <Select value={originBranch} onValueChange={setOriginBranch} disabled={branches.length === 0}>
                                                 <SelectTrigger className={inputCls + " bg-slate-50"}>
-                                                    <SelectValue placeholder="Select Branch" />
+                                                    <SelectValue placeholder={branches.length === 0 ? "Loading..." : "Select Branch"} />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {branches.map(b => (
@@ -1298,6 +1309,12 @@ function NewChallanPageContent() {
                                             <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
                                                 value={hireDetails.extraOverWeight}
                                                 onChange={(e) => updateHire('extraOverWeight', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Unloading Charges</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.unloadingCharges}
+                                                onChange={(e) => updateHire('unloadingCharges', Number(e.target.value))} />
                                         </div>
                                     </div>
 

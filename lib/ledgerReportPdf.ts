@@ -115,7 +115,7 @@ const drawHeader = (
     pdf.text('D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)', PAGE_WIDTH / 2, PAGE_MARGIN + 15, { align: 'center' });
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9.5);
-    pdf.text('Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com', PAGE_WIDTH / 2, PAGE_MARGIN + 20, { align: 'center' });
+    pdf.text('Cell : 9392223404, Website : https://visakhagolden.com, Email : support@visakhagolden.com', PAGE_WIDTH / 2, PAGE_MARGIN + 20, { align: 'center' });
 
     pdf.setDrawColor(...BLUE);
     pdf.line(PAGE_MARGIN + 2, PAGE_MARGIN + 30, PAGE_WIDTH - PAGE_MARGIN - 2, PAGE_MARGIN + 30);

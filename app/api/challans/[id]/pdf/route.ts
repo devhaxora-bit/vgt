@@ -112,18 +112,67 @@ export async function GET(
         }
         yPos += 5;
 
-        // FINANCIAL DETAILS
-        addText('FINANCIAL DETAILS', margin, yPos, 11, true);
+        // FINANCIAL DETAILS — individual rows only for non-zero values
+        addText('HIRE DETAILS', margin, yPos, 11, true);
         yPos += 5;
-        const colWidth = (pageWidth - 2 * margin) / 3;
-        addText(`Hire: ₹${challan.hire_amount || 0}`, margin, yPos, 9);
-        addText(`Extra: ₹${challan.total_extra_charges || 0}`, margin + colWidth, yPos, 9);
-        addText(`Total: ₹${challan.total_hire_amount || 0}`, margin + 2 * colWidth, yPos, 9);
-        yPos += 4;
-        addText(`Advance: ₹${challan.advance_amount || 0}`, margin, yPos, 9);
-        addText(`TDS ${challan.tds_percent || 0}%: ₹${challan.less_tds || 0}`, margin + colWidth, yPos, 9);
-        addText(`Balance: ₹${(challan.total_hire_amount || 0) - (challan.advance_amount || 0) - (challan.less_tds || 0)}`, margin + 2 * colWidth, yPos, 9);
+
+        const labelW = 80;
+        const valueX = margin + labelW + 2;
+        const fmt = (n: number) => `Rs. ${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+        const hireRows: [string, number][] = [
+            ['Hire Amount', Number(challan.hire_amount) || 0],
+            ['Extra Over Weight', Number(challan.extra_over_weight) || 0],
+            ['Over Length', Number(challan.extra_over_length) || 0],
+            ['Over Width', Number(challan.extra_over_width) || 0],
+            ['Over Height', Number(challan.extra_over_height) || 0],
+            ['Extra KM Charges', Number(challan.extra_km_charges) || 0],
+            ['Detent Charges', Number(challan.detent_charges) || 0],
+            ['Transit Pass Charges', Number(challan.transit_pass_charges) || 0],
+        ];
+
+        // Only print rows with non-zero values
+        hireRows.filter(([, v]) => v > 0).forEach(([label, value]) => {
+            addText(label, margin + 4, yPos, 9);
+            addText(fmt(value), valueX + 40, yPos, 9);
+            yPos += 4.5;
+        });
+
+        // Total extra charges subtotal if any extras exist
+        const totalExtra = Number(challan.total_extra_charges) || 0;
+        if (totalExtra > 0) {
+            addHorizontalLine(margin, yPos, 100);
+            yPos += 2;
+            addText('Total Extra Charges', margin + 4, yPos, 9, true);
+            addText(fmt(totalExtra), valueX + 40, yPos, 9, true);
+            yPos += 5;
+        }
+
+        // Total hire
+        addText('TOTAL HIRE', margin + 4, yPos, 10, true);
+        addText(fmt(Number(challan.total_hire_amount) || 0), valueX + 40, yPos, 10, true);
         yPos += 5;
+
+        // Deductions
+        const advance = Number(challan.advance_amount) || 0;
+        const lessTds = Number(challan.less_tds) || 0;
+        if (advance > 0) {
+            addText(`Advance Paid`, margin + 4, yPos, 9);
+            addText(`- ${fmt(advance)}`, valueX + 40, yPos, 9);
+            yPos += 4.5;
+        }
+        if (lessTds > 0) {
+            addText(`Less TDS (${challan.tds_percent || 0}%)`, margin + 4, yPos, 9);
+            addText(`- ${fmt(lessTds)}`, valueX + 40, yPos, 9);
+            yPos += 4.5;
+        }
+
+        addHorizontalLine(margin, yPos, 100);
+        yPos += 2;
+        const balance = (Number(challan.total_hire_amount) || 0) - advance - lessTds;
+        addText('BALANCE PAYABLE', margin + 4, yPos, 10, true);
+        addText(fmt(balance), valueX + 40, yPos, 10, true);
+        yPos += 7;
 
         // LINKED CNs
         if (challan.linked_cn_nos && challan.linked_cn_nos.length > 0) {

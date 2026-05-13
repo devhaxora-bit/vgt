@@ -1,6 +1,8 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
+const CN_SELECT_FIELDS = 'id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point';
+
 export async function GET(request: Request) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -11,7 +13,7 @@ export async function GET(request: Request) {
     if (search) {
         const { data, error } = await supabase
             .from('consignments')
-            .select('id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point')
+            .select(CN_SELECT_FIELDS)
             .ilike('cn_no', `%${search}%`)
             .limit(8);
 
@@ -27,7 +29,7 @@ export async function GET(request: Request) {
         if (cnArray.length === 0) return NextResponse.json([]);
         const { data, error } = await supabase
             .from('consignments')
-            .select('id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point')
+            .select(CN_SELECT_FIELDS)
             .in('cn_no', cnArray);
         if (error) return NextResponse.json([], { status: 200 });
         return NextResponse.json(data ?? []);
@@ -40,7 +42,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
         .from('consignments')
-        .select('id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point')
+        .select(CN_SELECT_FIELDS)
         .ilike('cn_no', cnNo)
         .single();
 

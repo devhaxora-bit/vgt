@@ -179,39 +179,49 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="flex:1; text-align:center;">
                 <div class="head-blue" style="font-size:48px; line-height:1; margin-bottom:30px;">Visakha Golden Transport</div>
                 <div class="strong" style="font-size:14px; margin-bottom:4px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
-                <div style="font-size:13px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
+                <div style="font-size:13px;">Cell : 9392223404, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
         </div>
     </div>
     <div style="display: grid; grid-template-columns: 1.1fr 1.1fr 1.1fr 1fr; gap: 8px; padding: 8px;">
         <div class="box right-stack tiny">
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">CHALLAN INFO</span></div>
-            <div style="text-align:center; padding:6px 0; min-height:50px; display:flex; flex-direction:column; justify-content:center;">
-                 <span class="lbl" style="font-size:10px; color:#666;">CHALLAN NO</span>
-                 <span class="lr-red" style="font-size:32px; line-height:1.1;">${c.challan_no}</span>
+            <div style="text-align:center; padding:12px 4px; min-height:35px; display:flex; align-items:baseline; justify-content:center; gap:8px; border-bottom:1px dashed #ccc; margin-bottom:4px;">
+                 <span class="lbl" style="font-size:12px; color:#555; font-weight:900;">CHALLAN NO : </span>
+                 <span class="lr-red" style="font-size:34px; line-height:0.8;">${c.challan_no}</span>
             </div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Date:</span><span class="strong ink">${formatDateSafe(c.created_at, 'dd/MM/yyyy')}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Mode:</span><span class="strong ink">${toUpperValue(c.challan_mode || c.challan_type)}</span></div>
+            <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee;"><span class="lbl">Date:</span><span class="strong ink">${formatDateSafe(c.date_from || c.created_at, 'dd/MM/yyyy')}</span></div>
+            <div style="min-height:30px;"><span class="lbl">Loading:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
+            <div style="min-height:30px;"><span class="lbl">Destination:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
         </div>
         <div class="box right-stack tiny">
-            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">ROUTE & TRIP</span></div>
-            <div style="min-height:45px;"><span class="lbl">Loading Point:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
-            <div style="min-height:45px;"><span class="lbl">Destination:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Load Type:</span><span class="strong ink">${toUpperValue(c.engagement_type || 'MARKET')}</span></div>
+            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">DRIVER DETAILS</span></div>
+            <div><span class="lbl">Driver Name:</span><br/><span class="strong ink" style="font-size:14px;">${toUpperValue(c.driver_name)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.driver_mobile)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">DL No:</span><span class="strong ink" style="font-size:11px;">${toUpperValue(c.driver_dl_no)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Validity:</span><span class="strong ink">${formatDateSafe(c.driver_dl_validity, 'dd/MM/yyyy')}</span></div>
         </div>
         <div class="box right-stack tiny">
-            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">VEHICLE & DRIVER</span></div>
+            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">VEHICLE INFO</span></div>
             <div style="display:flex; gap:6px;"><div style="flex:1"><span class="lbl">Vehicle Number:</span><br/><span class="strong ink" style="font-size:15px;">${toUpperValue(c.vehicle_no)}</span></div></div>
-            <div style="display:flex; gap:6px;"><div style="flex:1"><span class="lbl">Permit:</span> <span class="strong ink" style="font-size:10px;">${toUpperValue(c.permit_no)}</span></div></div>
-            <div><span class="lbl">Driver:</span> <span class="strong ink" style="font-size:12px;">${toUpperValue(c.driver_name)}</span></div>
-            <div style="font-size:9px; line-height:1.2; color:#666;">Eng/Chas: <span class="strong ink" style="color:#222;">${toUpperValue(c.engine_no)} / ${toUpperValue(c.chasis_no)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Permit:</span> <span class="strong ink">${toUpperValue(c.permit_no)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Insurance:</span> <span class="strong ink" style="font-size:11px;">${toUpperValue(c.insurance_policy_no)}</span></div>
+            <div style="font-size:9px; line-height:1.2; color:#666;">Eng/Chas: <span class="strong ink" style="color:#222; font-size:10px;">${toUpperValue(c.engine_no)} / ${toUpperValue(c.chasis_no)}</span></div>
         </div>
         <div class="box right-stack tiny">
-            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">BROKER / OTHER</span></div>
-            <div><span class="lbl">Broker Name:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.broker_name)}</span></div>
+            ${c.engagement_type === 'direct' ? `
+            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">OWNER DETAILS</span></div>
+            <div><span class="lbl">Owner Name:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.owner_name)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">PAN:</span><span class="strong ink">${toUpperValue(c.owner_pan)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.owner_mobile)}</span></div>
             <div style="display:flex; justify-content:space-between;"><span class="lbl">Slip:</span><span class="strong ink">${toUpperValue(c.slip_no)}</span></div>
+            ` : `
+            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">BROKER DETAILS</span></div>
+            <div><span class="lbl">Broker Name:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.broker_name)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Code:</span><span class="strong ink">${toUpperValue(c.broker_code)}</span></div>
             <div style="display:flex; justify-content:space-between;"><span class="lbl">Phone:</span><span class="strong ink">${toUpperValue(c.broker_mobile)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">GSTIN:</span><span class="strong ink">37AAWFV7670H1Z8</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Slip:</span><span class="strong ink">${toUpperValue(c.slip_no)}</span></div>
+            `}
         </div>
     </div>
 
@@ -222,29 +232,32 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <table class="main-table" style="margin-bottom: 8px; margin-top: 12px;">
             <thead>
                 <tr style="font-size:10px; background:#f7f9fc;">
-                    <th style="width:15%; padding:4px;">CN Number</th>
-                    <th style="width:18%; padding:4px;">Dest. Branch</th>
+                    <th style="width:12%; padding:4px;">CN Number</th>
+                    <th style="width:15%; padding:4px;">Loading Point</th>
+                    <th style="width:15%; padding:4px;">Unloading Point</th>
                     <th style="width:25%; padding:4px;">Goods Description</th>
-                    <th style="width:10%; padding:4px; text-align:center;">Pkgs</th>
                     <th style="width:10%; padding:4px; text-align:center;">Qty</th>
                     <th style="width:11%; padding:4px; text-align:right;">Actual Wt</th>
-                    <th style="width:11%; padding:4px; text-align:right;">Charged Wt</th>
+                    <th style="width:12%; padding:4px; text-align:right;">Charged Wt</th>
                 </tr>
             </thead>
             <tbody style="font-size:11px;">
                 ${linkedDetails.length === 0
-                    ? `<tr><td colspan="7" style="text-align:center; color:#666; padding:12px;">${c.linked_cn_nos && c.linked_cn_nos.length > 0 ? 'Loading linked items...' : 'No linked consignments'}</td></tr>`
-                    : linkedDetails.map(item => `
+                    ? `<tr><td colspan="7" style="text-align:center; color:#666; font-weight:bold; padding:20px;">${c.linked_cn_nos && c.linked_cn_nos.length > 0 ? 'LOADING ITEMS...' : 'NO CNS SELECTED'}</td></tr>`
+                    : linkedDetails.map(item => {
+                        // total_qty is what the CN form saves as the authoritative quantity
+                        const qty = Number(item.total_qty) || Number(item.no_of_pkg) || 0;
+                        return `
                     <tr>
                         <td style="font-weight:700; text-decoration:none !important; border-bottom:1px solid #1d2f7a;" class="ink">${item.cn_no}</td>
-                        <td>${toUpperValue(item.dest_branch)}</td>
+                        <td style="font-size:10px;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
+                        <td style="font-size:10px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
                         <td style="font-size:10px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
-                        <td style="text-align:center;">${item.no_of_pkg || '0'}</td>
-                        <td style="text-align:center;">${item.total_qty || '0'}</td>
+                        <td style="text-align:center;">${qty || '0'}</td>
                         <td style="text-align:right;">${item.actual_weight || '0'} ${toUpperValue(item.load_unit)}</td>
                         <td style="text-align:right; font-weight:bold; color:#132b94;">${item.charged_weight || '0'} ${toUpperValue(item.load_unit)}</td>
-                    </tr>
-                `).join('')}
+                    </tr>`;
+                    }).join('')}
             </tbody>
         </table>
     </div>
@@ -301,6 +314,18 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     <td style="text-align:center;">Add-on</td>
                     <td style="text-align:right;">---</td>
                     <td class="ink" style="text-align:right;">${formatNumber(c.detent_charges)}</td>
+                </tr>` : ''}
+                ${Number(c.unloading_charges) > 0 ? `<tr>
+                    <td>Unloading Charges</td>
+                    <td style="text-align:center;">Add-on</td>
+                    <td style="text-align:right;">---</td>
+                    <td class="ink" style="text-align:right;">${formatNumber(c.unloading_charges)}</td>
+                </tr>` : ''}
+                ${Number(c.transit_pass_charges) > 0 ? `<tr>
+                    <td>Transit Pass Charges</td>
+                    <td style="text-align:center;">Add-on</td>
+                    <td style="text-align:right;">---</td>
+                    <td class="ink" style="text-align:right;">${formatNumber(c.transit_pass_charges)}</td>
                 </tr>` : ''}
                 <tr style="background:#f9fafb; border-top:2px solid #1d2f7a;">
                     <td colspan="3" class="strong" style="font-size:15px; text-align:right;">TOTAL GROSS HIRE</td>

@@ -318,7 +318,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="flex:1; text-align:center;">
                 <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:40px;">Visakha Golden Transport</div>
                 <div class="strong" style="font-size:18px; margin-bottom:6px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
-                <div style="font-size:16px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
+                <div style="font-size:16px;">Cell : 9392223404, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
         </div>
     </div>

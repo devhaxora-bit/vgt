@@ -90,6 +90,30 @@ export async function POST(request: Request) {
 
     const body = parseResult.data;
 
+    // Check if any linked CNs are already assigned to another challan
+    const linkedCns: string[] = Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [];
+    if (linkedCns.length > 0) {
+        const { data: conflictChallans } = await supabase
+            .from('challans')
+            .select('challan_no, linked_cn_nos')
+            .filter('linked_cn_nos', 'cs', JSON.stringify(linkedCns));
+
+        if (conflictChallans && conflictChallans.length > 0) {
+            const conflicts: string[] = [];
+            conflictChallans.forEach((ch: { challan_no: string; linked_cn_nos: string[] }) => {
+                (ch.linked_cn_nos || []).forEach((cn: string) => {
+                    if (linkedCns.includes(cn)) conflicts.push(`${cn} (in Challan ${ch.challan_no})`);
+                });
+            });
+            if (conflicts.length > 0) {
+                return NextResponse.json(
+                    { error: `The following CNs are already linked to another challan: ${conflicts.join(', ')}` },
+                    { status: 409 }
+                );
+            }
+        }
+    }
+
     // Prepare insert data from body
     const insertData: Record<string, unknown> = {
         challan_no: body.challan_no,
@@ -160,6 +184,7 @@ export async function POST(request: Request) {
         extra_km_charges: body.extra_km_charges || 0,
         detent_charges: body.detent_charges || 0,
         transit_pass_charges: body.transit_pass_charges || 0,
+        unloading_charges: body.unloading_charges || 0,
         total_extra_charges: body.total_extra_charges || 0,
         tds_percent: body.tds_percent || 0,
         less_tds: body.less_tds || 0,
