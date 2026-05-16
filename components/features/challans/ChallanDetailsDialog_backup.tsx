@@ -144,10 +144,10 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
 <head>
 <title>CHALLAN - ${c.challan_no}</title>
 <style>
-@page { size: A4 portrait; margin: 5mm; }
+@page { size: A4 landscape; margin: 5mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; }
-.page { position: relative; background: #ffffff; width: 198mm; min-height: 285mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; box-shadow: inset 0 0 0 2px #1d2f7a; }
+.page { position: relative; background: #ffffff; width: 274mm; min-height: 189mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; box-shadow: inset 0 0 0 2px #1d2f7a; }
 .row { display: flex; width: 100%; }
 .box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
 .tiny { font-size: 11px; line-height: 1.25; }
@@ -177,13 +177,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="row" style="gap:10px; align-items:center;">
             <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
             <div style="flex:1; text-align:center;">
-                <div class="head-blue" style="font-size:38px; line-height:1; margin-bottom:30px;">Visakha Golden Transport</div>
+                <div class="head-blue" style="font-size:48px; line-height:1; margin-bottom:30px;">Visakha Golden Transport</div>
                 <div class="strong" style="font-size:14px; margin-bottom:4px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
                 <div style="font-size:13px;">Cell : 9392223404, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
         </div>
     </div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px;">
+    <div style="display: grid; grid-template-columns: 1.1fr 1.1fr 1.1fr 1fr; gap: 8px; padding: 8px;">
         <div class="box right-stack tiny">
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">CHALLAN INFO</span></div>
             <div style="text-align:center; padding:12px 4px; min-height:35px; display:flex; align-items:baseline; justify-content:center; gap:8px; border-bottom:1px dashed #ccc; margin-bottom:4px;">
