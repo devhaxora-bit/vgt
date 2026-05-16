@@ -52,6 +52,7 @@ interface ChallanDetailsDialogProps {
 export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetailsDialogProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [isDownloading, setIsDownloading] = useState(false);
+    const [isLoadingCns, setIsLoadingCns] = useState(false);
     const [logoBase64, setLogoBase64] = React.useState<string | null>(null);
     const [linkedDetails, setLinkedDetails] = React.useState<any[]>([]);
     const [officerName, setOfficerName] = React.useState('---');
@@ -60,9 +61,13 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
         let isMounted = true;
         const fetchLinkedConsignments = async () => {
             if (!challan?.linked_cn_nos || !Array.isArray(challan.linked_cn_nos) || challan.linked_cn_nos.length === 0) {
-                setLinkedDetails([]);
+                if (isMounted) {
+                    setLinkedDetails([]);
+                    setIsLoadingCns(false);
+                }
                 return;
             }
+            setIsLoadingCns(true);
             try {
                 const res = await fetch(`/api/consignments/by-cn?cns=${challan.linked_cn_nos.join(',')}`);
                 if (!res.ok) throw new Error('Failed');
@@ -70,6 +75,9 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
                 if (isMounted) setLinkedDetails(Array.isArray(data) ? data : []);
             } catch (err) {
                 console.error('Error resolving CN details:', err);
+                if (isMounted) setLinkedDetails([]);
+            } finally {
+                if (isMounted) setIsLoadingCns(false);
             }
         };
         if (isOpen && challan) {
@@ -130,6 +138,19 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
     const handlePrint = async (mode: 'print' | 'download' = 'print') => {
         if (mode === 'download') setIsDownloading(true);
         try {
+            // Ensure CN details are loaded before rendering — fetch inline if not yet available
+            let resolvedLinkedDetails = linkedDetails;
+            if (resolvedLinkedDetails.length === 0 && Array.isArray(c.linked_cn_nos) && c.linked_cn_nos.length > 0) {
+                try {
+                    const res = await fetch(`/api/consignments/by-cn?cns=${c.linked_cn_nos.join(',')}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        resolvedLinkedDetails = Array.isArray(data) ? data : [];
+                        setLinkedDetails(resolvedLinkedDetails);
+                    }
+                } catch { /* fall through with empty array */ }
+            }
+
             const totalHireAmount = Number(c.total_hire_amount) || 0;
             const advance = Number(c.advance_amount) || 0;
             const lessTds = Number(c.less_tds || 0);
@@ -242,9 +263,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 </tr>
             </thead>
             <tbody style="font-size:11px;">
-                ${linkedDetails.length === 0
-                    ? `<tr><td colspan="7" style="text-align:center; color:#666; font-weight:bold; padding:20px;">${c.linked_cn_nos && c.linked_cn_nos.length > 0 ? 'LOADING ITEMS...' : 'NO CNS SELECTED'}</td></tr>`
-                    : linkedDetails.map(item => {
+                ${resolvedLinkedDetails.length === 0
+                    ? `<tr><td colspan="7" style="text-align:center; color:#666; font-weight:bold; padding:20px;">NO CNS SELECTED</td></tr>`
+                    : resolvedLinkedDetails.map(item => {
                         // total_qty is what the CN form saves as the authoritative quantity
                         const qty = Number(item.total_qty) || Number(item.no_of_pkg) || 0;
                         return `
@@ -388,8 +409,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 ]);
                 const canvas = await html2canvas(page, { scale: 2, useCORS: true });
                 const imgData = canvas.toDataURL('image/png');
-                const pdf = new jsPDF('l', 'mm', 'a4');
-                pdf.addImage(imgData, 'PNG', 5, 5, 287, 200);
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                pdf.addImage(imgData, 'PNG', 5, 5, 200, 287);
                 pdf.save(`challan-${c.challan_no}.pdf`);
             }
         } catch (err) {
@@ -467,11 +488,11 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 <div className="flex justify-between items-center mt-6 pt-4 border-t">
                     <span className="text-[10px] font-bold text-muted-foreground uppercase">Created: {formatDateSafe(c.created_at, 'dd/MM/yyyy HH:mm')}</span>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handlePrint('print')} className="gap-2">
-                            <Printer className="h-4 w-4" /> Print PDF
+                        <Button variant="outline" size="sm" onClick={() => handlePrint('print')} disabled={isLoadingCns} className="gap-2">
+                            <Printer className="h-4 w-4" /> {isLoadingCns ? 'Loading Data...' : 'Print PDF'}
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handlePrint('download')} disabled={isDownloading} className="gap-2">
-                            <Download className="h-4 w-4" /> {isDownloading ? 'Exporting...' : 'Download PDF'}
+                        <Button variant="outline" size="sm" onClick={() => handlePrint('download')} disabled={isDownloading || isLoadingCns} className="gap-2">
+                            <Download className="h-4 w-4" /> {isDownloading ? 'Exporting...' : isLoadingCns ? 'Loading Data...' : 'Download PDF'}
                         </Button>
                         <Button size="sm" onClick={onClose}>Close</Button>
                     </div>

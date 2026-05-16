@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -66,6 +66,10 @@ function NewChallanPageContent() {
     const [vehicleOwnerStatus, setVehicleOwnerStatus] = useState('');
     const [vehicleSuggestions, setVehicleSuggestions] = useState<any[]>([]);
     const [showVehicleSuggestions, setShowVehicleSuggestions] = useState(false);
+    const vehicleFocusedRef = useRef(false);
+    const brokerFocusedRef = useRef(false);
+    const linkedConsignmentsRef = useRef<LinkedConsignment[]>([]);
+    useEffect(() => { linkedConsignmentsRef.current = linkedConsignments; }, [linkedConsignments]);
 
 
     // Owner/Broker
@@ -178,6 +182,21 @@ function NewChallanPageContent() {
                     if (!res.ok) throw new Error('Failed to load challan');
                     const data = await res.json();
                     populateFormData(data);
+
+                    // Fetch and populate linked consignments
+                    if (Array.isArray(data.linked_cn_nos) && data.linked_cn_nos.length > 0) {
+                        try {
+                            const cnRes = await fetch(`/api/consignments/by-cn?cns=${data.linked_cn_nos.join(',')}`);
+                            if (cnRes.ok) {
+                                const cnData = await cnRes.json();
+                                if (Array.isArray(cnData)) {
+                                    setLinkedConsignments(cnData);
+                                }
+                            }
+                        } catch (cnErr) {
+                            console.error('Failed to load linked CNs:', cnErr);
+                        }
+                    }
                 } catch (error) {
                     console.error('Failed to load challan:', error);
                     toast.error('Failed to load challan data');
@@ -399,7 +418,10 @@ function NewChallanPageContent() {
 
                 if (Array.isArray(data)) {
                     setVehicleSuggestions(data);
-                    setShowVehicleSuggestions(data.length > 0);
+                    // Only auto-open the dropdown if user is actively focused (not on initial load)
+                    if (vehicleFocusedRef.current) {
+                        setShowVehicleSuggestions(data.length > 0);
+                    }
 
                     const exactMatch = data.find((v: any) => v.vehicle_no === normalizedVehicleNo);
                     if (exactMatch) {
@@ -424,7 +446,7 @@ function NewChallanPageContent() {
     const debouncedCnInput = useDebounce(linkedCnInput, 300);
     const debouncedBrokerName = useDebounce(brokerName, 300);
 
-    // Debounced CN Fetch
+    // Debounced CN Fetch — partial match search, show all matching CNs
     useEffect(() => {
         const val = debouncedCnInput.trim().toUpperCase();
         if (val.length < 2) {
@@ -437,13 +459,14 @@ function NewChallanPageContent() {
                 const res = await fetch(`/api/consignments/by-cn?search=${encodeURIComponent(val)}`);
                 if (!res.ok) return;
                 const list = await res.json();
-                const already = linkedConsignments.map(c => c.cn_no);
-                setCnSuggestions((list as LinkedConsignment[]).filter(c => !already.includes(c.cn_no)));
-                setShowCnSuggestions(true);
+                const already = new Set(linkedConsignmentsRef.current.map(c => c.cn_no));
+                const filtered = (list as LinkedConsignment[]).filter(c => !already.has(c.cn_no));
+                setCnSuggestions(filtered);
+                setShowCnSuggestions(filtered.length > 0);
             } catch { /* silent */ }
         };
         fetchCns();
-    }, [debouncedCnInput, linkedConsignments]);
+    }, [debouncedCnInput]);
 
     // Debounced Broker Fetch
     useEffect(() => {
@@ -463,7 +486,10 @@ function NewChallanPageContent() {
                 const list = await res.json();
                 if (Array.isArray(list)) {
                     setBrokerSuggestions(list);
-                    setShowBrokerSuggestions(true);
+                    // Only auto-open the dropdown if user is actively focused (not on initial load)
+                    if (brokerFocusedRef.current) {
+                        setShowBrokerSuggestions(list.length > 0);
+                    }
                     if (list.length === 0) setBrokerStatus('No broker found');
                     else setBrokerStatus(`${list.length} brokers found`);
                 }
@@ -509,15 +535,44 @@ function NewChallanPageContent() {
         }
 
         try {
-            const res = await fetch(`/api/consignments/by-cn?cn=${encodeURIComponent(cnNo)}`);
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.error || 'CN number not found');
+            // First try exact match
+            const exactRes = await fetch(`/api/consignments/by-cn?cn=${encodeURIComponent(cnNo)}`);
+            if (exactRes.ok) {
+                const data = await exactRes.json();
+                if (data && data.cn_no) {
+                    setLinkedConsignments((prev) => [...prev, data]);
+                    setLinkedCnInput('');
+                    return;
+                }
             }
 
-            setLinkedConsignments((prev) => [...prev, data]);
-            setLinkedCnInput('');
+            // Fall back to partial search and pick exact match if found, or first result
+            const searchRes = await fetch(`/api/consignments/by-cn?search=${encodeURIComponent(cnNo)}`);
+            if (searchRes.ok) {
+                const list = await searchRes.json();
+                if (Array.isArray(list) && list.length > 0) {
+                    const already = new Set(linkedConsignments.map((c) => c.cn_no.toUpperCase()));
+                    const available = list.filter((c: any) => !already.has(String(c.cn_no).toUpperCase()));
+                    if (available.length === 0) {
+                        toast.error('All matching CNs are already linked');
+                        return;
+                    }
+                    // Prefer exact match, otherwise show suggestions to pick from
+                    const exact = available.find((c: any) => String(c.cn_no).toUpperCase() === cnNo);
+                    if (exact) {
+                        setLinkedConsignments((prev) => [...prev, exact]);
+                        setLinkedCnInput('');
+                        return;
+                    }
+                    // Multiple partial matches — show dropdown so user can pick
+                    setCnSuggestions(available);
+                    setShowCnSuggestions(true);
+                    toast.info(`${available.length} matching CN${available.length > 1 ? 's' : ''} found — pick from the list`);
+                    return;
+                }
+            }
+
+            toast.error(`No CN found matching "${cnNo}"`);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Failed to fetch CN');
         }
@@ -717,7 +772,7 @@ function NewChallanPageContent() {
 
 
                             {/* ---- SECTION 1: General Details ---- */}
-                            <Card className="border-none shadow-md overflow-hidden bg-white">
+                            <Card className="border-none shadow-md overflow-visible bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
                                         <Info className="h-4 w-4" /> General Details
@@ -755,8 +810,8 @@ function NewChallanPageContent() {
                                                 className={inputCls + " uppercase"}
                                                 value={vehicleNo}
                                                 onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
-                                                onFocus={() => { if (vehicleSuggestions.length > 0) setShowVehicleSuggestions(true); }}
-                                                onBlur={() => setTimeout(() => setShowVehicleSuggestions(false), 200)}
+                                                onFocus={() => { vehicleFocusedRef.current = true; if (vehicleSuggestions.length > 0) setShowVehicleSuggestions(true); }}
+                                                onBlur={() => setTimeout(() => { vehicleFocusedRef.current = false; setShowVehicleSuggestions(false); }, 200)}
                                                 placeholder="Type to search Vehicle No."
                                                 autoComplete="off"
                                             />
@@ -798,7 +853,7 @@ function NewChallanPageContent() {
                             </Card>
 
                             {/* ---- LINKED CNS ---- */}
-                            <Card className="border-none shadow-md overflow-hidden bg-white">
+                            <Card className="border-none shadow-md overflow-visible bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
                                         <Link2 className="h-4 w-4" /> Linked CNS Numbers
@@ -811,6 +866,7 @@ function NewChallanPageContent() {
                                                 className={inputCls + " font-mono uppercase"}
                                                 value={linkedCnInput}
                                                 onChange={(e) => setLinkedCnInput(e.target.value.toUpperCase())}
+                                                onFocus={() => { if (cnSuggestions.length > 0) setShowCnSuggestions(true); }}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') { e.preventDefault(); handleAddCn(); }
                                                     if (e.key === 'Escape') setShowCnSuggestions(false);
@@ -907,7 +963,7 @@ function NewChallanPageContent() {
 
 
                             {/* ---- SECTION 3: Broker & Owner Information ---- */}
-                            <Card className="border-none shadow-md overflow-hidden bg-white">
+                            <Card className="border-none shadow-md overflow-visible bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
                                         <Users className="h-4 w-4" /> Broker & Owner Information
@@ -952,8 +1008,8 @@ function NewChallanPageContent() {
                                                                 setBrokerId(''); setBrokerCode(''); setBrokerAddress('');
                                                                 setBrokerStatus('');
                                                             }}
-                                                            onFocus={() => { if (brokerSuggestions.length > 0) setShowBrokerSuggestions(true); }}
-                                                            onBlur={() => setTimeout(() => setShowBrokerSuggestions(false), 200)}
+                                                            onFocus={() => { brokerFocusedRef.current = true; if (brokerSuggestions.length > 0) setShowBrokerSuggestions(true); }}
+                                                            onBlur={() => setTimeout(() => { brokerFocusedRef.current = false; setShowBrokerSuggestions(false); }, 200)}
                                                             placeholder={engagementType === 'direct' ? 'Not applicable' : 'Type broker name to search...'}
                                                             autoComplete="off"
                                                         />

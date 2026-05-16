@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
-const CN_SELECT_FIELDS = 'id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point';
+const CN_SELECT_FIELDS = 'id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point, booking_branch';
 
 export async function GET(request: Request) {
     const supabase = await createClient();
@@ -9,15 +9,27 @@ export async function GET(request: Request) {
     const cnNo = searchParams.get('cn')?.trim();
     const search = searchParams.get('search')?.trim();
 
-    // --- Autocomplete search mode ---
-    if (search) {
+    // --- Autocomplete search mode (partial match) ---
+    if (search !== undefined && search !== null) {
+        if (search.length < 1) return NextResponse.json([]);
+
+        // Require auth — RLS would otherwise silently return empty
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const { data, error } = await supabase
             .from('consignments')
             .select(CN_SELECT_FIELDS)
             .ilike('cn_no', `%${search}%`)
-            .limit(8);
+            .order('cn_no', { ascending: false })
+            .limit(20);
 
-        if (error) return NextResponse.json([], { status: 200 });
+        if (error) {
+            console.error('[by-cn search error]', error);
+            return NextResponse.json([]);
+        }
         return NextResponse.json(data ?? []);
     }
 
