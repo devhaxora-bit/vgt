@@ -229,7 +229,11 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.driver_mobile)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">DL No:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_dl_no)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Validity:</span><span class="strong ink">${formatDateSafe(c.driver_dl_validity, 'dd/MM/yyyy')}</span></div>
-            <div style="padding:2px 6px 5px;"><span class="lbl">Address:</span><br/><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_address)}</span></div>
+            <div style="padding:2px 6px 4px;"><span class="lbl">Address:</span><br/><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_address)}</span></div>
+            <div style="border-top:1px solid #1d2f7a; padding:4px 6px 5px; background:#fafafa;">
+                <div style="font-size:10px; margin-bottom:3px;"><span class="lbl">From:</span> <span class="strong ink">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
+                <div style="font-size:10px;"><span class="lbl">To:</span> <span class="strong ink">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
+            </div>
         </div>
         <!-- BOX 2: VEHICLE INFO -->
         <div class="box right-stack tiny" style="padding:0; overflow:hidden;">
