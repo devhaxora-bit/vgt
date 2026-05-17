@@ -119,6 +119,7 @@ export async function POST(request: Request) {
         challan_no: body.challan_no,
         challan_type: body.challan_type || 'MAIN',
         date_from: body.date_from || new Date().toISOString().split('T')[0],
+        truck_schedule_date: body.truck_schedule_date || null,
         origin_branch_code: body.origin_branch_code,
         destination_branch_code: body.destination_branch_code || null,
         engagement_type: body.engagement_type || 'broker',
