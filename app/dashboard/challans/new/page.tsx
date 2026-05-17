@@ -385,7 +385,7 @@ function NewChallanPageContent() {
 
     // Auto-cut TDS based on ITDS Declaration presence
     useEffect(() => {
-        const hasItds = itdsRefBranch.trim() || itdsDeclareDate || itdsFinYear.trim();
+        const hasItds = Boolean(itdsRefBranch.trim() || itdsDeclareDate);
         const autoTdsPercent = hasItds ? 0 : 2;
         
         setHireDetails(prev => {
@@ -395,7 +395,7 @@ function NewChallanPageContent() {
             next.balAmount = next.totalHire - (Number(next.advPayment) || 0) - next.lessTds;
             return next;
         });
-    }, [itdsRefBranch, itdsDeclareDate, itdsFinYear]);
+    }, [itdsRefBranch, itdsDeclareDate]);
 
     useEffect(() => {
         const normalizedVehicleNo = vehicleNo.trim().toUpperCase();
