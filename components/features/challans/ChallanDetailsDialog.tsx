@@ -155,6 +155,10 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
             const advance = Number(c.advance_amount) || 0;
             const lessTds = Number(c.less_tds || 0);
             const balance = totalHireAmount - advance - lessTds;
+            const totalPkg = resolvedLinkedDetails.reduce((sum: number, item: any) => sum + (Number(item.total_qty) || Number(item.no_of_pkg) || 0), 0);
+            const totalActualWeight = resolvedLinkedDetails.reduce((sum: number, item: any) => sum + (Number(item.actual_weight) || 0), 0);
+            const totalChargedWeight = resolvedLinkedDetails.reduce((sum: number, item: any) => sum + (Number(item.charged_weight) || 0), 0);
+            const weightUnit = resolvedLinkedDetails[0]?.load_unit ? String(resolvedLinkedDetails[0].load_unit).toUpperCase() : 'MT';
 
             const formatNumber = (val: any) => Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const toUpperValue = (value: any) => String(value ?? '').trim() ? String(value).toUpperCase() : '---';
@@ -176,7 +180,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .strong { font-weight: 700; }
 .head-blue { color: #17308b; font-weight: 800; }
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 20px; letter-spacing: 1px; }
-.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 20px; }
+.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 8px; }
 .logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; }
 .logo-box img { width: 100%; height: 100%; object-fit: contain; }
 .top-grid { display: grid; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
@@ -195,39 +199,46 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 <body>
 <div class="page">
     <div class="hdr">
-        <div class="row" style="gap:10px; align-items:center;">
-            <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
-            <div style="flex:1; text-align:center;">
-                <div class="head-blue" style="font-size:38px; line-height:1; margin-bottom:30px;">Visakha Golden Transport</div>
-                <div class="strong" style="font-size:14px; margin-bottom:4px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
-                <div style="font-size:13px;">Cell : 9392223404, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
+        <div style="display:grid; grid-template-columns: auto 1fr auto; gap:10px; align-items:center;">
+            <!-- LEFT: Challan Number -->
+            <div style="text-align:left; padding-left:4px;">
+                <div style="font-size:9px; color:#555; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Lorry Challan No.</div>
+                <div style="font-size:38px; font-weight:900; color:#cc1a1a; line-height:1; letter-spacing:1px;">${c.challan_no}</div>
+            </div>
+            <!-- CENTER: Logo + Company -->
+            <div style="text-align:center;">
+                <img src="${logoUrl}" alt="VGT Logo" style="height:36px; object-fit:contain; display:block; margin:0 auto 8px;" />
+                <div class="head-blue" style="font-size:22px; line-height:1; font-weight:900; margin-bottom:12px">Visakha Golden Transport</div>
+            </div>
+            <!-- RIGHT: Address + Contact -->
+            <div style="text-align:right; padding-right:4px;">
+                <div class="strong" style="font-size:11px; margin-bottom:3px;">D.No. 8-19-58/A, Gopal Nagar,</div>
+                <div class="strong" style="font-size:11px; margin-bottom:3px;">Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
+                <div style="font-size:10px; color:#444;">Cell : 9392223404</div>
+                <div style="font-size:10px; color:#444;">Email : support@visakhagolden.com</div>
             </div>
         </div>
     </div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; padding: 6px 8px 0;">
         <div class="box right-stack tiny">
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">CHALLAN INFO</span></div>
-            <div style="text-align:center; padding:12px 4px; min-height:35px; display:flex; align-items:baseline; justify-content:center; gap:8px; border-bottom:1px dashed #ccc; margin-bottom:4px;">
-                 <span class="lbl" style="font-size:12px; color:#555; font-weight:900;">CHALLAN NO : </span>
-                 <span class="lr-red" style="font-size:34px; line-height:0.8;">${c.challan_no}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee;"><span class="lbl">Date:</span><span class="strong ink">${formatDateSafe(c.date_from || c.created_at, 'dd/MM/yyyy')}</span></div>
-            <div style="min-height:30px;"><span class="lbl">Loading:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
-            <div style="min-height:30px;"><span class="lbl">Destination:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
+            <div style="display:flex; justify-content:space-between; gap:4px;"><span class="lbl" style="white-space:nowrap;">Date:</span><span class="strong ink" style="font-size:11px;">${formatDateSafe(c.date_from || c.created_at, 'dd/MM/yyyy')}</span></div>
+            <div style="display:flex; justify-content:space-between; gap:4px;"><span class="lbl" style="white-space:nowrap;">From:</span><span class="strong ink" style="font-size:10px; text-align:right;">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
+            <div style="display:flex; justify-content:space-between; gap:4px;"><span class="lbl" style="white-space:nowrap;">To:</span><span class="strong ink" style="font-size:10px; text-align:right;">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
         </div>
         <div class="box right-stack tiny">
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">DRIVER DETAILS</span></div>
-            <div><span class="lbl">Driver Name:</span><br/><span class="strong ink" style="font-size:14px;">${toUpperValue(c.driver_name)}</span></div>
+            <div><span class="lbl">Driver Name:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.driver_name)}</span></div>
             <div style="display:flex; justify-content:space-between;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.driver_mobile)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">DL No:</span><span class="strong ink" style="font-size:11px;">${toUpperValue(c.driver_dl_no)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">DL No:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_dl_no)}</span></div>
             <div style="display:flex; justify-content:space-between;"><span class="lbl">Validity:</span><span class="strong ink">${formatDateSafe(c.driver_dl_validity, 'dd/MM/yyyy')}</span></div>
         </div>
         <div class="box right-stack tiny">
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">VEHICLE INFO</span></div>
-            <div style="display:flex; gap:6px;"><div style="flex:1"><span class="lbl">Vehicle Number:</span><br/><span class="strong ink" style="font-size:15px;">${toUpperValue(c.vehicle_no)}</span></div></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Permit:</span> <span class="strong ink">${toUpperValue(c.permit_no)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Insurance:</span> <span class="strong ink" style="font-size:11px;">${toUpperValue(c.insurance_policy_no)}</span></div>
-            <div style="font-size:9px; line-height:1.2; color:#666;">Eng/Chas: <span class="strong ink" style="color:#222; font-size:10px;">${toUpperValue(c.engine_no)} / ${toUpperValue(c.chasis_no)}</span></div>
+            <div><span class="lbl">Vehicle No:</span><br/><span class="strong ink" style="font-size:14px;">${toUpperValue(c.vehicle_no)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Permit:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.permit_no)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Insurance:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.insurance_policy_no)}</span></div>
+            <div style="font-size:9px; color:#666;">Eng/Chas: <span class="strong ink" style="color:#222;">${toUpperValue(c.engine_no)} / ${toUpperValue(c.chasis_no)}</span></div>
         </div>
         <div class="box right-stack tiny">
             ${c.engagement_type === 'direct' ? `
@@ -239,136 +250,185 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             ` : `
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">BROKER DETAILS</span></div>
             <div><span class="lbl">Broker Name:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.broker_name)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Code:</span><span class="strong ink">${toUpperValue(c.broker_code)}</span></div>
             <div style="display:flex; justify-content:space-between;"><span class="lbl">Phone:</span><span class="strong ink">${toUpperValue(c.broker_mobile)}</span></div>
             <div style="display:flex; justify-content:space-between;"><span class="lbl">Slip:</span><span class="strong ink">${toUpperValue(c.slip_no)}</span></div>
+            <div><span class="lbl">Address:</span><br/><span class="strong ink" style="font-size:10px;">${toUpperValue(c.broker_address)}</span></div>
             `}
+        </div>
+    </div>
+    <!-- OWNER INFO BOX -->
+    <div style="margin: 5px 8px 0; border:1px solid #1d2f7a; border-radius:6px; font-size:11px;">
+        <div style="background:#f0f4ff; text-align:center; padding:4px 2px; line-height:1.4; border-radius:5px 5px 0 0;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">OWNER / LORRY PARTY INFO</span></div>
+        <div style="display:flex; gap:0; padding:0;">
+            <div style="flex:2; padding:4px 8px; border-right:1px solid #dde;"><span class="lbl">Name:</span> <span class="strong ink">${toUpperValue(c.owner_name || c.broker_name)}</span></div>
+            <div style="flex:1; padding:4px 8px; border-right:1px solid #dde;"><span class="lbl">PAN:</span> <span class="strong ink">${toUpperValue(c.owner_pan)}</span></div>
+            <div style="flex:1; padding:4px 8px; border-right:1px solid #dde;"><span class="lbl">Mobile:</span> <span class="strong ink">${toUpperValue(c.owner_mobile || c.broker_mobile)}</span></div>
+            <div style="flex:3; padding:4px 8px;"><span class="lbl">Address:</span> <span class="strong ink">${toUpperValue(c.owner_address || c.broker_address)}</span></div>
         </div>
     </div>
 
     
     <!-- CONSIGNMENT ITEMS DETAIL -->
-    <div style="padding: 5px 6px 0;">
-        <div style="font-size: 16px; font-weight: 900; color: #1d2f7a; text-transform:uppercase;">Linked Consignment Items</div>
-        <table class="main-table" style="margin-bottom: 8px; margin-top: 12px;">
+    <div style="padding: 4px 6px 0;">
+        <div style="font-size: 13px; font-weight: 900; color: #1d2f7a; text-transform:uppercase; margin-bottom:4px;">Linked Consignment Items</div>
+        <table class="main-table" style="margin-bottom: 6px;">
             <thead>
                 <tr style="font-size:10px; background:#f7f9fc;">
                     <th style="width:12%; padding:4px;">CN Number</th>
-                    <th style="width:15%; padding:4px;">Loading Point</th>
-                    <th style="width:15%; padding:4px;">Unloading Point</th>
-                    <th style="width:25%; padding:4px;">Goods Description</th>
-                    <th style="width:10%; padding:4px; text-align:center;">Qty</th>
+                    <th style="width:16%; padding:4px;">Loading Point</th>
+                    <th style="width:16%; padding:4px;">Unloading Point</th>
+                    <th style="width:24%; padding:4px;">Goods Description</th>
+                    <th style="width:10%; padding:4px; text-align:center;">Pkg</th>
                     <th style="width:11%; padding:4px; text-align:right;">Actual Wt</th>
-                    <th style="width:12%; padding:4px; text-align:right;">Charged Wt</th>
+                    <th style="width:11%; padding:4px; text-align:right;">Charged Wt</th>
                 </tr>
             </thead>
             <tbody style="font-size:11px;">
-                ${resolvedLinkedDetails.length === 0
-                    ? `<tr><td colspan="7" style="text-align:center; color:#666; font-weight:bold; padding:20px;">NO CNS SELECTED</td></tr>`
-                    : resolvedLinkedDetails.map(item => {
-                        // total_qty is what the CN form saves as the authoritative quantity
+                ${(() => {
+                    const FIXED_ROWS = 5;
+                    const renderRow = (item: any) => {
                         const qty = Number(item.total_qty) || Number(item.no_of_pkg) || 0;
-                        return `
-                    <tr>
-                        <td style="font-weight:700; text-decoration:none !important; border-bottom:1px solid #1d2f7a;" class="ink">${item.cn_no}</td>
-                        <td style="font-size:10px;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
-                        <td style="font-size:10px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
-                        <td style="font-size:10px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
-                        <td style="text-align:center;">${qty || '0'}</td>
-                        <td style="text-align:right;">${item.actual_weight || '0'} ${toUpperValue(item.load_unit)}</td>
-                        <td style="text-align:right; font-weight:bold; color:#132b94;">${item.charged_weight || '0'} ${toUpperValue(item.load_unit)}</td>
-                    </tr>`;
-                    }).join('')}
+                        return `<tr style="height:28px;">
+                            <td style="font-weight:700;" class="ink">${item.cn_no}</td>
+                            <td style="font-size:10px;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
+                            <td style="font-size:10px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
+                            <td style="font-size:10px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
+                            <td style="text-align:center;">${qty || '0'}</td>
+                            <td style="text-align:right;">${item.actual_weight || '0'} ${toUpperValue(item.load_unit)}</td>
+                            <td style="text-align:right; font-weight:bold; color:#132b94;">${item.charged_weight || '0'} ${toUpperValue(item.load_unit)}</td>
+                        </tr>`;
+                    };
+                    const firstPage = resolvedLinkedDetails.slice(0, FIXED_ROWS).map(renderRow);
+                    const emptyCount = Math.max(0, FIXED_ROWS - firstPage.length);
+                    const emptyRows = Array(emptyCount).fill('<tr style="height:28px;"><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>');
+                    return [...firstPage, ...emptyRows].join('');
+                })()}
             </tbody>
+            <tfoot>
+                <tr style="background:#f0f4ff; font-weight:900; font-size:10px; border-top:2px solid #1d2f7a;">
+                    <td colspan="4" style="padding:4px 6px; text-align:right; color:#1d2f7a;">TOTALS</td>
+                    <td style="padding:4px; text-align:center; color:#1d2f7a;">${totalPkg} Pkg</td>
+                    <td style="padding:4px; text-align:right; color:#1d2f7a;">${totalActualWeight} ${weightUnit}</td>
+                    <td style="padding:4px; text-align:right; color:#132b94;">${totalChargedWeight} ${weightUnit}</td>
+                </tr>
+            </tfoot>
         </table>
     </div>
-
-    <div style="padding: 0 6px 6px;">
+    ${resolvedLinkedDetails.length > 5 ? `
+    <!-- PAGE 2: Overflow CNs only -->
+    <div style="page-break-before: always; padding: 10px 8px;">
+        <div style="font-size:13px; font-weight:900; color:#1d2f7a; text-transform:uppercase; margin-bottom:6px; border-bottom:2px solid #1d2f7a; padding-bottom:4px;">
+            Challan No: ${c.challan_no} &nbsp;|&nbsp; Linked Consignment Items (Continued)
+        </div>
         <table class="main-table">
             <thead>
-                <tr>
-                    <th style="width:35%">Financial Particulars Breakdown</th>
-                    <th style="width:15%; text-align:center;">Category</th>
-                    <th style="width:15%; text-align:right;">Quantity</th>
-                    <th style="width:35%; text-align:right;">Line Amount (₹)</th>
+                <tr style="font-size:10px; background:#f7f9fc;">
+                    <th style="width:12%; padding:6px 4px;">CN Number</th>
+                    <th style="width:16%; padding:6px 4px;">Loading Point</th>
+                    <th style="width:16%; padding:6px 4px;">Unloading Point</th>
+                    <th style="width:24%; padding:6px 4px;">Goods Description</th>
+                    <th style="width:10%; padding:6px 4px; text-align:center;">Qty</th>
+                    <th style="width:11%; padding:6px 4px; text-align:right;">Actual Wt</th>
+                    <th style="width:11%; padding:6px 4px; text-align:right;">Charged Wt</th>
                 </tr>
             </thead>
-            <tbody>
-                <tr>
-                    <td class="strong">Basic Lorry Hire / Freight</td>
-                    <td style="text-align:center;">Fixed/MT</td>
-                    <td style="text-align:right;">${c.hire_rate_per_kg || '---'}</td>
-                    <td class="ink" style="text-align:right; font-size:13px;">${formatNumber(c.hire_amount)}</td>
-                </tr>
-                ${Number(c.extra_over_weight) > 0 ? `<tr>
-                    <td>Extra Over Weight Charges</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.extra_over_weight)}</td>
-                </tr>` : ''}
-                ${Number(c.extra_over_length) > 0 ? `<tr>
-                    <td>Extra Over Length Dimension Charges</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.extra_over_length)}</td>
-                </tr>` : ''}
-                ${Number(c.extra_over_width) > 0 ? `<tr>
-                    <td>Extra Over Width Dimension Charges</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.extra_over_width)}</td>
-                </tr>` : ''}
-                ${Number(c.extra_over_height) > 0 ? `<tr>
-                    <td>Extra Over Height Dimension Charges</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.extra_over_height)}</td>
-                </tr>` : ''}
-                ${Number(c.extra_km_charges) > 0 ? `<tr>
-                    <td>Extra Kilometer Running Charges</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.extra_km_charges)}</td>
-                </tr>` : ''}
-                ${Number(c.detent_charges) > 0 ? `<tr>
-                    <td>Detention Charges (Lorry Stoppage)</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.detent_charges)}</td>
-                </tr>` : ''}
-                ${Number(c.unloading_charges) > 0 ? `<tr>
-                    <td>Unloading Charges</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.unloading_charges)}</td>
-                </tr>` : ''}
-                ${Number(c.transit_pass_charges) > 0 ? `<tr>
-                    <td>Transit Pass Charges</td>
-                    <td style="text-align:center;">Add-on</td>
-                    <td style="text-align:right;">---</td>
-                    <td class="ink" style="text-align:right;">${formatNumber(c.transit_pass_charges)}</td>
-                </tr>` : ''}
-                <tr style="background:#f9fafb; border-top:2px solid #1d2f7a;">
-                    <td colspan="3" class="strong" style="font-size:15px; text-align:right;">TOTAL GROSS HIRE</td>
-                    <td class="ink" style="text-align:right; font-size:16px; color:#111;">₹ ${formatNumber(totalHireAmount)}</td>
-                </tr>
-                <tr>
-                    <td colspan="3" class="strong" style="text-align:right; color:#c2410c; font-size:11px;">Less: TDS Deduction (${c.tds_percent || 0}%)</td>
-                    <td class="ink" style="text-align:right; color:#c2410c;">- ₹ ${formatNumber(lessTds)}</td>
-                </tr>
-                <tr>
-                    <td colspan="3" class="strong" style="text-align:right; color:#c2410c; font-size:11px;">Less: Advance Paid / Deductible</td>
-                    <td class="ink" style="text-align:right; color:#c2410c;">- ₹ ${formatNumber(advance)}</td>
-                </tr>
-                <tr style="background:#eef2ff;">
-                    <td colspan="3" class="strong" style="font-size:18px; text-align:right; color:#1a3764;">NET BALANCE PAYABLE</td>
-                    <td class="ink" style="text-align:right; font-size:22px; color:#1a3764; border: 2px solid #1a3764;">₹ ${formatNumber(balance)}</td>
-                </tr>
+            <tbody style="font-size:11px;">
+                ${resolvedLinkedDetails.slice(5).map(item => {
+                    const qty = Number(item.total_qty) || Number(item.no_of_pkg) || 0;
+                    return `<tr style="height:30px;">
+                        <td style="font-weight:700; padding:6px 4px;" class="ink">${item.cn_no}</td>
+                        <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
+                        <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
+                        <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
+                        <td style="text-align:center; padding:6px 4px;">${qty || '0'}</td>
+                        <td style="text-align:right; padding:6px 4px;">${item.actual_weight || '0'} ${toUpperValue(item.load_unit)}</td>
+                        <td style="text-align:right; font-weight:bold; color:#132b94; padding:6px 4px;">${item.charged_weight || '0'} ${toUpperValue(item.load_unit)}</td>
+                    </tr>`;
+                }).join('')}
             </tbody>
         </table>
+    </div>` : ''}
+    <div style="padding: 0 6px 0;">
+
+        <div style="font-size:11px; font-weight:900; color:#1d2f7a; text-transform:uppercase; margin-bottom:3px;">Lorry Hire Breakdown</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+            <!-- LEFT: individual line items -->
+            <table style="width:100%; border-collapse:collapse; font-size:10px;">
+                <thead>
+                    <tr style="background:#f0f4ff;">
+                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:left; color:#1d2f7a;">Particulars</th>
+                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:right; color:#1d2f7a; width:30%;">Amount (₹)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Basic Lorry Hire <span style="color:#555;">(Rate: ${c.hire_rate_per_kg || '---'})</span></td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.hire_amount) > 0 ? formatNumber(c.hire_amount) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Weight</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.extra_over_weight) > 0 ? formatNumber(c.extra_over_weight) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Length</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.extra_over_length) > 0 ? formatNumber(c.extra_over_length) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Width</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.extra_over_width) > 0 ? formatNumber(c.extra_over_width) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Height</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.extra_over_height) > 0 ? formatNumber(c.extra_over_height) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Extra KM Charges</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.extra_km_charges) > 0 ? formatNumber(c.extra_km_charges) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Detention Charges</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.detent_charges) > 0 ? formatNumber(c.detent_charges) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Unloading Charges</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.unloading_charges) > 0 ? formatNumber(c.unloading_charges) : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 7px;">Transit Pass Charges</td>
+                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#132b94;">${Number(c.transit_pass_charges) > 0 ? formatNumber(c.transit_pass_charges) : ''}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <!-- RIGHT: totals and deductions -->
+            <table style="width:100%; border-collapse:collapse; font-size:10px; align-self:start;">
+                <tbody>
+                    <tr style="background:#f9fafb;">
+                        <td style="border:1px solid #1d2f7a; padding:5px 8px; font-weight:900; color:#1d2f7a; font-size:12px;">TOTAL GROSS HIRE</td>
+                        <td style="border:1px solid #1d2f7a; padding:5px 8px; text-align:right; font-weight:900; font-size:14px; color:#111;">₹ ${formatNumber(totalHireAmount)}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 8px; font-weight:700; color:#1d2f7a;">Total Charged Wt</td>
+                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; font-weight:700; color:#1d2f7a;">${totalChargedWeight} ${weightUnit}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: TDS (${c.tds_percent || 0}%)</td>
+                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(lessTds)}</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: Advance Paid</td>
+                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(advance)}</td>
+                    </tr>
+                    <tr style="background:#eef2ff;">
+                        <td style="border:2px solid #1a3764; padding:8px; font-weight:900; color:#1a3764; font-size:13px;">NET BALANCE PAYABLE</td>
+                        <td style="border:2px solid #1a3764; padding:8px; text-align:right; font-weight:900; font-size:18px; color:#1a3764;">₹ ${formatNumber(balance)}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
+
     <div class="note-section" style="border-top:none; padding-top:10px;">
-        <div style="font-size:14px; font-weight:bold; margin-bottom:10px;">Truck Should reach on Date ......................</div>
+        <div style="font-size:14px; font-weight:bold; margin-bottom:10px;">Truck Should reach on Date : <span style="color:#cc1a1a; text-decoration:underline;">${c.truck_schedule_date ? formatDateSafe(c.truck_schedule_date, 'dd/MM/yyyy') : '............................'}</span></div>
         <div class="note-box" style="font-size:14px; line-height:1.5;">
             <div style="font-weight:bold; text-decoration:underline; margin-bottom:3px;">NOTE :</div>
             <div>1. Materials Should Be Delivered On Or Before Schedule Date &Time As Mentioned Above Other Wise Delay DeliveryCharges 2% Per Day On Total Lorry Hire Well Be Deducted.</div>

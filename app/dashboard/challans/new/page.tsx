@@ -56,6 +56,7 @@ function NewChallanPageContent() {
     const [originBranch, setOriginBranch] = useState('MRG');
     const [challanNo, setChallanNo] = useState('');
     const [challanDate, setChallanDate] = useState(new Date().toISOString().split('T')[0]);
+    const [truckScheduleDate, setTruckScheduleDate] = useState('');
     const [challanTime, setChallanTime] = useState(new Date().toTimeString().slice(0, 5));
     const [loadingPoint, setLoadingPoint] = useState('');
     const [destinationPoint, setDestinationPoint] = useState('');
@@ -213,6 +214,7 @@ function NewChallanPageContent() {
     const populateFormData = (data: any) => {
         setChallanNo(data.challan_no || '');
         setChallanDate(data.date_from?.split('T')[0] || new Date().toISOString().split('T')[0]);
+        setTruckScheduleDate(data.truck_schedule_date?.split('T')[0] || '');
         setOriginBranch(data.origin_branch_code || 'MRG');
         setLoadingPoint(data.loading_point || '');
         setDestinationPoint(data.destination_point || '');
@@ -614,6 +616,7 @@ function NewChallanPageContent() {
             const body = {
                 challan_no: challanNo,
                 date_from: challanDate,
+                truck_schedule_date: truckScheduleDate || null,
                 origin_branch_code: originBranch,
                 destination_branch_code: null,
                 engagement_type: engagementType,
@@ -800,10 +803,15 @@ function NewChallanPageContent() {
                                                 <Input type="time" className={inputCls + " w-28"} value={challanTime} onChange={(e) => setChallanTime(e.target.value)} />
                                             </div>
                                         </div>
+                                        <div className="space-y-1 lg:col-span-2">
+                                            <Label className={labelCls}>Truck Schedule Date <span className="text-xs text-muted-foreground">(Reach by)</span></Label>
+                                            <Input type="date" className={inputCls} value={truckScheduleDate} onChange={(e) => setTruckScheduleDate(e.target.value)} />
+                                        </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan No</Label>
                                             <Input className={inputCls + " font-mono font-bold bg-yellow-50/60 border-yellow-200"} value={challanNo} onChange={(e) => setChallanNo(e.target.value)} placeholder="Auto Generated" />
                                         </div>
+
                                         <div className="space-y-1 lg:col-span-2 relative">
                                             <Label className={labelCls}>Vehicle No</Label>
                                             <Input
