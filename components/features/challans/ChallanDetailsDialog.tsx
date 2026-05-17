@@ -204,6 +204,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="text-align:left; padding-left:4px;">
                 <div style="font-size:9px; color:#555; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Lorry Challan No.</div>
                 <div style="font-size:38px; font-weight:900; color:#cc1a1a; line-height:1; letter-spacing:1px;">${c.challan_no}</div>
+                <div style="font-size:10px; color:#444; margin-top:3px; font-weight:600;">${formatDateSafe(c.date_from || c.created_at, 'dd/MM/yyyy')}</div>
             </div>
             <!-- CENTER: Logo + Company -->
             <div style="text-align:center;">
@@ -220,19 +221,25 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </div>
     </div>
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; padding: 6px 8px 0;">
-        <div class="box right-stack tiny">
-            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">CHALLAN INFO</span></div>
-            <div style="display:flex; justify-content:space-between; gap:4px;"><span class="lbl" style="white-space:nowrap;">Date:</span><span class="strong ink" style="font-size:11px;">${formatDateSafe(c.date_from || c.created_at, 'dd/MM/yyyy')}</span></div>
-            <div style="display:flex; justify-content:space-between; gap:4px;"><span class="lbl" style="white-space:nowrap;">From:</span><span class="strong ink" style="font-size:10px; text-align:right;">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
-            <div style="display:flex; justify-content:space-between; gap:4px;"><span class="lbl" style="white-space:nowrap;">To:</span><span class="strong ink" style="font-size:10px; text-align:right;">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
+        <!-- BOX 1: CHALLAN INFO split top=Driver, bottom=Route -->
+        <div style="border:1px solid #1d2f7a; border-radius:6px; font-size:11px; line-height:1.25; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+            <!-- TOP: Driver Details -->
+            <div style="border-bottom:2px solid #1d2f7a; padding:0;">
+                <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">DRIVER DETAILS</span></div>
+                <div style="padding:3px 5px;"><span class="lbl">Driver Name:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.driver_name)}</span></div>
+                <div style="display:flex; justify-content:space-between; padding:2px 5px;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.driver_mobile)}</span></div>
+                <div style="display:flex; justify-content:space-between; padding:2px 5px;"><span class="lbl">DL No:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_dl_no)}</span></div>
+                <div style="display:flex; justify-content:space-between; padding:2px 5px;"><span class="lbl">Validity:</span><span class="strong ink">${formatDateSafe(c.driver_dl_validity, 'dd/MM/yyyy')}</span></div>
+                <div style="padding:2px 5px 6px;"><span class="lbl">Address:</span><br/><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_address)}</span></div>
+            </div>
+            <!-- BOTTOM: Route (compact) -->
+            <div style="padding:0;">
+                <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">ROUTE</span></div>
+                <div style="font-size:10px; padding:3px 5px;"><span class="lbl">From:</span> <span class="strong ink">${toUpperValue(c.loading_point || c.origin_branch?.name)}</span></div>
+                <div style="font-size:10px; padding:3px 5px;"><span class="lbl">To:</span> <span class="strong ink">${toUpperValue(c.destination_point || c.destination_branch?.name || c.unloading_area)}</span></div>
+            </div>
         </div>
-        <div class="box right-stack tiny">
-            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">DRIVER DETAILS</span></div>
-            <div><span class="lbl">Driver Name:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.driver_name)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.driver_mobile)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">DL No:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_dl_no)}</span></div>
-            <div style="display:flex; justify-content:space-between;"><span class="lbl">Validity:</span><span class="strong ink">${formatDateSafe(c.driver_dl_validity, 'dd/MM/yyyy')}</span></div>
-        </div>
+        <!-- BOX 2: VEHICLE INFO -->
         <div class="box right-stack tiny">
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">VEHICLE INFO</span></div>
             <div><span class="lbl">Vehicle No:</span><br/><span class="strong ink" style="font-size:14px;">${toUpperValue(c.vehicle_no)}</span></div>
@@ -240,6 +247,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="display:flex; justify-content:space-between;"><span class="lbl">Insurance:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.insurance_policy_no)}</span></div>
             <div style="font-size:9px; color:#666;">Eng/Chas: <span class="strong ink" style="color:#222;">${toUpperValue(c.engine_no)} / ${toUpperValue(c.chasis_no)}</span></div>
         </div>
+        <!-- BOX 3: OWNER/BROKER -->
         <div class="box right-stack tiny">
             ${c.engagement_type === 'direct' ? `
             <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900;">OWNER DETAILS</span></div>
@@ -255,15 +263,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div><span class="lbl">Address:</span><br/><span class="strong ink" style="font-size:10px;">${toUpperValue(c.broker_address)}</span></div>
             `}
         </div>
-    </div>
-    <!-- OWNER INFO BOX -->
-    <div style="margin: 5px 8px 0; border:1px solid #1d2f7a; border-radius:6px; font-size:11px;">
-        <div style="background:#f0f4ff; text-align:center; padding:4px 2px; line-height:1.4; border-radius:5px 5px 0 0;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">OWNER / LORRY PARTY INFO</span></div>
-        <div style="display:flex; gap:0; padding:0;">
-            <div style="flex:2; padding:4px 8px; border-right:1px solid #dde;"><span class="lbl">Name:</span> <span class="strong ink">${toUpperValue(c.owner_name || c.broker_name)}</span></div>
-            <div style="flex:1; padding:4px 8px; border-right:1px solid #dde;"><span class="lbl">PAN:</span> <span class="strong ink">${toUpperValue(c.owner_pan)}</span></div>
-            <div style="flex:1; padding:4px 8px; border-right:1px solid #dde;"><span class="lbl">Mobile:</span> <span class="strong ink">${toUpperValue(c.owner_mobile || c.broker_mobile)}</span></div>
-            <div style="flex:3; padding:4px 8px;"><span class="lbl">Address:</span> <span class="strong ink">${toUpperValue(c.owner_address || c.broker_address)}</span></div>
+        <!-- BOX 4: OWNER INFO -->
+        <div class="box right-stack tiny">
+            <div style="background:#f0f4ff; text-align:center;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">OWNER / LORRY PARTY</span></div>
+            <div><span class="lbl">Name:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.owner_name || c.broker_name)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">PAN:</span><span class="strong ink">${toUpperValue(c.owner_pan)}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.owner_mobile || c.broker_mobile)}</span></div>
+            <div><span class="lbl">Address:</span><br/><span class="strong ink" style="font-size:10px;">${toUpperValue(c.owner_address || c.broker_address)}</span></div>
         </div>
     </div>
 
