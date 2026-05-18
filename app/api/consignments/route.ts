@@ -246,6 +246,7 @@ export async function POST(request: Request) {
         mhc_charges: parseFloat(body.mhc_charges) || 0,
         door_coll_charges: parseFloat(body.door_coll_charges) || 0,
         door_del_charges: parseFloat(body.door_del_charges) || 0,
+        traffic_challan_charges: parseFloat(body.traffic_challan_charges) || 0,
         other_charges: parseFloat(body.other_charges) || 0,
         total_freight: parseFloat(body.total_freight) || 0,
         advance_amount: parseFloat(body.advance_amount) || 0,

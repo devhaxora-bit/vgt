@@ -140,6 +140,7 @@ export async function PATCH(
             mhc_charges: parseNumber(body.mhc_charges),
             door_coll_charges: parseNumber(body.door_coll_charges),
             door_del_charges: parseNumber(body.door_del_charges),
+            traffic_challan_charges: parseNumber(body.traffic_challan_charges),
             other_charges: parseNumber(body.other_charges),
             total_freight: parseNumber(body.total_freight),
             advance_amount: parseNumber(body.advance_amount),

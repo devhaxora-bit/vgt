@@ -503,7 +503,6 @@ WITH ordered_consignments AS (
         WHEN c.id IS NULL THEN 0
         WHEN COALESCE(c.basic_freight, 0) > 0 THEN COALESCE(c.basic_freight, 0)
         ELSE
-          CASE
             WHEN COALESCE(c.total_freight, 0)
               - COALESCE(c.retention_charges, 0)
               - COALESCE(c.unload_charges, 0)
@@ -511,6 +510,7 @@ WITH ordered_consignments AS (
               - COALESCE(c.mhc_charges, 0)
               - COALESCE(c.door_coll_charges, 0)
               - COALESCE(c.door_del_charges, 0)
+              - COALESCE(c.traffic_challan_charges, 0)
               - COALESCE(c.other_charges, 0) > 0
             THEN COALESCE(c.total_freight, 0)
               - COALESCE(c.retention_charges, 0)
@@ -519,6 +519,7 @@ WITH ordered_consignments AS (
               - COALESCE(c.mhc_charges, 0)
               - COALESCE(c.door_coll_charges, 0)
               - COALESCE(c.door_del_charges, 0)
+              - COALESCE(c.traffic_challan_charges, 0)
               - COALESCE(c.other_charges, 0)
             ELSE COALESCE(c.total_freight, 0)
           END
@@ -530,6 +531,7 @@ WITH ordered_consignments AS (
     ROUND(COALESCE(c.mhc_charges, 0), 2) AS loading,
     ROUND(COALESCE(c.door_coll_charges, 0), 2) AS door_collection,
     ROUND(COALESCE(c.door_del_charges, 0), 2) AS door_delivery,
+    ROUND(COALESCE(c.traffic_challan_charges, 0), 2) AS traffic_challan,
     ROUND(COALESCE(c.other_charges, 0), 2) AS other_charges,
     ROUND(
       CASE
@@ -548,6 +550,7 @@ WITH ordered_consignments AS (
                     - COALESCE(c.mhc_charges, 0)
                     - COALESCE(c.door_coll_charges, 0)
                     - COALESCE(c.door_del_charges, 0)
+                    - COALESCE(c.traffic_challan_charges, 0)
                     - COALESCE(c.other_charges, 0) > 0
                   THEN COALESCE(c.total_freight, 0)
                     - COALESCE(c.retention_charges, 0)
@@ -556,6 +559,7 @@ WITH ordered_consignments AS (
                     - COALESCE(c.mhc_charges, 0)
                     - COALESCE(c.door_coll_charges, 0)
                     - COALESCE(c.door_del_charges, 0)
+                    - COALESCE(c.traffic_challan_charges, 0)
                     - COALESCE(c.other_charges, 0)
                   ELSE COALESCE(c.total_freight, 0)
                 END
@@ -567,6 +571,7 @@ WITH ordered_consignments AS (
           + COALESCE(c.mhc_charges, 0)
           + COALESCE(c.door_coll_charges, 0)
           + COALESCE(c.door_del_charges, 0)
+          + COALESCE(c.traffic_challan_charges, 0)
           + COALESCE(c.other_charges, 0)
       END
     , 2) AS total_amount,
@@ -590,6 +595,7 @@ WITH ordered_consignments AS (
                       - COALESCE(c.mhc_charges, 0)
                       - COALESCE(c.door_coll_charges, 0)
                       - COALESCE(c.door_del_charges, 0)
+                      - COALESCE(c.traffic_challan_charges, 0)
                       - COALESCE(c.other_charges, 0) > 0
                     THEN COALESCE(c.total_freight, 0)
                       - COALESCE(c.retention_charges, 0)
@@ -598,6 +604,7 @@ WITH ordered_consignments AS (
                       - COALESCE(c.mhc_charges, 0)
                       - COALESCE(c.door_coll_charges, 0)
                       - COALESCE(c.door_del_charges, 0)
+                      - COALESCE(c.traffic_challan_charges, 0)
                       - COALESCE(c.other_charges, 0)
                     ELSE COALESCE(c.total_freight, 0)
                   END
@@ -609,6 +616,7 @@ WITH ordered_consignments AS (
             + COALESCE(c.mhc_charges, 0)
             + COALESCE(c.door_coll_charges, 0)
             + COALESCE(c.door_del_charges, 0)
+            + COALESCE(c.traffic_challan_charges, 0)
             + COALESCE(c.other_charges, 0)
         END
       , 2)
@@ -644,6 +652,7 @@ aggregated AS (
         'loading', loading,
         'door_collection', door_collection,
         'door_delivery', door_delivery,
+        'traffic_challan', traffic_challan,
         'other_charges', ROUND(other_charges + CASE WHEN row_num = row_count THEN ROUND(COALESCE(amount, 0) - COALESCE(cn_total_amount, 0), 2) ELSE 0 END, 2),
         'total_amount', ROUND(total_amount + CASE WHEN row_num = row_count THEN ROUND(COALESCE(amount, 0) - COALESCE(cn_total_amount, 0), 2) ELSE 0 END, 2)
       )
@@ -1613,3 +1622,12 @@ ADD COLUMN IF NOT EXISTS unloading_charges numeric DEFAULT 0;
 
 ALTER TABLE public.challans
 ADD COLUMN IF NOT EXISTS truck_schedule_date date DEFAULT NULL;
+
+-- Migration: Add traffic_challan_charges field to consignments
+-- Stores specific charges for traffic challans associated with a consignment
+
+ALTER TABLE public.consignments
+ADD COLUMN IF NOT EXISTS traffic_challan_charges numeric DEFAULT 0;
+
+-- Reload PostgREST schema cache
+NOTIFY pgrst, 'reload schema';

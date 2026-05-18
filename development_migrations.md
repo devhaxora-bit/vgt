@@ -1,8 +1,8 @@
 # Complete VGT Development Migrations (Since Branching)
 
-This document contains a guide on how to update your main branch database with **all 18 database migrations** created since the `development` branch diverged from the `main` branch. 
+This document contains a guide on how to update your main branch database with **all 19 database migrations** created since the `development` branch diverged from the `main` branch. 
 
-To make this seamless, we have compiled all 18 migrations into a single, clean, chronological SQL script:
+To make this seamless, we have compiled all 19 migrations into a single, clean, chronological SQL script:
 👉 **[all_development_migrations.sql](file:///Users/somnathkhadanga/code/freelance/vgt/vgt/all_development_migrations.sql)**
 
 ---
@@ -21,10 +21,11 @@ The consolidated script contains the following 3 major database features in chro
 * **Physical copy exclusions**: Allows branches to reserve specific CN sub-ranges for physical books.
 * **Helper functions**: Creates sequence auto-allocation and verification procedures (`next_available_branch_cn` and `advance_branch_cn_sequence`).
 
-### 3. Challans, Brokers, and Vehicles Master Upgrade (May 9 - May 17)
+### 3. Challans, Brokers, and Vehicles Master Upgrade (May 9 - May 18)
 * **Brokers Master**: Creates the new `brokers` table with Gin Indexes, RLS, and admin select controls.
 * **Vehicles Master**: Creates the new `vehicles` table with full specifications, owner information, and TDS/ITDS details.
 * **Challan Additions**: Alters the `challans` table to support loading/destination points, direct vs broker engagement styles, unloading charges, and truck reach date schedulers.
+* **Consignment Additions**: Adds `traffic_challan_charges` to `consignments` table for tracking specific traffic challan expenses.
 
 ---
 

@@ -23,6 +23,7 @@ type BillingSnapshotConsignment = {
     mhc_charges?: number | string | null;
     door_coll_charges?: number | string | null;
     door_del_charges?: number | string | null;
+    traffic_challan_charges?: number | string | null;
     other_charges?: number | string | null;
     vehicle_no?: string | null;
 };
@@ -44,6 +45,7 @@ export interface BillingConsignmentSnapshotRow {
     loading: number;
     door_collection: number;
     door_delivery: number;
+    traffic_challan: number;
     other_charges: number;
     total_amount: number;
 }
@@ -65,7 +67,7 @@ const parseMoney = (value: unknown) => {
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const getConsignmentExtraCharges = (
-    consignment: Pick<BillingSnapshotConsignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<BillingSnapshotConsignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ) : number => {
     const chargeValues: Array<number | string | null | undefined> = [
         consignment.unload_charges,
@@ -73,6 +75,7 @@ const getConsignmentExtraCharges = (
         consignment.mhc_charges,
         consignment.door_coll_charges,
         consignment.door_del_charges,
+        consignment.traffic_challan_charges,
         consignment.other_charges,
     ];
 
@@ -80,7 +83,7 @@ const getConsignmentExtraCharges = (
 };
 
 const getConsignmentBaseFreight = (
-    consignment: Pick<BillingSnapshotConsignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<BillingSnapshotConsignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ) => {
     const baseFreight = parseMoney(consignment.basic_freight);
     if (baseFreight > 0) return baseFreight;
@@ -94,7 +97,7 @@ const getConsignmentBaseFreight = (
 };
 
 const getConsignmentChargeBreakdown = (
-    consignment: Pick<BillingSnapshotConsignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<BillingSnapshotConsignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ) => {
     const freight = roundMoney(getConsignmentBaseFreight(consignment));
     const unloading = roundMoney(parseMoney(consignment.unload_charges));
@@ -103,6 +106,7 @@ const getConsignmentChargeBreakdown = (
     const loading = roundMoney(parseMoney(consignment.mhc_charges));
     const doorCollection = roundMoney(parseMoney(consignment.door_coll_charges));
     const doorDelivery = roundMoney(parseMoney(consignment.door_del_charges));
+    const trafficChallan = roundMoney(parseMoney(consignment.traffic_challan_charges));
     const other = roundMoney(parseMoney(consignment.other_charges));
     const total = roundMoney(parseMoney(consignment.total_freight) || (
         freight
@@ -112,6 +116,7 @@ const getConsignmentChargeBreakdown = (
         + loading
         + doorCollection
         + doorDelivery
+        + trafficChallan
         + other
     ));
 
@@ -123,6 +128,7 @@ const getConsignmentChargeBreakdown = (
         loading,
         doorCollection,
         doorDelivery,
+        trafficChallan,
         other,
         total,
     };
@@ -173,6 +179,7 @@ const buildConsignmentSnapshot = (
             loading: breakdown.loading,
             door_collection: breakdown.doorCollection,
             door_delivery: breakdown.doorDelivery,
+            traffic_challan: breakdown.trafficChallan,
             other_charges: mergedOtherCharges,
             total_amount: mergedTotalAmount,
         };
@@ -311,7 +318,7 @@ export async function prepareBillingSnapshot(
 
     const { data: consignments, error } = await supabase
         .from('consignments')
-        .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, other_charges, vehicle_no')
+        .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no')
         .eq('billing_party_id', partyId)
         .eq('cancel_cn', false)
         .in('cn_no', normalizedCoveredCnNos);

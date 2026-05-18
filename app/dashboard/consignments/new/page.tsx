@@ -128,6 +128,7 @@ function NewConsignmentForm() {
         loading: "",
         doorColl: "",
         doorDel: "",
+        trafficChallan: "",
         other: ""
     });
 
@@ -470,6 +471,7 @@ function NewConsignmentForm() {
                     loading: String(data.mhc_charges ?? ""),
                     doorColl: String(data.door_coll_charges ?? ""),
                     doorDel: String(data.door_del_charges ?? ""),
+                    trafficChallan: String(data.traffic_challan_charges ?? ""),
                     other: String(data.other_charges ?? "")
                 });
                 setAdvanceAmount(String(data.advance_amount ?? ""));
@@ -677,6 +679,7 @@ function NewConsignmentForm() {
                 mhc_charges: charges.loading,
                 door_coll_charges: charges.doorColl,
                 door_del_charges: charges.doorDel,
+                traffic_challan_charges: charges.trafficChallan,
                 other_charges: charges.other,
                 total_freight: totalFrt.toFixed(2),
                 amount_in_words: numberToWords(totalFrt),
@@ -772,7 +775,7 @@ function NewConsignmentForm() {
                             setBillingMode('party'); setBillingBranch(''); setManualBillingName(''); setManualBillingAddress(''); setManualBillingGst(''); setManualBillingStation('');
                             setIsLoose(false); setPackages([]); setCurrentPackageQty(''); setCurrentPackageMethod('box');
                             setIsFreightPending(false); setFreightType('per_tone'); setFreightRate(''); setBasicFreight(''); setChargedWeight('');
-                            setCharges({ unloading: '', detention: '', extraKm: '', loading: '', doorColl: '', doorDel: '', other: '' });
+                            setCharges({ unloading: '', detention: '', extraKm: '', loading: '', doorColl: '', doorDel: '', trafficChallan: '', other: '' });
                             setHsnDesc(''); setGoodsDesc(''); setActualWeight(''); setLoadUnit('mt');
                             setDimL(''); setDimW(''); setDimH(''); setVolume(''); setPrivateMark('');
                             setInvoiceNo(''); setInvoiceDate(''); setInvoiceAmt(''); setEwayBill(''); setEwayFrom(''); setEwayTo('');
@@ -1652,6 +1655,7 @@ function NewConsignmentForm() {
                                                 { key: 'loading', label: "Loading Charges" },
                                                 { key: 'doorColl', label: "Door Coll Charges" },
                                                 { key: 'doorDel', label: "Door Del Charges" },
+                                                { key: 'trafficChallan', label: "Traffic Challan Charges" },
                                                 { key: 'other', label: "Other Charges" },
                                             ].map((field) => (
                                                 <div key={field.key} className="flex items-center justify-between gap-4">

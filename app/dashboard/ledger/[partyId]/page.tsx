@@ -64,6 +64,7 @@ interface Consignment {
     load_unit: string; total_freight: number; basic_freight?: number; freight_rate?: number;
     unload_charges?: number; retention_charges?: number; extra_km_charges?: number;
     mhc_charges?: number; door_coll_charges?: number; door_del_charges?: number;
+    traffic_challan_charges?: number;
     other_charges?: number; vehicle_no?: string; bkg_basis: string;
     goods_desc?: string; delivery_type?: string;
 }
@@ -150,7 +151,7 @@ const normalizeExtraChargeDraftItems = (items: BillingExtraChargeDraftItem[]) =>
         .filter((item) => item.label && item.amount > 0);
 
 const getConsignmentExtraCharges = (
-    consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ) : number => {
     const chargeValues: Array<number | undefined> = [
         consignment.unload_charges,
@@ -158,6 +159,7 @@ const getConsignmentExtraCharges = (
         consignment.mhc_charges,
         consignment.door_coll_charges,
         consignment.door_del_charges,
+        consignment.traffic_challan_charges,
         consignment.other_charges,
     ];
 
@@ -165,7 +167,7 @@ const getConsignmentExtraCharges = (
 };
 
 const getConsignmentBaseFreight = (
-    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ) : number => {
     const baseFreight = parseMoney(consignment.basic_freight);
     if (baseFreight > 0) return baseFreight;
@@ -179,7 +181,7 @@ const getConsignmentBaseFreight = (
 };
 
 const getConsignmentChargeBreakdown = (
-    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ) => {
     const freight = getConsignmentBaseFreight(consignment);
     const unloading = parseMoney(consignment.unload_charges);
@@ -188,6 +190,7 @@ const getConsignmentChargeBreakdown = (
     const loading = parseMoney(consignment.mhc_charges);
     const doorCollection = parseMoney(consignment.door_coll_charges);
     const doorDelivery = parseMoney(consignment.door_del_charges);
+    const trafficChallan = parseMoney(consignment.traffic_challan_charges);
     const other = parseMoney(consignment.other_charges);
     const total = parseMoney(consignment.total_freight) || (
         freight
@@ -197,6 +200,7 @@ const getConsignmentChargeBreakdown = (
         + loading
         + doorCollection
         + doorDelivery
+        + trafficChallan
         + other
     );
 
@@ -208,6 +212,7 @@ const getConsignmentChargeBreakdown = (
         loading,
         doorCollection,
         doorDelivery,
+        trafficChallan,
         other,
         total,
     };
@@ -223,6 +228,7 @@ const buildConsignmentBreakup = (consignments: Consignment[], selectedCnNos: str
     const loadingChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).loading, 0);
     const doorCollectionTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).doorCollection, 0);
     const doorDeliveryTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).doorDelivery, 0);
+    const trafficChallanTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).trafficChallan, 0);
     const otherChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).other, 0);
     const ancillaryChargeTotal = selected.reduce<number>((sum, consignment) => (
         sum
@@ -231,6 +237,7 @@ const buildConsignmentBreakup = (consignments: Consignment[], selectedCnNos: str
         + getConsignmentChargeBreakdown(consignment).loading
         + getConsignmentChargeBreakdown(consignment).doorCollection
         + getConsignmentChargeBreakdown(consignment).doorDelivery
+        + getConsignmentChargeBreakdown(consignment).trafficChallan
         + getConsignmentChargeBreakdown(consignment).other
     ), 0);
     const cnChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).total, 0);
@@ -244,6 +251,7 @@ const buildConsignmentBreakup = (consignments: Consignment[], selectedCnNos: str
         loadingChargeTotal,
         doorCollectionTotal,
         doorDeliveryTotal,
+        trafficChallanTotal,
         otherChargeTotal,
         ancillaryChargeTotal,
         cnChargeTotal,
@@ -523,6 +531,10 @@ function AddBillingDialog({
                                     <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Door Del Charges</span>
                                         <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.doorDeliveryTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Traffic Challan Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.trafficChallanTotal)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Other Charges</span>

@@ -70,6 +70,7 @@ interface Consignment {
     mhc_charges?: number;
     door_coll_charges?: number;
     door_del_charges?: number;
+    traffic_challan_charges?: number;
     other_charges?: number;
     vehicle_no?: string;
     bkg_basis: string;
@@ -94,6 +95,7 @@ interface BillingConsignmentSnapshotRow {
     loading: number;
     door_collection: number;
     door_delivery: number;
+    traffic_challan: number;
     other_charges: number;
     total_amount: number;
 }
@@ -185,7 +187,7 @@ const buildChargeWeight = (consignment: Pick<Consignment, 'charged_weight' | 'ac
 };
 
 const getConsignmentExtraCharges = (
-    consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ): number => {
     const chargeValues: Array<number | undefined> = [
         consignment.unload_charges,
@@ -193,6 +195,7 @@ const getConsignmentExtraCharges = (
         consignment.mhc_charges,
         consignment.door_coll_charges,
         consignment.door_del_charges,
+        consignment.traffic_challan_charges,
         consignment.other_charges,
     ];
 
@@ -200,7 +203,7 @@ const getConsignmentExtraCharges = (
 };
 
 const getConsignmentBaseFreight = (
-    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ): number => {
     const baseFreight = parseMoney(consignment.basic_freight);
     if (baseFreight > 0) return baseFreight;
@@ -214,7 +217,7 @@ const getConsignmentBaseFreight = (
 };
 
 const getConsignmentChargeBreakdown = (
-    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
 ) => {
     const freight = getConsignmentBaseFreight(consignment);
     const unloading = parseMoney(consignment.unload_charges);
@@ -223,6 +226,7 @@ const getConsignmentChargeBreakdown = (
     const loading = parseMoney(consignment.mhc_charges);
     const doorCollection = parseMoney(consignment.door_coll_charges);
     const doorDelivery = parseMoney(consignment.door_del_charges);
+    const trafficChallan = parseMoney(consignment.traffic_challan_charges);
     const other = parseMoney(consignment.other_charges);
     const total = parseMoney(consignment.total_freight) || (
         freight
@@ -232,6 +236,7 @@ const getConsignmentChargeBreakdown = (
         + loading
         + doorCollection
         + doorDelivery
+        + trafficChallan
         + other
     );
 
@@ -243,13 +248,14 @@ const getConsignmentChargeBreakdown = (
         loading,
         doorCollection,
         doorDelivery,
+        trafficChallan,
         other,
         total,
     };
 };
 
 const buildConsignmentBreakup = (
-    consignments: Array<Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>>
+    consignments: Array<Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>>
 ) => {
     const initialTotals = {
         freightTotal: 0,
@@ -259,6 +265,7 @@ const buildConsignmentBreakup = (
         loadingChargeTotal: 0,
         doorCollectionTotal: 0,
         doorDeliveryTotal: 0,
+        trafficChallanTotal: 0,
         otherChargeTotal: 0,
         cnChargeTotal: 0,
     };
@@ -273,6 +280,7 @@ const buildConsignmentBreakup = (
         totals.loadingChargeTotal += breakdown.loading;
         totals.doorCollectionTotal += breakdown.doorCollection;
         totals.doorDeliveryTotal += breakdown.doorDelivery;
+        totals.trafficChallanTotal += breakdown.trafficChallan;
         totals.otherChargeTotal += breakdown.other;
         totals.cnChargeTotal += breakdown.total;
 
@@ -315,6 +323,7 @@ const normalizeSnapshotRows = (value: unknown): BillingConsignmentSnapshotRow[] 
             loading: roundMoney(parseMoney(snapshotRow.loading)),
             door_collection: roundMoney(parseMoney(snapshotRow.door_collection)),
             door_delivery: roundMoney(parseMoney(snapshotRow.door_delivery)),
+            traffic_challan: roundMoney(parseMoney(snapshotRow.traffic_challan)),
             other_charges: roundMoney(parseMoney(snapshotRow.other_charges)),
             total_amount: roundMoney(parseMoney(snapshotRow.total_amount)),
         });
@@ -351,6 +360,7 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
             loading: breakdown.loading,
             door_collection: breakdown.doorCollection,
             door_delivery: breakdown.doorDelivery,
+            traffic_challan: breakdown.trafficChallan,
             other_charges: mergedOtherCharges,
             total_amount: mergedTotalAmount,
         };
@@ -378,6 +388,7 @@ const buildSnapshotBreakup = (
             loadingChargeTotal: 0,
             doorCollectionTotal: 0,
             doorDeliveryTotal: 0,
+            trafficChallanTotal: 0,
             otherChargeTotal: 0,
             billOtherChargeTotal: normalizedAddedOtherChargesAmount,
             cnChargeTotal: 0,
@@ -394,6 +405,7 @@ const buildSnapshotBreakup = (
         summary.loadingChargeTotal += row.loading;
         summary.doorCollectionTotal += row.door_collection;
         summary.doorDeliveryTotal += row.door_delivery;
+        summary.trafficChallanTotal += row.traffic_challan;
         summary.billOtherChargeTotal += row.other_charges;
         summary.finalBillAmount += row.total_amount;
         return summary;
@@ -405,6 +417,7 @@ const buildSnapshotBreakup = (
         loadingChargeTotal: 0,
         doorCollectionTotal: 0,
         doorDeliveryTotal: 0,
+        trafficChallanTotal: 0,
         billOtherChargeTotal: 0,
         finalBillAmount: 0,
     });
@@ -420,6 +433,7 @@ const buildSnapshotBreakup = (
         loadingChargeTotal: roundMoney(totals.loadingChargeTotal),
         doorCollectionTotal: roundMoney(totals.doorCollectionTotal),
         doorDeliveryTotal: roundMoney(totals.doorDeliveryTotal),
+        trafficChallanTotal: roundMoney(totals.trafficChallanTotal),
         otherChargeTotal: roundMoney(normalizedBillOtherChargeTotal - normalizedAddedOtherChargesAmount),
         billOtherChargeTotal: normalizedBillOtherChargeTotal,
         cnChargeTotal: roundMoney(normalizedFinalBillAmount - normalizedAddedOtherChargesAmount),
@@ -666,6 +680,10 @@ export function EditBillingDialog({
                                         <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.doorDeliveryTotal)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Traffic Challan Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.trafficChallanTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">CN Other Charges</span>
                                         <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.otherChargeTotal)}</span>
                                     </div>
@@ -795,6 +813,7 @@ export function BillingRecordViewDialog({
                 detention: formatTableAmount(row.detention),
                 extraKm: formatTableAmount(row.extra_km),
                 loading: formatTableAmount(row.loading),
+                trafficChallan: formatTableAmount(row.traffic_challan),
                 otherCharges: formatSignedTableAmount(row.other_charges + row.door_collection + row.door_delivery),
                 totalAmount: formatSignedTableAmount(row.total_amount),
             }))
@@ -812,6 +831,7 @@ export function BillingRecordViewDialog({
                 detention: '',
                 extraKm: '',
                 loading: '',
+                trafficChallan: '',
                 otherCharges: '',
                 totalAmount: fmt(displayTotal),
             }];
@@ -831,12 +851,14 @@ export function BillingRecordViewDialog({
                     <td class="amount">${row.loading}</td>
                     <td class="amount">${row.unloading}</td>
                     <td class="amount">${row.extraKm}</td>
+                    <td class="amount">${row.trafficChallan}</td>
                     <td class="amount">${row.otherCharges}</td>
                     <td class="amount">${row.totalAmount}</td>
                 </tr>
             `).join('');
         const blankRows = Array.from({ length: Math.max(0, minimumDetailRows - detailRows.length) }, () => `
                 <tr class="item-row blank-row">
+                    <td>&nbsp;</td>
                     <td>&nbsp;</td>
                     <td>&nbsp;</td>
                     <td>&nbsp;</td>
@@ -864,7 +886,7 @@ export function BillingRecordViewDialog({
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
 .page { width: 287mm; min-height: 200mm; margin: 0 auto; padding: 6mm 10mm; background: #fff; }
-.sheet { border: 1.2px solid #1d2f7a; min-height: 186mm; }
+.sheet { border: 1.2px solid #1d2f7a; min-height: 186mm; display: flex; flex-direction: column; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
 .header-logo img { width: 102px; max-width: 100%; filter: grayscale(1) contrast(1.6) brightness(0.2); object-fit: contain; }
@@ -873,7 +895,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 .header-line.contact { display: block; margin-top: 3px; }
 .detail-grid { display: grid; grid-template-columns: 48% 52%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
-.party-block { border-right: 1.2px solid #1d2f7a; display: grid; grid-template-rows: minmax(34px, auto) minmax(34px, auto) minmax(62px, auto); }
+.party-block { border-right: 1.2px solid #1d2f7a; display: grid; grid-template-rows: minmax(34px, auto) minmax(54px, auto) minmax(42px, auto); }
 .party-line { border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
 .party-line:last-child { border-bottom: none; padding-top: 6px; padding-bottom: 8px; }
 .right-block { display: grid; grid-template-rows: 58px minmax(72px, 1fr); height: 100%; }
@@ -896,10 +918,13 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .total-row td { height: 26px; font-size: 10px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
 .total-label { text-align: center; color: #1d2f7a; }
 .words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
-.notes-block { min-height: 90px; border-bottom: 1.2px solid #1d2f7a; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.8; color: #111; }
+.notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
 .remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
-.footer-grid { display: grid; grid-template-columns: 60% 40%; min-height: 88px; }
-.bank-block { border-right: 1.2px solid #1d2f7a; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.9; color: #111; }
+.footer-grid { display: grid; grid-template-columns: 65% 35%; flex-grow: 1; }
+.bank-block { border-right: 1.2px solid #1d2f7a; padding: 0 10px; font-size: 10px; font-weight: 700; line-height: 1.8; color: #111; display: grid; grid-template-columns: 1fr 1.2px 1.05fr; gap: 14px; align-items: stretch; }
+.bank-details-sub { display: flex; flex-direction: column; justify-content: center; padding: 6px 0; }
+.bank-divider { background-color: #1d2f7a; width: 1.2px; height: 100%; }
+.eway-sub { display: flex; flex-direction: column; justify-content: center; line-height: 1.7; padding: 6px 0; }
 .bank-title { font-size: 10px; font-weight: 800; color: #1d2f7a; }
 .signature-block { padding: 8px 8px 10px; display: flex; align-items: flex-start; justify-content: center; }
 .signature-inner { width: 100%; text-align: center; font-size: 10px; font-weight: 700; line-height: 1.7; }
@@ -930,10 +955,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         <div class="detail-grid">
             <div class="party-block">
                 <div class="party-line" style="color: #111;">${partyName}</div>
-                <div class="party-line" style="color: #111;">${addressLine1}</div>
-                <div class="party-line" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #111;">
-                    <span>${addressLine2 || '&nbsp;'}</span>
-                    ${party.gstin ? `<span><span style="color: #1d2f7a; font-weight: 800;">GSTIN:</span> <span>${toUpperText(party.gstin)}</span></span>` : ''}
+                <div class="party-line" style="color: #111;">${addressLine1}${addressLine2 ? `, ${addressLine2}` : ''}</div>
+                <div class="party-line" style="color: #111; display: flex; align-items: center;">
+                    ${party.gstin ? `<span><span style="color: #1d2f7a; font-weight: 800;">GSTIN:</span> <span style="font-weight: 800;">${toUpperText(party.gstin)}</span></span>` : '&nbsp;'}
                 </div>
             </div>
             <div class="right-block">
@@ -957,18 +981,19 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <tr>
                     <th style="width:6%;">CNS<br/>No</th>
                     <th style="width:5%;">Date</th>
-                    <th style="width:11%;">Invoice<br/>No</th>
+                    <th style="width:10%;">Invoice<br/>No</th>
                     <th style="width:7%;">Vehicle no.</th>
-                    <th style="width:8%;">Loading<br/>Station</th>
-                    <th style="width:8%;">Destination</th>
+                    <th style="width:7%;">Loading<br/>Station</th>
+                    <th style="width:7%;">Destination</th>
                     <th style="width:5%;">Charge Wt.</th>
-                    <th style="width:5%;">Rate</th>
-                    <th style="width:7%;">Freight</th>
-                    <th style="width:6%;">Detention</th>
-                    <th style="width:6%;">Loading</th>
-                    <th style="width:6%;">Unload</th>
-                    <th style="width:6%;">Extra KM</th>
-                    <th style="width:7%;">Other<br/>Charges</th>
+                    <th style="width:4%;">Rate</th>
+                    <th style="width:6%;">Freight</th>
+                    <th style="width:5%;">Detention</th>
+                    <th style="width:5%;">Loading</th>
+                    <th style="width:5%;">Unload</th>
+                    <th style="width:5%;">Extra KM</th>
+                    <th style="width:6%;">Traffic<br/>Challan</th>
+                    <th style="width:6%;">Other<br/>Charges</th>
                     <th style="width:7%;">Total Billed<br/>Amount</th>
                 </tr>
             </thead>
@@ -976,7 +1001,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 ${coveredRows}
                 ${blankRows}
                 <tr class="total-row">
-                    <td colspan="13"></td>
+                    <td colspan="14"></td>
                     <td class="total-label">TOTAL</td>
                     <td class="amount" style="color: #111;">${fmt(displayTotal)}</td>
                 </tr>
@@ -989,17 +1014,22 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         </div>
 
         <div class="notes-block">
-            ${narrationHtml}
-            <div style="color: #1d2f7a; font-weight: 800;">GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
-            <div><span style="color: #1d2f7a; font-weight: 700;">Ewaybill id:</span> <span>37AAWFV7670H1Z8</span></div>
+            ${narrationHtml || '&nbsp;'}
         </div>
 
         <div class="footer-grid">
             <div class="bank-block">
-                <div class="bank-title">Bank Details: Visakha Golden Transport</div>
-                <div><span style="color: #1d2f7a; font-weight: 700;">A/C No:</span> 070205500602</div>
-                <div><span style="color: #1d2f7a; font-weight: 700;">IFSC Code:</span> ICIC0000702</div>
-                <div>ICICI Bank Vizianagaram</div>
+                <div class="bank-details-sub">
+                    <div class="bank-title">Bank Details: Visakha Golden Transport</div>
+                    <div><span style="color: #1d2f7a; font-weight: 700;">A/C No:</span> 070205500602</div>
+                    <div><span style="color: #1d2f7a; font-weight: 700;">IFSC Code:</span> ICIC0000702</div>
+                    <div>ICICI Bank Vizianagaram</div>
+                </div>
+                <div class="bank-divider"></div>
+                <div class="eway-sub">
+                    <div style="color: #1d2f7a; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
+                    <div style="margin-top: 2px;"><span style="color: #1d2f7a; font-weight: 800; font-size: 9.5px;">Ewaybill id:</span> <span style="font-weight: 800; font-size: 9.5px; color: #111;">37AAWFV7670H1Z8</span></div>
+                </div>
             </div>
             <div class="signature-block">
                 <div class="signature-inner">
@@ -1152,6 +1182,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                             <div className="text-sm">Loading Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.loadingChargeTotal)}</span></div>
                             <div className="text-sm">Door Coll Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.doorCollectionTotal)}</span></div>
                             <div className="text-sm">Door Del Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.doorDeliveryTotal)}</span></div>
+                            <div className="text-sm">Traffic Challan Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.trafficChallanTotal)}</span></div>
                             <div className="text-sm">CN Other Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.otherChargeTotal)}</span></div>
                             <div className="text-sm">Added Other Charges: <span className="font-black text-slate-900 font-mono">₹{fmt(consignmentBreakup.addedOtherChargesAmount)}</span></div>
                             <div className="text-sm">Bill Other Charges Column: <span className="font-black text-slate-900 font-mono">₹{fmt(consignmentBreakup.billOtherChargeTotal)}</span></div>

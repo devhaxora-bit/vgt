@@ -27,6 +27,7 @@ export interface BillingConsignmentOption {
     mhc_charges?: number;
     door_coll_charges?: number;
     door_del_charges?: number;
+    traffic_challan_charges?: number;
     other_charges?: number;
     vehicle_no?: string;
 }
@@ -51,6 +52,7 @@ const getConsignmentExtraCharges = (consignment: BillingConsignmentOption): numb
         consignment.mhc_charges,
         consignment.door_coll_charges,
         consignment.door_del_charges,
+        consignment.traffic_challan_charges,
         consignment.other_charges,
     ];
 
