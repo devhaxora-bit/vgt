@@ -170,6 +170,29 @@ const splitAddressLines = (address?: string | null) => {
     ];
 };
 
+const formatAddressLine2 = (line1: string, line2: string) => {
+    const normalizedLine1 = String(line1 || '').trim();
+    const normalizedLine2 = String(line2 || '').trim();
+    if (!normalizedLine2) return '';
+
+    const segments = normalizedLine2
+        .split(',')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+
+    if (segments.length >= 2) {
+        const tail = segments.slice(-2).join(', ');
+        if (!normalizedLine1.includes(tail)) return tail;
+    }
+
+    const pinMatch = normalizedLine2.match(/(\b[A-Z\s]+)\s*-\s*(\d{6})$/);
+    if (pinMatch) {
+        return `${pinMatch[1].trim()} - ${pinMatch[2]}`;
+    }
+
+    return normalizedLine2;
+};
+
 const parseMoney = (value: unknown) => {
     if (value === null || value === undefined || value === '') return 0;
     const parsed = Number(value);
@@ -794,10 +817,14 @@ export function BillingRecordViewDialog({
             ? toUpperText(party.name)
             : `M/S. ${toUpperText(party.name)}`;
         const [addressLine1, addressLine2] = splitAddressLines(party.address);
+        const addressStateLine = formatAddressLine2(addressLine1, addressLine2);
         const amountWords = numberToWords(displayTotal).replace(/^Rupees\s+/i, '').trim();
-        const narrationHtml = record.narration
-            ? `<div class="remark-title">Remarks :</div><div>${record.narration}</div>`
-            : '';
+        const isDefaultNarration = !record.narration ||
+            record.narration.trim() === 'Freight bill' ||
+            record.narration.trim().startsWith('Freight bill ') ||
+            record.narration.trim() === `Freight bill ${record.bill_ref_no}`;
+        const narrationValue = !isDefaultNarration && record.narration ? record.narration : '&nbsp;';
+        const narrationHtml = `<div class="remark-title">Remarks :</div><div>${narrationValue}</div>`;
         const detailRows = billDetailRows.length > 0
             ? billDetailRows.map((row) => ({
                 cnNo: row.cn_no || '—',
@@ -893,11 +920,11 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .header-copy { text-align: center; }
 .header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
-.header-line.contact { display: block; margin-top: 3px; }
+.header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
 .detail-grid { display: grid; grid-template-columns: 56% 44%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
-.party-block { border-right: 1.2px solid #1d2f7a; display: grid; grid-template-rows: minmax(34px, auto) minmax(54px, auto) minmax(42px, auto); }
-.party-line { border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
-.party-line:last-child { border-bottom: none; padding-top: 6px; padding-bottom: 8px; }
+.party-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 8px 10px; }
+.party-line { font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
+.party-address-line2 { display: block; margin-top: 4px; }
 .right-block { display: grid; grid-template-rows: 44px minmax(50px, 1fr); height: 100%; }
 .branch-row { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 24% 76%; align-items: stretch; }
 .branch-label { border-right: 1.2px solid #1d2f7a; padding: 4px 6px; font-size: 10px; font-weight: 800; line-height: 1.15; display: flex; align-items: center; color: #1d2f7a; }
@@ -910,7 +937,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 8.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.03); }
+.items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
@@ -955,7 +982,10 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         <div class="detail-grid">
             <div class="party-block">
                 <div class="party-line" style="color: #111;">${partyName}</div>
-                <div class="party-line" style="color: #111;">${addressLine1}${addressLine2 ? `, ${addressLine2}` : ''}</div>
+                <div class="party-line" style="color: #111;">
+                    ${addressLine1}
+                    ${addressStateLine ? `<span class="party-address-line2">${addressStateLine}</span>` : ''}
+                </div>
                 <div class="party-line" style="color: #111; display: flex; align-items: center;">
                     ${party.gstin ? `<span><span style="color: #1d2f7a; font-weight: 800;">GSTIN:</span> <span style="font-weight: 800;">${toUpperText(party.gstin)}</span></span>` : '&nbsp;'}
                 </div>
