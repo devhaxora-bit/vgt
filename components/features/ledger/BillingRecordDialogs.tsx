@@ -186,7 +186,7 @@ const buildChargeWeight = (consignment: Pick<Consignment, 'charged_weight' | 'ac
 
 const getConsignmentExtraCharges = (
     consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
-) : number => {
+): number => {
     const chargeValues: Array<number | undefined> = [
         consignment.unload_charges,
         consignment.extra_km_charges,
@@ -201,7 +201,7 @@ const getConsignmentExtraCharges = (
 
 const getConsignmentBaseFreight = (
     consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'other_charges'>
-) : number => {
+): number => {
     const baseFreight = parseMoney(consignment.basic_freight);
     if (baseFreight > 0) return baseFreight;
 
@@ -294,33 +294,33 @@ const normalizeSnapshotRows = (value: unknown): BillingConsignmentSnapshotRow[] 
     if (!Array.isArray(value)) return [];
 
     return value.reduce<BillingConsignmentSnapshotRow[]>((rows, row) => {
-            const snapshotRow = row as Record<string, unknown>;
-            const cnNo = String(snapshotRow.cn_no || '').trim();
-            if (!cnNo) return rows;
+        const snapshotRow = row as Record<string, unknown>;
+        const cnNo = String(snapshotRow.cn_no || '').trim();
+        if (!cnNo) return rows;
 
-            rows.push({
-                cn_no: cnNo,
-                bkg_date: snapshotRow.bkg_date ? String(snapshotRow.bkg_date) : null,
-                invoice_no: snapshotRow.invoice_no ? String(snapshotRow.invoice_no) : cnNo,
-                vehicle_no: snapshotRow.vehicle_no ? String(snapshotRow.vehicle_no) : null,
-                booking_branch: snapshotRow.booking_branch ? String(snapshotRow.booking_branch) : null,
-                loading_station: snapshotRow.loading_station ? String(snapshotRow.loading_station) : null,
-                delivery_station: snapshotRow.delivery_station ? String(snapshotRow.delivery_station) : null,
-                charge_wt: snapshotRow.charge_wt ? String(snapshotRow.charge_wt) : null,
-                freight_rate: roundMoney(parseMoney(snapshotRow.freight_rate)),
-                freight: roundMoney(parseMoney(snapshotRow.freight)),
-                unloading: roundMoney(parseMoney(snapshotRow.unloading)),
-                detention: roundMoney(parseMoney(snapshotRow.detention)),
-                extra_km: roundMoney(parseMoney(snapshotRow.extra_km)),
-                loading: roundMoney(parseMoney(snapshotRow.loading)),
-                door_collection: roundMoney(parseMoney(snapshotRow.door_collection)),
-                door_delivery: roundMoney(parseMoney(snapshotRow.door_delivery)),
-                other_charges: roundMoney(parseMoney(snapshotRow.other_charges)),
-                total_amount: roundMoney(parseMoney(snapshotRow.total_amount)),
-            });
+        rows.push({
+            cn_no: cnNo,
+            bkg_date: snapshotRow.bkg_date ? String(snapshotRow.bkg_date) : null,
+            invoice_no: snapshotRow.invoice_no ? String(snapshotRow.invoice_no) : cnNo,
+            vehicle_no: snapshotRow.vehicle_no ? String(snapshotRow.vehicle_no) : null,
+            booking_branch: snapshotRow.booking_branch ? String(snapshotRow.booking_branch) : null,
+            loading_station: snapshotRow.loading_station ? String(snapshotRow.loading_station) : null,
+            delivery_station: snapshotRow.delivery_station ? String(snapshotRow.delivery_station) : null,
+            charge_wt: snapshotRow.charge_wt ? String(snapshotRow.charge_wt) : null,
+            freight_rate: roundMoney(parseMoney(snapshotRow.freight_rate)),
+            freight: roundMoney(parseMoney(snapshotRow.freight)),
+            unloading: roundMoney(parseMoney(snapshotRow.unloading)),
+            detention: roundMoney(parseMoney(snapshotRow.detention)),
+            extra_km: roundMoney(parseMoney(snapshotRow.extra_km)),
+            loading: roundMoney(parseMoney(snapshotRow.loading)),
+            door_collection: roundMoney(parseMoney(snapshotRow.door_collection)),
+            door_delivery: roundMoney(parseMoney(snapshotRow.door_delivery)),
+            other_charges: roundMoney(parseMoney(snapshotRow.other_charges)),
+            total_amount: roundMoney(parseMoney(snapshotRow.total_amount)),
+        });
 
-            return rows;
-        }, []);
+        return rows;
+    }, []);
 };
 
 const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[]) => {
@@ -864,48 +864,48 @@ export function BillingRecordViewDialog({
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
 .page { width: 287mm; min-height: 200mm; margin: 0 auto; padding: 6mm 10mm; background: #fff; }
-.sheet { border: 1.2px solid #111; min-height: 186mm; }
-.header-band { border-bottom: 1.2px solid #111; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
+.sheet { border: 1.2px solid #1d2f7a; min-height: 186mm; }
+.header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
 .header-logo img { width: 102px; max-width: 100%; filter: grayscale(1) contrast(1.6) brightness(0.2); object-fit: contain; }
 .header-copy { text-align: center; }
-.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; }
+.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 .header-line.contact { display: block; margin-top: 3px; }
-.detail-grid { display: grid; grid-template-columns: 48% 52%; border-bottom: 1.2px solid #111; align-items: stretch; }
-.party-block { border-right: 1.2px solid #111; display: grid; grid-template-rows: minmax(34px, auto) minmax(34px, auto) minmax(52px, auto) minmax(34px, auto); }
-.party-line { border-bottom: 1.2px solid #111; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
-.party-line:last-child { border-bottom: none; text-align: center; padding-top: 6px; padding-bottom: 8px; }
+.detail-grid { display: grid; grid-template-columns: 48% 52%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
+.party-block { border-right: 1.2px solid #1d2f7a; display: grid; grid-template-rows: minmax(34px, auto) minmax(34px, auto) minmax(62px, auto); }
+.party-line { border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
+.party-line:last-child { border-bottom: none; padding-top: 6px; padding-bottom: 8px; }
 .right-block { display: grid; grid-template-rows: 58px minmax(72px, 1fr); height: 100%; }
-.branch-row { border-bottom: 1.2px solid #111; display: grid; grid-template-columns: 18% 82%; align-items: stretch; }
-.branch-label { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 800; line-height: 1.25; display: flex; align-items: center; }
-.branch-value { display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
+.branch-row { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 18% 82%; align-items: stretch; }
+.branch-label { border-right: 1.2px solid #1d2f7a; padding: 7px 6px 7px; font-size: 11px; font-weight: 800; line-height: 1.25; display: flex; align-items: center; color: #1d2f7a; }
+.branch-value { display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; color: #111; }
 .bill-row { display: grid; grid-template-columns: 40% 18% 42%; align-items: stretch; min-height: 72px; }
-.bill-cell { border-right: 1.2px solid #111; padding: 7px 6px 7px; font-size: 11px; font-weight: 700; line-height: 1.2; display: flex; align-items: center; }
+.bill-cell { border-right: 1.2px solid #1d2f7a; padding: 7px 6px 7px; font-size: 11px; font-weight: 700; line-height: 1.2; display: flex; align-items: center; }
 .bill-cell:last-child { border-right: none; }
 .bill-cell.center { text-align: center; justify-content: center; }
 .bill-cell.value { font-size: 12px; font-weight: 800; }
-.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #111; }
-.items-table th, .items-table td { border-right: 1.2px solid #111; border-bottom: 1.2px solid #111; padding: 5px 3px 6px; font-size: 8.8px; vertical-align: middle; }
+.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
+.items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 8.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; }
-.items-table tbody td { height: 28px; font-weight: 700; line-height: 1.2; }
+.items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.03); }
+.items-table tbody td { height: 28px; font-weight: 700; line-height: 1.2; color: #111; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
 .total-row td { height: 26px; font-size: 10px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
-.total-label { text-align: center; }
-.words-row { border-bottom: 1.2px solid #111; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
-.notes-block { min-height: 90px; border-bottom: 1.2px solid #111; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.8; }
-.remark-title { margin-bottom: 4px; font-weight: 800; }
+.total-label { text-align: center; color: #1d2f7a; }
+.words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
+.notes-block { min-height: 90px; border-bottom: 1.2px solid #1d2f7a; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.8; color: #111; }
+.remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
 .footer-grid { display: grid; grid-template-columns: 60% 40%; min-height: 88px; }
-.bank-block { border-right: 1.2px solid #111; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.9; }
-.bank-title { font-size: 10px; font-weight: 800; }
+.bank-block { border-right: 1.2px solid #1d2f7a; padding: 8px 8px 10px; font-size: 10px; font-weight: 700; line-height: 1.9; color: #111; }
+.bank-title { font-size: 10px; font-weight: 800; color: #1d2f7a; }
 .signature-block { padding: 8px 8px 10px; display: flex; align-items: flex-start; justify-content: center; }
 .signature-inner { width: 100%; text-align: center; font-size: 10px; font-weight: 700; line-height: 1.7; }
-.signature-company { font-size: 11px; font-weight: 800; margin-bottom: 22px; }
-.signature-name { margin-top: 10px; }
-.signature-role { font-size: 10px; font-weight: 800; }
+.signature-company { font-size: 11px; font-weight: 800; margin-bottom: 22px; color: #1d2f7a; }
+.signature-name { margin-top: 10px; color: #111; }
+.signature-role { font-size: 10px; font-weight: 800; color: #1d2f7a; }
 </style>
 </head>
 <body>
@@ -918,20 +918,23 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             <div class="header-copy">
                 <div class="header-title">VISAKHA GOLDEN TRANSPORT</div>
                 <div class="header-line">
-                    <span>OUR PAN NO: AAWFV7670H</span>
                     <span>D. NO. 8-19-58/A, GOPAL NAGAR, NEAR BANK COLONY, VIZIANAGARAM, ANDHRA PRADESH - 535003</span>
                 </div>
                 <div class="header-line contact">Contact:9392223404,8756314575 Email:vsp@visakhagolden.com</div>
             </div>
-            <div></div>
+            <div style="text-align: right; font-size: 11px; font-weight: 800; line-height: 1.35;">
+                <span style="color: #1d2f7a;">PAN NO:</span><br/><span style="color: #111;">AAWFV7670H</span>
+            </div>
         </div>
 
         <div class="detail-grid">
             <div class="party-block">
-                <div class="party-line">${partyName}</div>
-                <div class="party-line">${addressLine1}</div>
-                <div class="party-line">${addressLine2 || '&nbsp;'}</div>
-                <div class="party-line">${party.gstin ? `GST-${toUpperText(party.gstin)}` : '&nbsp;'}</div>
+                <div class="party-line" style="color: #111;">${partyName}</div>
+                <div class="party-line" style="color: #111;">${addressLine1}</div>
+                <div class="party-line" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #111;">
+                    <span>${addressLine2 || '&nbsp;'}</span>
+                    ${party.gstin ? `<span><span style="color: #1d2f7a; font-weight: 800;">GSTIN:</span> <span>${toUpperText(party.gstin)}</span></span>` : ''}
+                </div>
             </div>
             <div class="right-block">
                 <div class="branch-row">
@@ -939,9 +942,12 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                     <div class="branch-value">${branchDisplay}</div>
                 </div>
                 <div class="bill-row">
-                    <div class="bill-cell value">Bill No.${record.bill_ref_no || `VGT-${record.id.slice(0, 8).toUpperCase()}`}</div>
-                    <div class="bill-cell center">Date.</div>
-                    <div class="bill-cell value center">${fmtDotDate(record.billing_date)}</div>
+                    <div class="bill-cell value">
+                        <span style="color: #1d2f7a; font-weight: 800; margin-right: 4px;">Bill No.</span>
+                        <span style="color: #cc1a1a; font-weight: 800;">${record.bill_ref_no || `VGT-${record.id.slice(0, 8).toUpperCase()}`}</span>
+                    </div>
+                    <div class="bill-cell center" style="color: #1d2f7a; font-weight: 800;">Date.</div>
+                    <div class="bill-cell value center" style="color: #111;">${fmtDotDate(record.billing_date)}</div>
                 </div>
             </div>
         </div>
@@ -972,24 +978,27 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <tr class="total-row">
                     <td colspan="13"></td>
                     <td class="total-label">TOTAL</td>
-                    <td class="amount">${fmt(displayTotal)}</td>
+                    <td class="amount" style="color: #111;">${fmt(displayTotal)}</td>
                 </tr>
             </tbody>
         </table>
 
-        <div class="words-row">Rupees In Words:- ${amountWords}</div>
+        <div class="words-row">
+            <span style="color: #1d2f7a; font-weight: 800; margin-right: 4px;">Rupees In Words:-</span>
+            <span style="color: #111;">${amountWords}</span>
+        </div>
 
         <div class="notes-block">
             ${narrationHtml}
-            <div>GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
-            <div>Ewaybill id:37AAWFV7670H1Z8</div>
+            <div style="color: #1d2f7a; font-weight: 800;">GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
+            <div><span style="color: #1d2f7a; font-weight: 700;">Ewaybill id:</span> <span>37AAWFV7670H1Z8</span></div>
         </div>
 
         <div class="footer-grid">
             <div class="bank-block">
                 <div class="bank-title">Bank Details: Visakha Golden Transport</div>
-                <div>A/C No: 070205500602</div>
-                <div>IFSC Code: ICIC0000702</div>
+                <div><span style="color: #1d2f7a; font-weight: 700;">A/C No:</span> 070205500602</div>
+                <div><span style="color: #1d2f7a; font-weight: 700;">IFSC Code:</span> ICIC0000702</div>
                 <div>ICICI Bank Vizianagaram</div>
             </div>
             <div class="signature-block">
