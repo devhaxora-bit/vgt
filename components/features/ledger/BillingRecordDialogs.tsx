@@ -795,7 +795,12 @@ export function BillingRecordViewDialog({
             : `M/S. ${toUpperText(party.name)}`;
         const [addressLine1, addressLine2] = splitAddressLines(party.address);
         const amountWords = numberToWords(displayTotal).replace(/^Rupees\s+/i, '').trim();
-        const narrationHtml = record.narration
+        const isDefaultNarration = !record.narration ||
+            record.narration.trim() === 'Freight bill' ||
+            record.narration.trim().startsWith('Freight bill ') ||
+            record.narration.trim() === `Freight bill ${record.bill_ref_no}`;
+
+        const narrationHtml = (!isDefaultNarration && record.narration)
             ? `<div class="remark-title">Remarks :</div><div>${record.narration}</div>`
             : '';
         const detailRows = billDetailRows.length > 0
@@ -886,51 +891,52 @@ export function BillingRecordViewDialog({
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
 .page { width: 287mm; min-height: 200mm; margin: 0 auto; padding: 6mm 10mm; background: #fff; }
-.sheet { border: 1.2px solid #1d2f7a; min-height: 186mm; display: flex; flex-direction: column; }
-.header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
+.sheet { border: 1.2px solid #111d4f; min-height: 186mm; display: flex; flex-direction: column; }
+.header-band { border-bottom: 1.2px solid #111d4f; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
 .header-logo img { width: 102px; max-width: 100%; filter: grayscale(1) contrast(1.6) brightness(0.2); object-fit: contain; }
 .header-copy { text-align: center; }
 .header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 .header-line.contact { display: block; margin-top: 3px; }
-.detail-grid { display: grid; grid-template-columns: 48% 52%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
-.party-block { border-right: 1.2px solid #1d2f7a; display: grid; grid-template-rows: minmax(34px, auto) minmax(54px, auto) minmax(42px, auto); }
-.party-line { border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
+.detail-grid { display: grid; grid-template-columns: 48% 52%; border-bottom: 1.2px solid #111d4f; align-items: stretch; }
+.party-block { border-right: 1.2px solid #111d4f; display: grid; grid-template-rows: minmax(34px, auto) minmax(54px, auto) minmax(42px, auto); }
+.party-line { border-bottom: 1.2px solid #111d4f; padding: 6px 8px 7px; font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
+.party-block .party-line:nth-child(2) { border-bottom: none; }
 .party-line:last-child { border-bottom: none; padding-top: 6px; padding-bottom: 8px; }
 .right-block { display: grid; grid-template-rows: 58px minmax(72px, 1fr); height: 100%; }
-.branch-row { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 18% 82%; align-items: stretch; }
-.branch-label { border-right: 1.2px solid #1d2f7a; padding: 7px 6px 7px; font-size: 11px; font-weight: 800; line-height: 1.25; display: flex; align-items: center; color: #1d2f7a; }
+.branch-row { border-bottom: 1.2px solid #111d4f; display: grid; grid-template-columns: 18% 82%; align-items: stretch; }
+.branch-label { border-right: 1.2px solid #111d4f; padding: 7px 6px 7px; font-size: 11px; font-weight: 800; line-height: 1.25; display: flex; align-items: center; color: #111d4f; }
 .branch-value { display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; color: #111; }
 .bill-row { display: grid; grid-template-columns: 40% 18% 42%; align-items: stretch; min-height: 72px; }
-.bill-cell { border-right: 1.2px solid #1d2f7a; padding: 7px 6px 7px; font-size: 11px; font-weight: 700; line-height: 1.2; display: flex; align-items: center; }
+.bill-cell { border-right: 1.2px solid #111d4f; padding: 7px 6px 7px; font-size: 11px; font-weight: 700; line-height: 1.2; display: flex; align-items: center; }
 .bill-cell:last-child { border-right: none; }
 .bill-cell.center { text-align: center; justify-content: center; }
 .bill-cell.value { font-size: 12px; font-weight: 800; }
-.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
-.items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 8.8px; vertical-align: middle; }
+.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #111d4f; }
+.items-table th, .items-table td { border-right: 1.2px solid #111d4f; border-bottom: 1.2px solid #111d4f; padding: 5px 3px 6px; font-size: 8.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.03); }
+.items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #111d4f; background: rgba(17, 29, 79, 0.12); }
 .items-table tbody td { height: 28px; font-weight: 700; line-height: 1.2; color: #111; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
 .total-row td { height: 26px; font-size: 10px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
-.total-label { text-align: center; color: #1d2f7a; }
-.words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
-.notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
-.remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
+.total-label { text-align: center; color: #111d4f; }
+.words-row { border-bottom: 1.2px solid #111d4f; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
+.notes-block { min-height: 38px; border-bottom: 1.2px solid #111d4f; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
+.remark-title { margin-bottom: 4px; font-weight: 800; color: #111d4f; }
 .footer-grid { display: grid; grid-template-columns: 65% 35%; flex-grow: 1; }
-.bank-block { border-right: 1.2px solid #1d2f7a; padding: 0 10px; font-size: 10px; font-weight: 700; line-height: 1.8; color: #111; display: grid; grid-template-columns: 1fr 1.2px 1.05fr; gap: 14px; align-items: stretch; }
+.bank-block { border-right: 1.2px solid #111d4f; padding: 0 10px; font-size: 10px; font-weight: 700; line-height: 1.8; color: #111; display: grid; grid-template-columns: 1fr 1.2px 1.05fr; gap: 14px; align-items: stretch; }
 .bank-details-sub { display: flex; flex-direction: column; justify-content: center; padding: 6px 0; }
-.bank-divider { background-color: #1d2f7a; width: 1.2px; height: 100%; }
+.bank-divider { background-color: #111d4f; width: 1.2px; height: 100%; }
 .eway-sub { display: flex; flex-direction: column; justify-content: center; line-height: 1.7; padding: 6px 0; }
-.bank-title { font-size: 10px; font-weight: 800; color: #1d2f7a; }
+.bank-title { font-size: 10px; font-weight: 800; color: #111d4f; }
 .signature-block { padding: 8px 8px 10px; display: flex; align-items: flex-start; justify-content: center; }
 .signature-inner { width: 100%; text-align: center; font-size: 10px; font-weight: 700; line-height: 1.7; }
-.signature-company { font-size: 11px; font-weight: 800; margin-bottom: 22px; color: #1d2f7a; }
+.signature-company { font-size: 11px; font-weight: 800; margin-bottom: 22px; color: #111d4f; }
 .signature-name { margin-top: 10px; color: #111; }
-.signature-role { font-size: 10px; font-weight: 800; color: #1d2f7a; }
+.signature-role { font-size: 10px; font-weight: 800; color: #111d4f; }
 </style>
 </head>
 <body>
@@ -948,7 +954,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <div class="header-line contact">Contact:9392223404,8756314575 Email:vsp@visakhagolden.com</div>
             </div>
             <div style="text-align: right; font-size: 11px; font-weight: 800; line-height: 1.35;">
-                <span style="color: #1d2f7a;">PAN NO:</span><br/><span style="color: #111;">AAWFV7670H</span>
+                <span style="color: #111d4f;">PAN NO:</span><br/><span style="color: #111;">AAWFV7670H</span>
             </div>
         </div>
 
@@ -957,7 +963,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <div class="party-line" style="color: #111;">${partyName}</div>
                 <div class="party-line" style="color: #111;">${addressLine1}${addressLine2 ? `, ${addressLine2}` : ''}</div>
                 <div class="party-line" style="color: #111; display: flex; align-items: center;">
-                    ${party.gstin ? `<span><span style="color: #1d2f7a; font-weight: 800;">GSTIN:</span> <span style="font-weight: 800;">${toUpperText(party.gstin)}</span></span>` : '&nbsp;'}
+                    ${party.gstin ? `<span><span style="color: #111d4f; font-weight: 800;">GSTIN:</span> <span style="font-weight: 800;">${toUpperText(party.gstin)}</span></span>` : '&nbsp;'}
                 </div>
             </div>
             <div class="right-block">
@@ -967,10 +973,10 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 </div>
                 <div class="bill-row">
                     <div class="bill-cell value">
-                        <span style="color: #1d2f7a; font-weight: 800; margin-right: 4px;">Bill No.</span>
+                        <span style="color: #111d4f; font-weight: 800; margin-right: 4px;">Bill No.</span>
                         <span style="color: #cc1a1a; font-weight: 800;">${record.bill_ref_no || `VGT-${record.id.slice(0, 8).toUpperCase()}`}</span>
                     </div>
-                    <div class="bill-cell center" style="color: #1d2f7a; font-weight: 800;">Date.</div>
+                    <div class="bill-cell center" style="color: #111d4f; font-weight: 800;">Date.</div>
                     <div class="bill-cell value center" style="color: #111;">${fmtDotDate(record.billing_date)}</div>
                 </div>
             </div>
@@ -1009,7 +1015,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         </table>
 
         <div class="words-row">
-            <span style="color: #1d2f7a; font-weight: 800; margin-right: 4px;">Rupees In Words:-</span>
+            <span style="color: #111d4f; font-weight: 800; margin-right: 4px;">Rupees In Words:-</span>
             <span style="color: #111;">${amountWords}</span>
         </div>
 
@@ -1021,14 +1027,14 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             <div class="bank-block">
                 <div class="bank-details-sub">
                     <div class="bank-title">Bank Details: Visakha Golden Transport</div>
-                    <div><span style="color: #1d2f7a; font-weight: 700;">A/C No:</span> 070205500602</div>
-                    <div><span style="color: #1d2f7a; font-weight: 700;">IFSC Code:</span> ICIC0000702</div>
+                    <div><span style="color: #111d4f; font-weight: 700;">A/C No:</span> 070205500602</div>
+                    <div><span style="color: #111d4f; font-weight: 700;">IFSC Code:</span> ICIC0000702</div>
                     <div>ICICI Bank Vizianagaram</div>
                 </div>
                 <div class="bank-divider"></div>
                 <div class="eway-sub">
-                    <div style="color: #1d2f7a; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
-                    <div style="margin-top: 2px;"><span style="color: #1d2f7a; font-weight: 800; font-size: 9.5px;">Ewaybill id:</span> <span style="font-weight: 800; font-size: 9.5px; color: #111;">37AAWFV7670H1Z8</span></div>
+                    <div style="color: #111d4f; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
+                    <div style="margin-top: 2px;"><span style="color: #111d4f; font-weight: 800; font-size: 9.5px;">Ewaybill id:</span> <span style="font-weight: 800; font-size: 9.5px; color: #111;">37AAWFV7670H1Z8</span></div>
                 </div>
             </div>
             <div class="signature-block">
