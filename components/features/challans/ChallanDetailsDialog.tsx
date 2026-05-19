@@ -309,8 +309,12 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             </tbody>
             <tfoot>
                 <tr style="background:#f0f4ff; font-weight:900; font-size:10px;">
-                    <td colspan="2" style="padding:6px 6px 8px; color:#555; font-weight:600; font-size:10px;">Remarks: <span style="font-weight:400;">${c.remarks ? String(c.remarks).toUpperCase() : ''}</span></td>
-                    <td colspan="2" style="padding:6px 6px 8px; text-align:right; color:#1d2f7a;">GRAND TOTAL</td>
+                    <td colspan="4" style="padding:6px 6px 8px; color:#555; font-weight:600; font-size:10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>Remarks: <span style="font-weight:400; color:#111;">${c.remarks ? String(c.remarks).toUpperCase() : ''}</span></span>
+                            <span style="color:#1d2f7a; font-weight:900;">GRAND TOTAL</span>
+                        </div>
+                    </td>
                     <td style="padding:6px 6px 8px; text-align:center; color:#1d2f7a;">${totalPkg} Pkg</td>
                     <td style="padding:6px 6px 8px; text-align:right; color:#1d2f7a;">${totalActualWeight} ${weightUnit}</td>
                     <td style="padding:6px 6px 8px; text-align:right; color:#111;">${totalChargedWeight} ${weightUnit}</td>
