@@ -53,6 +53,21 @@ interface PackageItem {
     qty: number;
 }
 
+interface BranchCnSequenceState {
+    status: 'idle' | 'loading' | 'ready' | 'range_exhausted' | 'configuration_required' | 'error';
+    mode?: 'range' | 'legacy';
+    nextNo?: number | null;
+    rangeStart?: number | null;
+    rangeEnd?: number | null;
+    remainingCount?: number | null;
+    reservedCount?: number | null;
+    message?: string;
+}
+
+const idleCnSequenceState: BranchCnSequenceState = {
+    status: 'idle',
+};
+
 // We fetch branch options dynamically now, so just a helper if we ever need it static
 const getBranchLabel = (branchCode: string, options: { value: string, label: string }[]) => {
     const normalizedCode = branchCode.trim().toUpperCase();
@@ -113,6 +128,7 @@ function NewConsignmentForm() {
         loading: "",
         doorColl: "",
         doorDel: "",
+        trafficChallan: "",
         other: ""
     });
 
@@ -132,7 +148,10 @@ function NewConsignmentForm() {
                     .single();
 
                 const name = profile?.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || '';
-                if (name) setLoggedInUserName(name);
+                if (name) {
+                    setLoggedInUserName(name);
+                    setDocPreparedBy(name);
+                }
             } catch { /* ignore */ }
         };
         void loadLoggedInUser();
@@ -148,6 +167,7 @@ function NewConsignmentForm() {
 
     // Dynamic branch fetching
     const [branchOptions, setBranchOptions] = useState<{ value: string, label: string }[]>([]);
+    const [cnSequenceState, setCnSequenceState] = useState<BranchCnSequenceState>(idleCnSequenceState);
 
     React.useEffect(() => {
         const fetchBranches = async () => {
@@ -203,7 +223,7 @@ function NewConsignmentForm() {
     // Others fields
     const [businessType, setBusinessType] = useState("regular");
     const [transportMode, setTransportMode] = useState("road");
-    const [docPreparedBy, setDocPreparedBy] = useState("amit");
+    const [docPreparedBy, setDocPreparedBy] = useState("");
     const [remarks, setRemarks] = useState("");
     const [otherPrivateMark, setOtherPrivateMark] = useState("");
 
@@ -263,19 +283,60 @@ function NewConsignmentForm() {
     // Fetch next CN no when branch changes
     React.useEffect(() => {
         const fetchNextCN = async () => {
+            setCnSequenceState({ status: 'loading' });
             try {
                 const response = await fetch(`/api/branches/next-cn?branch=${bookingBranchCode}`);
                 if (response.ok) {
                     const data = await response.json();
-                    setCnNo(data.nextNo.toString());
+                    if (data.status === 'ready') {
+                        setCnNo(data.nextNo ? data.nextNo.toString() : '');
+                        setCnSequenceState({
+                            status: 'ready',
+                            mode: data.mode,
+                            nextNo: data.nextNo ?? null,
+                            rangeStart: data.rangeStart ?? null,
+                            rangeEnd: data.rangeEnd ?? null,
+                            remainingCount: data.remainingCount ?? null,
+                            reservedCount: data.reservedCount ?? null,
+                            message: data.message,
+                        });
+                        return;
+                    }
+
+                    setCnNo('');
+                    setCnSequenceState({
+                        status: data.status || 'configuration_required',
+                        mode: data.mode,
+                        nextNo: data.nextNo ?? null,
+                        rangeStart: data.rangeStart ?? null,
+                        rangeEnd: data.rangeEnd ?? null,
+                        message: data.message || 'No active CN range is available for this branch.',
+                    });
+                    return;
                 }
+
+                throw new Error('Failed to fetch next CN number');
             } catch (error) {
                 console.error("Error fetching next CN No:", error);
+                setCnNo('');
+                setCnSequenceState({
+                    status: 'error',
+                    message: 'Failed to load the next CN number for this branch.',
+                });
             }
         };
 
         if (bookingBranchCode && !isEditMode) {
             fetchNextCN();
+            return;
+        }
+
+        if (!bookingBranchCode && !isEditMode) {
+            setCnNo('');
+        }
+
+        if (!isEditMode) {
+            setCnSequenceState(idleCnSequenceState);
         }
     }, [bookingBranchCode, isEditMode]);
 
@@ -410,6 +471,7 @@ function NewConsignmentForm() {
                     loading: String(data.mhc_charges ?? ""),
                     doorColl: String(data.door_coll_charges ?? ""),
                     doorDel: String(data.door_del_charges ?? ""),
+                    trafficChallan: String(data.traffic_challan_charges ?? ""),
                     other: String(data.other_charges ?? "")
                 });
                 setAdvanceAmount(String(data.advance_amount ?? ""));
@@ -506,13 +568,34 @@ function NewConsignmentForm() {
         if (isSaving) return;
 
         const fullCnNo = cnNo;
-        if (!cnNo) {
-            alert('CN No. is required.');
+        if (!bookingBranchCode) {
+            toast.error('Booking branch is required.');
             return;
         }
 
+        if (!cnNo) {
+            toast.error('CN No. is required.');
+            return;
+        }
 
+        if (!isEditMode) {
+            const isRangeManaged = cnSequenceState.mode === 'range';
 
+            if (isRangeManaged && cnSequenceState.status !== 'ready') {
+                toast.error(cnSequenceState.message || 'This branch does not have an active CN number available.');
+                return;
+            }
+
+            if (
+                isRangeManaged
+                && cnSequenceState.status === 'ready'
+                && typeof cnSequenceState.nextNo === 'number'
+                && Number(cnNo) !== cnSequenceState.nextNo
+            ) {
+                toast.error(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
+                return;
+            }
+        }
         setIsSaving(true);
         try {
             const totalFrt = calculateFreight();
@@ -524,7 +607,7 @@ function NewConsignmentForm() {
             const billingStationValue = billingMode === 'manual' ? manualBillingStation.trim() : billingBranch.toUpperCase();
 
             if (bkgBasis === 'tbb' && billingMode === 'manual' && (!billingName || !billingAddressValue)) {
-                alert('Manual billing requires name and address.');
+                toast.error('Manual billing requires name and address.');
                 return;
             }
 
@@ -596,6 +679,7 @@ function NewConsignmentForm() {
                 mhc_charges: charges.loading,
                 door_coll_charges: charges.doorColl,
                 door_del_charges: charges.doorDel,
+                traffic_challan_charges: charges.trafficChallan,
                 other_charges: charges.other,
                 total_freight: totalFrt.toFixed(2),
                 amount_in_words: numberToWords(totalFrt),
@@ -621,7 +705,7 @@ function NewConsignmentForm() {
 
                 business_type: businessType === 'regular' ? 'REGULAR' : businessType,
                 transport_mode: transportMode === 'road' ? 'BY ROAD' : transportMode,
-                doc_prepared_by: docPreparedBy === 'amit' ? 'AMIT PANDEY [A8644]' : docPreparedBy,
+                doc_prepared_by: docPreparedBy,
                 remarks: remarks,
             };
 
@@ -644,13 +728,13 @@ function NewConsignmentForm() {
                 throw new Error(errMsg || 'Failed to save consignment');
             }
 
-            alert(`Consignment ${fullCnNo} ${isEditMode ? 'updated' : 'saved'} successfully!`);
+            toast.success(`Consignment ${fullCnNo} ${isEditMode ? 'updated' : 'saved'} successfully!`);
 
             router.push('/dashboard/consignments');
             router.refresh();
         } catch (error: unknown) {
             console.error('Save error:', error);
-            alert((error as Error).message || 'Failed to save consignment');
+            toast.error((error as Error).message || 'Failed to save consignment');
         } finally {
             setIsSaving(false);
         }
@@ -673,17 +757,44 @@ function NewConsignmentForm() {
                             <p className="text-xs text-muted-foreground font-medium flex items-center gap-1">
                                 {isEditMode ? (
                                     <>Editing CNS: <span className="text-primary">{cnNo || '---'}</span></>
+                                ) : bookingBranchCode && cnSequenceState.status === 'ready' ? (
+                                    <>
+                                        Next CN for <span className="text-primary">{bookingBranchCode.toUpperCase()}</span>:
+                                        <span className="text-primary">{cnNo || '---'}</span>
+                                    </>
                                 ) : (
-                                    <>Last entered: <span className="text-primary">801191</span> on 17/01/2026</>
+                                    <>Select a booking branch to load the next CN number.</>
                                 )}
                             </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" className="gap-2 h-9">
+                        <Button variant="outline" className="gap-2 h-9" onClick={() => {
+                            if (!confirm('Reset the form? All entered data will be cleared.')) return;
+                            setConsignor(null); setConsignee(null); setBillingParty(null);
+                            setBillingMode('party'); setBillingBranch(''); setManualBillingName(''); setManualBillingAddress(''); setManualBillingGst(''); setManualBillingStation('');
+                            setIsLoose(false); setPackages([]); setCurrentPackageQty(''); setCurrentPackageMethod('box');
+                            setIsFreightPending(false); setFreightType('per_tone'); setFreightRate(''); setBasicFreight(''); setChargedWeight('');
+                            setCharges({ unloading: '', detention: '', extraKm: '', loading: '', doorColl: '', doorDel: '', trafficChallan: '', other: '' });
+                            setHsnDesc(''); setGoodsDesc(''); setActualWeight(''); setLoadUnit('mt');
+                            setDimL(''); setDimW(''); setDimH(''); setVolume(''); setPrivateMark('');
+                            setInvoiceNo(''); setInvoiceDate(''); setInvoiceAmt(''); setEwayBill(''); setEwayFrom(''); setEwayTo('');
+                            setInsuranceComp('not-known'); setPolicyNo(''); setPolicyDate(''); setPolicyAmount('');
+                            setPoNo(''); setPoDate(''); setStfNo(''); setStfDate(''); setStfValidUpto('');
+                            setRemarks(''); setAdvanceAmount(''); setVehicleNo(''); setLoadingPoint(''); setDeliveryPoint('');
+                            setIsOwnersRisk(true); setIsDoorCollection(false); setIsCancelCn(false);
+                            setBkgBasis(''); setDeliveryType('dd');
+                            setDestBranch(''); setBookingBranchCode('');
+                            setCnNo(''); setCnDate(new Date().toISOString().split('T')[0]);
+                            setCnSequenceState(idleCnSequenceState);
+                        }}>
                             <RotateCcw className="h-4 w-4" /> Reset Form
                         </Button>
-                        <Button className="gap-2 h-9 shadow-lg shadow-primary/20" onClick={handleSave} disabled={isSaving}>
+                        <Button
+                            className="gap-2 h-9 shadow-lg shadow-primary/20"
+                            onClick={handleSave}
+                            disabled={isSaving || (!isEditMode && bookingBranchCode !== '' && cnSequenceState.status !== 'idle' && cnSequenceState.status !== 'ready' && cnSequenceState.status !== 'loading')}
+                        >
                             <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : (isEditMode ? 'Update Consignment' : 'Save Consignment')}
                         </Button>
                     </div>
@@ -732,7 +843,7 @@ function NewConsignmentForm() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-4">
                                     <div className="space-y-1">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Booking Branch</Label>
-                                        <Select value={bookingBranchCode} onValueChange={setBookingBranchCode}>
+                                        <Select value={bookingBranchCode} onValueChange={setBookingBranchCode} disabled={isEditMode}>
                                             <SelectTrigger className="h-9 bg-slate-50">
                                                 <SelectValue placeholder="Select Branch" />
                                             </SelectTrigger>
@@ -761,10 +872,62 @@ function NewConsignmentForm() {
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">CN No & Date</Label>
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
-                                                <Input className="h-9 font-mono font-bold" value={cnNo} onChange={(e) => setCnNo(e.target.value)} />
+                                                <Input
+                                                    className="h-9 font-mono font-bold bg-slate-50"
+                                                    value={cnNo}
+                                                    readOnly={!isEditMode && cnSequenceState.mode === 'range'}
+                                                    onChange={(e) => setCnNo(e.target.value)}
+                                                />
                                             </div>
                                             <DatePicker className="w-40 h-9" value={cnDate} onChange={(val) => setCnDate(val)} />
                                         </div>
+                                        {!isEditMode && bookingBranchCode && (
+                                            <div className="mt-2 space-y-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {cnSequenceState.status === 'loading' && (
+                                                        <Badge variant="outline">Loading CN...</Badge>
+                                                    )}
+                                                    {cnSequenceState.status === 'ready' && cnSequenceState.mode === 'range' && (
+                                                        <>
+                                                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Branch Range</Badge>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Assigned range {cnSequenceState.rangeStart} - {cnSequenceState.rangeEnd}
+                                                            </span>
+                                                            {typeof cnSequenceState.remainingCount === 'number' && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {cnSequenceState.remainingCount} CNs left
+                                                                </span>
+                                                            )}
+                                                            {typeof cnSequenceState.reservedCount === 'number' && cnSequenceState.reservedCount > 0 && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {cnSequenceState.reservedCount} physical blocks excluded
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    {cnSequenceState.status === 'ready' && cnSequenceState.mode === 'legacy' && (
+                                                        <>
+                                                            <Badge variant="outline">Legacy Counter</Badge>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Configure this branch in Branch Management to enforce a branch-owned CN range.
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                    {cnSequenceState.status === 'range_exhausted' && (
+                                                        <Badge className="bg-amber-50 text-amber-700 border-amber-200">Range Exhausted</Badge>
+                                                    )}
+                                                    {cnSequenceState.status === 'configuration_required' && (
+                                                        <Badge className="bg-slate-100 text-slate-700 border-slate-200">Range Not Configured</Badge>
+                                                    )}
+                                                    {cnSequenceState.status === 'error' && (
+                                                        <Badge className="bg-red-50 text-red-700 border-red-200">CN Load Failed</Badge>
+                                                    )}
+                                                </div>
+                                                {cnSequenceState.message && cnSequenceState.status !== 'ready' && (
+                                                    <div className="text-xs text-muted-foreground">{cnSequenceState.message}</div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="space-y-1">
@@ -1492,6 +1655,7 @@ function NewConsignmentForm() {
                                                 { key: 'loading', label: "Loading Charges" },
                                                 { key: 'doorColl', label: "Door Coll Charges" },
                                                 { key: 'doorDel', label: "Door Del Charges" },
+                                                { key: 'trafficChallan', label: "Traffic Challan Charges" },
                                                 { key: 'other', label: "Other Charges" },
                                             ].map((field) => (
                                                 <div key={field.key} className="flex items-center justify-between gap-4">

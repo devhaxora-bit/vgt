@@ -1,6 +1,96 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+const roundMoney = (value: number) => Number(value.toFixed(2));
+
+const normalizeDeductionItems = (value: unknown) => {
+    if (!Array.isArray(value)) return [];
+
+    return value
+        .map((item) => {
+            const label = String((item as { label?: unknown })?.label || '').trim();
+            const amount = Number((item as { amount?: unknown })?.amount || 0);
+
+            if (!label || Number.isNaN(amount) || amount <= 0) return null;
+
+            return {
+                label,
+                amount: roundMoney(amount),
+            };
+        })
+        .filter((item): item is { label: string; amount: number } => item !== null);
+};
+
+const normalizeBillAllocations = (value: unknown) => {
+    if (!Array.isArray(value)) return [];
+
+    return value
+        .map((item) => {
+            const billingRecordId = String((item as { billing_record_id?: unknown })?.billing_record_id || '').trim();
+            const settledAmountInput = Number((item as { settled_amount?: unknown })?.settled_amount);
+            const receivedAmountInput = Number((item as { received_amount?: unknown })?.received_amount || 0);
+            const deductionItems = normalizeDeductionItems((item as { deduction_items?: unknown })?.deduction_items);
+            const deductionTotal = roundMoney(deductionItems.reduce((sum, deduction) => sum + deduction.amount, 0));
+            const settledAmount = !Number.isNaN(settledAmountInput)
+                ? roundMoney(settledAmountInput)
+                : roundMoney(receivedAmountInput + deductionTotal);
+            const receivedAmount = roundMoney(settledAmount - deductionTotal);
+
+            if (!billingRecordId || settledAmount <= 0 || receivedAmount < 0) return null;
+
+            return {
+                billing_record_id: billingRecordId,
+                received_amount: receivedAmount,
+                settled_amount: settledAmount,
+                deduction_items: deductionItems,
+            };
+        })
+        .filter((item): item is {
+            billing_record_id: string;
+            received_amount: number;
+            settled_amount: number;
+            deduction_items: Array<{ label: string; amount: number }>;
+        } => item !== null);
+};
+
+const buildSettledBillAmountMap = (paymentReceipts: Array<{
+    amount?: number | null;
+    status?: string | null;
+    related_billing_record_ids?: string[] | null;
+    bill_allocations?: Array<{ billing_record_id?: string; settled_amount?: number | null }> | null;
+}>) => {
+    const billSettledMap = new Map<string, number>();
+
+    paymentReceipts
+        .filter((receipt) => receipt.status === 'ACTIVE')
+        .forEach((receipt) => {
+            if ((receipt.bill_allocations || []).length > 0) {
+                receipt.bill_allocations?.forEach((allocation) => {
+                    const billId = String(allocation.billing_record_id || '').trim();
+                    if (!billId) return;
+
+                    billSettledMap.set(
+                        billId,
+                        roundMoney((billSettledMap.get(billId) || 0) + Number(allocation.settled_amount || 0))
+                    );
+                });
+                return;
+            }
+
+            if ((receipt.related_billing_record_ids || []).length === 1) {
+                const billId = String(receipt.related_billing_record_ids?.[0] || '').trim();
+                if (!billId) return;
+
+                billSettledMap.set(
+                    billId,
+                    roundMoney((billSettledMap.get(billId) || 0) + Number(receipt.amount || 0))
+                );
+            }
+        });
+
+    return billSettledMap;
+};
+
 // POST /api/ledger/[partyId]/payments
 // Record a payment receipt (admin only)
 export async function POST(
@@ -35,21 +125,109 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { receipt_date, amount, payment_mode, reference_no, bank_name, narration } = body;
-
-    if (!amount) {
-        return NextResponse.json({ error: 'amount is required' }, { status: 400 });
-    }
-
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-        return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
-    }
+    const { receipt_date, amount, payment_mode, reference_no, bank_name, narration, related_billing_record_ids, actual_received_amount, bill_allocations } = body;
 
     const validModes = ['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'ADJUSTMENT'];
     const mode = (payment_mode || 'CASH').toUpperCase();
     if (!validModes.includes(mode)) {
         return NextResponse.json({ error: `payment_mode must be one of: ${validModes.join(', ')}` }, { status: 400 });
+    }
+
+    const normalizedBillAllocations = normalizeBillAllocations(bill_allocations);
+    if (Array.isArray(bill_allocations) && normalizedBillAllocations.length !== bill_allocations.length) {
+        return NextResponse.json({ error: 'Each selected bill must have a valid settled amount and deduction breakup' }, { status: 400 });
+    }
+
+    const normalizedBillingRecordIdsFromBody = Array.isArray(related_billing_record_ids)
+        ? related_billing_record_ids.map((value) => String(value).trim()).filter(Boolean)
+        : [];
+    const normalizedBillingRecordIds = normalizedBillAllocations.length > 0
+        ? normalizedBillAllocations.map((allocation) => allocation.billing_record_id)
+        : normalizedBillingRecordIdsFromBody;
+
+    if (normalizedBillingRecordIds.length > 0) {
+        const { data: billingRecords, error: billingRecordsError } = await supabase
+            .from('party_billing_records')
+            .select('id, status, amount')
+            .eq('party_id', partyId)
+            .in('id', normalizedBillingRecordIds);
+
+        if (billingRecordsError) {
+            return NextResponse.json({ error: billingRecordsError.message }, { status: 400 });
+        }
+
+        if (!billingRecords || billingRecords.length !== normalizedBillingRecordIds.length) {
+            return NextResponse.json({ error: 'One or more selected bills are invalid for this party' }, { status: 400 });
+        }
+
+        if (billingRecords.some((record) => record.status !== 'ACTIVE')) {
+            return NextResponse.json({ error: 'Payments can only be linked to active bills' }, { status: 400 });
+        }
+
+        if (normalizedBillAllocations.length > 0) {
+            const { data: existingReceipts, error: existingReceiptsError } = await supabase
+                .from('party_payment_receipts')
+                .select('amount, status, related_billing_record_ids, bill_allocations')
+                .eq('party_id', partyId)
+                .eq('status', 'ACTIVE');
+
+            if (existingReceiptsError) {
+                return NextResponse.json({ error: existingReceiptsError.message }, { status: 400 });
+            }
+
+            const alreadySettledMap = buildSettledBillAmountMap(existingReceipts || []);
+            const billAmountMap = new Map(
+                billingRecords.map((record) => [record.id, Number(record.amount || 0)])
+            );
+
+            const seenBillIds = new Set<string>();
+            for (const allocation of normalizedBillAllocations) {
+                if (seenBillIds.has(allocation.billing_record_id)) {
+                    return NextResponse.json({ error: 'The same bill cannot be selected more than once in a payment receipt' }, { status: 400 });
+                }
+                seenBillIds.add(allocation.billing_record_id);
+
+                const billAmount = billAmountMap.get(allocation.billing_record_id) || 0;
+                const alreadySettledAmount = alreadySettledMap.get(allocation.billing_record_id) || 0;
+                const remainingBillAmount = roundMoney(Math.max(billAmount - alreadySettledAmount, 0));
+
+                if (remainingBillAmount <= 0.009) {
+                    return NextResponse.json({ error: 'One or more selected bills are already fully settled' }, { status: 400 });
+                }
+
+                if (allocation.settled_amount > remainingBillAmount + 0.009) {
+                    return NextResponse.json({ error: 'Settled amount cannot exceed the remaining balance for the selected bill' }, { status: 400 });
+                }
+            }
+        }
+    }
+
+    let amountNum = Number(amount);
+    let actualReceivedAmountNum = Number(actual_received_amount);
+
+    if (normalizedBillAllocations.length > 0) {
+        amountNum = roundMoney(normalizedBillAllocations.reduce((sum, allocation) => sum + allocation.settled_amount, 0));
+        actualReceivedAmountNum = roundMoney(normalizedBillAllocations.reduce((sum, allocation) => sum + allocation.received_amount, 0));
+    } else {
+        if (!amount) {
+            return NextResponse.json({ error: 'amount is required' }, { status: 400 });
+        }
+
+        if (Number.isNaN(amountNum) || amountNum <= 0) {
+            return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
+        }
+
+        if (actual_received_amount === null || actual_received_amount === undefined || actual_received_amount === '') {
+            actualReceivedAmountNum = amountNum;
+        }
+    }
+
+    if (Number.isNaN(actualReceivedAmountNum) || actualReceivedAmountNum < 0) {
+        return NextResponse.json({ error: 'actual_received_amount must be zero or a positive number' }, { status: 400 });
+    }
+
+    if (actualReceivedAmountNum > amountNum) {
+        return NextResponse.json({ error: 'actual_received_amount cannot exceed the settled receipt amount' }, { status: 400 });
     }
 
     const { data, error } = await supabase
@@ -59,10 +237,13 @@ export async function POST(
             party_id: partyId,
             receipt_date: receipt_date || new Date().toISOString().split('T')[0],
             amount: amountNum,
+            actual_received_amount: actualReceivedAmountNum,
             payment_mode: mode,
             reference_no: reference_no || null,
             bank_name: bank_name || null,
             narration: narration || null,
+            related_billing_record_ids: normalizedBillingRecordIds.length > 0 ? normalizedBillingRecordIds : null,
+            bill_allocations: normalizedBillAllocations,
             created_by: user.id,
         })
         .select()

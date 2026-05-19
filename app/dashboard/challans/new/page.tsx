@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
-    ArrowLeft, Save, RotateCcw, FileText, MapPin, Truck, Users,
-    Shield, CreditCard, Search, Upload, Info
+    ArrowLeft, Save, RotateCcw, FileText, Truck, Users,
+    Shield, CreditCard, Info, Link2, X, Download
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { useDebounce } from '@/hooks/use-debounce';
 
 // Branch interface
 interface Branch {
@@ -26,40 +27,69 @@ interface Branch {
     city: string;
 }
 
-export default function NewChallanPage() {
+interface LinkedConsignment {
+    id: string;
+    cn_no: string;
+    packages?: Array<{ method?: string; qty?: number; sr_no?: number }>;
+    no_of_pkg?: number;
+    total_qty?: number;
+    goods_class?: string;
+    goods_desc?: string;
+    actual_weight?: number | string;
+    charged_weight?: number | string;
+    load_unit?: string;
+    dest_branch?: string;
+    delivery_point?: string;
+}
+
+
+function NewChallanPageContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const editId = searchParams.get('edit');
+    const isEditMode = !!editId;
+
     const [branches, setBranches] = useState<Branch[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isLoading, setIsLoading] = useState(isEditMode);
     // Basic Details
     const [originBranch, setOriginBranch] = useState('MRG');
     const [challanNo, setChallanNo] = useState('');
-    const [challanPrefix, setChallanPrefix] = useState('KC');
     const [challanDate, setChallanDate] = useState(new Date().toISOString().split('T')[0]);
+    const [truckScheduleDate, setTruckScheduleDate] = useState('');
     const [challanTime, setChallanTime] = useState(new Date().toTimeString().slice(0, 5));
-    const [subType, setSubType] = useState('Route');
-    const [destBranch, setDestBranch] = useState('');
-    
-    // Lane Details
-    const [loadingPincode, setLoadingPincode] = useState('');
-    const [loadingArea, setLoadingArea] = useState('VERNA GOA');
-    const [unloadingBranch, setUnloadingBranch] = useState('');
-    const [unloadingPincode, setUnloadingPincode] = useState('');
-    const [unloadingArea, setUnloadingArea] = useState('');
-    const [tripDistance, setTripDistance] = useState(0);
-    const [expectedTripDate, setExpectedTripDate] = useState('');
-    const [expectedTripTime, setExpectedTripTime] = useState('');
+    const [loadingPoint, setLoadingPoint] = useState('');
+    const [destinationPoint, setDestinationPoint] = useState('');
+    const [linkedCnInput, setLinkedCnInput] = useState('');
+    const [linkedConsignments, setLinkedConsignments] = useState<LinkedConsignment[]>([]);
+    const [cnSuggestions, setCnSuggestions] = useState<LinkedConsignment[]>([]);
+    const [showCnSuggestions, setShowCnSuggestions] = useState(false);
+    const [vehicleOwnerStatus, setVehicleOwnerStatus] = useState('');
+    const [vehicleSuggestions, setVehicleSuggestions] = useState<any[]>([]);
+    const [showVehicleSuggestions, setShowVehicleSuggestions] = useState(false);
+    const vehicleFocusedRef = useRef(false);
+    const brokerFocusedRef = useRef(false);
+    const linkedConsignmentsRef = useRef<LinkedConsignment[]>([]);
+    useEffect(() => { linkedConsignmentsRef.current = linkedConsignments; }, [linkedConsignments]);
+
 
     // Owner/Broker
-    const [ownerType, setOwnerType] = useState('Market');
     const [ownerPan, setOwnerPan] = useState('');
     const [ownerName, setOwnerName] = useState('');
     const [ownerMobile, setOwnerMobile] = useState('');
     const [ownerAddress, setOwnerAddress] = useState('');
     const [ownerTel, setOwnerTel] = useState('');
+    // Engagement
+    const [engagementType, setEngagementType] = useState<'broker' | 'direct'>('broker');
+    const [brokerId, setBrokerId] = useState('');
     const [brokerName, setBrokerName] = useState('');
     const [brokerCode, setBrokerCode] = useState('');
     const [brokerMobile, setBrokerMobile] = useState('');
     const [brokerAddress, setBrokerAddress] = useState('');
+    const [brokerFetching, setBrokerFetching] = useState(false);
+    const [brokerStatus, setBrokerStatus] = useState('');
+    const [brokerSuggestions, setBrokerSuggestions] = useState<any[]>([]);
+    const [showBrokerSuggestions, setShowBrokerSuggestions] = useState(false);
     const [slipNo, setSlipNo] = useState('');
     const [slipDate, setSlipDate] = useState('');
 
@@ -81,7 +111,7 @@ export default function NewChallanPage() {
     const [driverName, setDriverName] = useState('');
     const [driverDlValidity, setDriverDlValidity] = useState('');
     const [driverMobile, setDriverMobile] = useState('');
-    const [driverRto, setDriverRto] = useState('goa');
+    const [driverAddress, setDriverAddress] = useState('');
 
     // Insurance & eWaybill
     const [policyNo, setPolicyNo] = useState('');
@@ -89,8 +119,6 @@ export default function NewChallanPage() {
     const [insCompany, setInsCompany] = useState('');
     const [insCity, setInsCity] = useState('');
     const [financeDetail, setFinanceDetail] = useState('');
-    const [ewaybillNo, setEwaybillNo] = useState('');
-    const [ewaybillDate, setEwaybillDate] = useState('');
 
     // ITDS Declaration
     const [itdsRefBranch, setItdsRefBranch] = useState('');
@@ -98,29 +126,167 @@ export default function NewChallanPage() {
     const [itdsFinYear, setItdsFinYear] = useState('2025-2026');
 
     // Other Info
-    const [engagedBy, setEngagedBy] = useState('emp1');
-    const [engagedDate, setEngagedDate] = useState(new Date().toISOString().split('T')[0]);
     const [remarks, setRemarks] = useState('');
-    const [challanType, setChallanType] = useState('MAIN');
-    const [onScheduleRoute, setOnScheduleRoute] = useState(true);
-    const [loadingAt, setLoadingAt] = useState('arc');
-    const [unloadingAt, setUnloadingAt] = useState('arc');
-    const [engagedThroughOwner, setEngagedThroughOwner] = useState(false);
-    const [slipAttached, setSlipAttached] = useState(false);
     const [tripTracking, setTripTracking] = useState(false);
 
     // Financial state for Hire Details computed fields
     const [hireDetails, setHireDetails] = useState({
-        noOfCns: 1, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
-        vehicleCapacity: 0, noOfLoadingPoints: 0, noOfUnloadingPoints: 0,
-        ratePerKg: 0, hire: 0, extraOverWeight: 0, overLength: 0,
-        overHeight: 0, overWidth: 0, extraKmCharges: 0,
-        detentCharges: 0, transitPass: 0, totalExtra: 0, totalHire: 0,
-        advPayment: 0, tdsPercent: 0, lessTds: 0,
-        creditDate: '', cardAmount: 0, genericNo: '', cardNo: '',
-        balAmount: 0, balPaymentBranch: '',
-        petroCardBranch: ''
+        noOfCns: 0, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
+        rateType: 'mt', rate: 0, hire: 0,
+        extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
+        detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
+        advPayment: 0, tdsPercent: 2, lessTds: 0,
+        balAmount: 0,
     });
+
+    // Auto-recalculate aggregates from linked CNs
+    useEffect(() => {
+        const count = linkedConsignments.length;
+        const totalPkg = linkedConsignments.reduce((sum, c) => {
+            let pCount = 0;
+            if (Array.isArray(c.packages) && c.packages.length > 0) {
+                pCount = c.packages.reduce((acc, p) => acc + (Number(p.qty) || 0), 0);
+            }
+            if (pCount === 0) pCount = Number(c.no_of_pkg || c.total_qty) || 0;
+            return sum + pCount;
+        }, 0);
+        const totalWt = linkedConsignments.reduce((sum, c) => sum + (Number(c.actual_weight) || 0), 0);
+        const totalChargeWt = linkedConsignments.reduce((sum, c) => sum + (Number(c.charged_weight) || 0), 0);
+
+        setHireDetails(prev => {
+            let next = {
+                ...prev,
+                noOfCns: count,
+                noOfPackage: totalPkg,
+                actualWeight: totalWt,
+                chargeWeight: totalChargeWt
+            };
+            
+            // Trigger general update step to ripple effect derived calculations if dependent
+            next.totalExtra = (next.extraOverWeight || 0) + (next.overLength || 0) + (next.overWidth || 0) + (next.overHeight || 0) + (next.extraKmCharges || 0) + (next.unloadingCharges || 0);
+            if (next.rateType === 'mt') {
+                next.hire = Math.round((next.chargeWeight || 0) * (next.rate || 0));
+            }
+            next.totalHire = (next.hire || 0) + (next.totalExtra || 0) + (next.detentCharges || 0);
+            next.lessTds = Math.round(next.totalHire * ((next.tdsPercent || 0) / 100));
+            next.balAmount = next.totalHire - (next.advPayment || 0) - next.lessTds;
+            return next;
+        });
+    }, [linkedConsignments]);
+
+    // Load challan data for edit mode
+    useEffect(() => {
+        if (isEditMode && editId) {
+            const loadChallan = async () => {
+                try {
+                    const res = await fetch(`/api/challans/${editId}`);
+                    if (!res.ok) throw new Error('Failed to load challan');
+                    const data = await res.json();
+                    populateFormData(data);
+
+                    // Fetch and populate linked consignments
+                    if (Array.isArray(data.linked_cn_nos) && data.linked_cn_nos.length > 0) {
+                        try {
+                            const cnRes = await fetch(`/api/consignments/by-cn?cns=${data.linked_cn_nos.join(',')}`);
+                            if (cnRes.ok) {
+                                const cnData = await cnRes.json();
+                                if (Array.isArray(cnData)) {
+                                    setLinkedConsignments(cnData);
+                                }
+                            }
+                        } catch (cnErr) {
+                            console.error('Failed to load linked CNs:', cnErr);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load challan:', error);
+                    toast.error('Failed to load challan data');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            loadChallan();
+        } else {
+            setIsLoading(false);
+        }
+    }, [editId, isEditMode]);
+
+    const populateFormData = (data: any) => {
+        setChallanNo(data.challan_no || '');
+        setChallanDate(data.date_from?.split('T')[0] || new Date().toISOString().split('T')[0]);
+        setTruckScheduleDate(data.truck_schedule_date?.split('T')[0] || '');
+        setOriginBranch(data.origin_branch_code || 'MRG');
+        setLoadingPoint(data.loading_point || '');
+        setDestinationPoint(data.destination_point || '');
+        setVehicleNo(data.vehicle_no || '');
+        setVehicleType(data.vehicle_type || 'open');
+        setVehicleMake(data.vehicle_make || 'tata');
+        setVehicleModel(data.vehicle_model || 'lpt');
+        setEngineNo(data.engine_no || '');
+        setChasisNo(data.chasis_no || '');
+        setPermitNo(data.permit_no || '');
+        setPermitValidity(data.permit_validity || '');
+        setTaxTokenNo(data.tax_token_no || '');
+        setTaxTokenValidity(data.tax_token_validity || '');
+        setTaxTokenIssuedBy(data.tax_token_issued_by || '');
+
+        setOwnerPan(data.owner_pan || '');
+        setOwnerName(data.owner_name || '');
+        setOwnerMobile(data.owner_mobile || '');
+        setOwnerAddress(data.owner_address || '');
+        setOwnerTel(data.owner_tel || '');
+
+        setEngagementType(data.engagement_type || 'broker');
+        setBrokerId(data.broker_id || '');
+        setBrokerName(data.broker_name || '');
+        setBrokerCode(data.broker_code || '');
+        setBrokerMobile(data.broker_mobile || '');
+        setBrokerAddress(data.broker_address || '');
+        setSlipNo(data.slip_no || '');
+        setSlipDate(data.slip_date || '');
+
+        setDriverDlNo(data.driver_dl_no || '');
+        setDriverName(data.driver_name || '');
+        setDriverDlValidity(data.driver_dl_validity || '');
+        setDriverMobile(data.driver_mobile || '');
+        setDriverAddress(data.driver_address || '');
+
+        setPolicyNo(data.insurance_policy_no || '');
+        setPolicyValidity(data.insurance_validity || '');
+        setInsCompany(data.insurance_company_name || '');
+        setInsCity(data.insurance_city || '');
+        setFinanceDetail(data.finance_detail || '');
+
+        setItdsRefBranch(data.itds_ref_branch || '');
+        setItdsDeclareDate(data.itds_declare_date || '');
+        setItdsFinYear(data.itds_financial_year || '2025-2026');
+
+        setRemarks(data.remarks || '');
+        setTripTracking(data.trip_tracking_consent || false);
+
+        setHireDetails({
+            noOfCns: data.linked_cn_nos?.length || 0,
+            noOfPackage: 0,
+            actualWeight: 0,
+            chargeWeight: 0,
+            rateType: 'mt',
+            rate: data.hire_rate_per_kg || 0,
+            hire: data.hire_amount || 0,
+            extraOverWeight: data.extra_over_weight || 0,
+            overLength: data.extra_over_length || 0,
+            overWidth: data.extra_over_width || 0,
+            overHeight: data.extra_over_height || 0,
+            extraKmCharges: data.extra_km_charges || 0,
+            detentCharges: data.detent_charges || 0,
+            unloadingCharges: data.unloading_charges || 0,
+            totalExtra: data.total_extra_charges || 0,
+            totalHire: data.total_hire_amount || 0,
+            advPayment: data.advance_amount || 0,
+            tdsPercent: data.tds_percent || 2,
+            lessTds: data.less_tds || 0,
+            balAmount: 0,
+        });
+    };
 
     useEffect(() => {
         const fetchBranches = async () => {
@@ -138,14 +304,14 @@ export default function NewChallanPage() {
         fetchBranches();
     }, []);
 
-    // Fetch next Challan No when origin branch changes
+    // Fetch next Challan No when origin branch changes — skip in edit mode
     useEffect(() => {
+        if (isEditMode) return;
         const fetchNextChallan = async () => {
             try {
                 const res = await fetch(`/api/branches/next-challan?branch=${originBranch}`);
                 if (res.ok) {
                     const data = await res.json();
-                    setChallanPrefix(data.prefix);
                     setChallanNo(data.nextNo.toString());
                 }
             } catch (error) {
@@ -153,18 +319,290 @@ export default function NewChallanPage() {
             }
         };
         if (originBranch) fetchNextChallan();
-    }, [originBranch]);
+    }, [originBranch, isEditMode]);
+
+    const handleReset = () => {
+        setLoadingPoint(''); setDestinationPoint('');
+        setLinkedCnInput(''); setLinkedConsignments([]); setCnSuggestions([]); setShowCnSuggestions(false);
+        setVehicleNo(''); setVehicleOwnerStatus(''); setVehicleSuggestions([]); setShowVehicleSuggestions(false);
+        setVehicleType('open'); setVehicleMake('tata'); setVehicleModel('lpt');
+        setPermitNo(''); setPermitValidity(''); setEngineNo(''); setChasisNo('');
+        setTaxTokenNo(''); setTaxTokenValidity(''); setTaxTokenIssuedBy('');
+        setOwnerPan(''); setOwnerName(''); setOwnerMobile(''); setOwnerAddress(''); setOwnerTel('');
+        setEngagementType('broker');
+        setBrokerId(''); setBrokerName(''); setBrokerCode(''); setBrokerMobile(''); setBrokerAddress('');
+        setBrokerFetching(false); setBrokerStatus(''); setBrokerSuggestions([]); setShowBrokerSuggestions(false);
+        setSlipNo(''); setSlipDate('');
+        setDriverDlNo(''); setDriverName(''); setDriverDlValidity(''); setDriverMobile(''); setDriverAddress('');
+        setPolicyNo(''); setPolicyValidity(''); setInsCompany(''); setInsCity(''); setFinanceDetail('');
+        setItdsRefBranch(''); setItdsDeclareDate(''); setItdsFinYear('2025-2026');
+        setRemarks(''); setTripTracking(false);
+        setChallanDate(new Date().toISOString().split('T')[0]);
+        setChallanTime(new Date().toTimeString().slice(0, 5));
+        setHireDetails({
+            noOfCns: 0, noOfPackage: 0, actualWeight: 0, chargeWeight: 0,
+            rateType: 'mt', rate: 0, hire: 0,
+            extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
+            detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
+            advPayment: 0, tdsPercent: 2, lessTds: 0, balAmount: 0,
+        });
+    };
+
+    const applyVehicleDetails = (v: any) => {
+        // Owner
+        setOwnerPan(v.owner_pan || '');
+        setOwnerName(v.owner_name || '');
+        setOwnerMobile(v.owner_mobile || '');
+        setOwnerAddress(v.owner_address || '');
+        setOwnerTel(v.owner_tel || '');
+
+        // Vehicle details
+        setVehicleType(v.vehicle_type || 'open');
+        setVehicleMake(v.vehicle_make || '');
+        setVehicleModel(v.vehicle_model || '');
+        setEngineNo(v.engine_no || '');
+        setChasisNo(v.chasis_no || '');
+        setPermitNo(v.permit_no || '');
+        setPermitValidity(v.permit_validity ? String(v.permit_validity).slice(0, 10) : '');
+        setTaxTokenNo(v.tax_token_no || '');
+        setTaxTokenValidity(v.tax_token_validity ? String(v.tax_token_validity).slice(0, 10) : '');
+        setTaxTokenIssuedBy(v.tax_token_issued_by || '');
+
+        // Insurance & eWaybill
+        setPolicyNo(v.insurance_policy_no || '');
+        setPolicyValidity(v.insurance_validity ? String(v.insurance_validity).slice(0, 10) : '');
+        setInsCompany(v.insurance_company || '');
+        setInsCity(v.insurance_city || '');
+        setFinanceDetail(v.finance_detail || '');
+
+        // TDS / ITDS
+        setItdsRefBranch(v.itds_ref_branch || '');
+        setItdsDeclareDate(v.itds_declare_date ? String(v.itds_declare_date).slice(0, 10) : '');
+        setItdsFinYear(v.itds_financial_year || '');
+
+        setVehicleOwnerStatus('✓ Vehicle details auto-filled from master');
+    };
+
+    // Auto-cut TDS based on ITDS Declaration presence
+    useEffect(() => {
+        const hasItds = Boolean(itdsRefBranch.trim() || itdsDeclareDate);
+        const autoTdsPercent = hasItds ? 0 : 2;
+        
+        setHireDetails(prev => {
+            if (prev.tdsPercent === autoTdsPercent) return prev;
+            const next = { ...prev, tdsPercent: autoTdsPercent };
+            next.lessTds = Math.round(next.totalHire * ((Number(next.tdsPercent) || 0) / 100));
+            next.balAmount = next.totalHire - (Number(next.advPayment) || 0) - next.lessTds;
+            return next;
+        });
+    }, [itdsRefBranch, itdsDeclareDate]);
+
+    useEffect(() => {
+        const normalizedVehicleNo = vehicleNo.trim().toUpperCase();
+        if (normalizedVehicleNo.length < 2) {
+            // Batch these into one state update to avoid multiple re-renders
+            setVehicleOwnerStatus('');
+            setVehicleSuggestions([]);
+            setShowVehicleSuggestions(false);
+            return;
+        }
+
+        // Use a longer debounce and only update if component is still mounted
+        let cancelled = false;
+        const timeout = window.setTimeout(async () => {
+            if (cancelled) return;
+            try {
+                const res = await fetch(`/api/vehicles?q=${encodeURIComponent(normalizedVehicleNo)}`);
+                if (!res.ok || cancelled) return;
+
+                const data = await res.json();
+                if (cancelled) return;
+
+                if (Array.isArray(data)) {
+                    setVehicleSuggestions(data);
+                    // Only auto-open the dropdown if user is actively focused (not on initial load)
+                    if (vehicleFocusedRef.current) {
+                        setShowVehicleSuggestions(data.length > 0);
+                    }
+
+                    const exactMatch = data.find((v: any) => v.vehicle_no === normalizedVehicleNo);
+                    if (exactMatch) {
+                        applyVehicleDetails(exactMatch);
+                    } else if (data.length === 0) {
+                        setVehicleOwnerStatus('⚠ Vehicle not found in master.');
+                    } else {
+                        setVehicleOwnerStatus('Type to search or select from list.');
+                    }
+                }
+            } catch {
+                if (!cancelled) setVehicleOwnerStatus('Failed to fetch vehicle details');
+            }
+        }, 500);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeout);
+        };
+    }, [vehicleNo]);
+
+    const debouncedCnInput = useDebounce(linkedCnInput, 300);
+    const debouncedBrokerName = useDebounce(brokerName, 300);
+
+    // Debounced CN Fetch — partial match search, show all matching CNs
+    useEffect(() => {
+        const val = debouncedCnInput.trim().toUpperCase();
+        if (val.length < 2) {
+            setCnSuggestions([]);
+            setShowCnSuggestions(false);
+            return;
+        }
+        const fetchCns = async () => {
+            try {
+                const res = await fetch(`/api/consignments/by-cn?search=${encodeURIComponent(val)}`);
+                if (!res.ok) return;
+                const list = await res.json();
+                const already = new Set(linkedConsignmentsRef.current.map(c => c.cn_no));
+                const filtered = (list as LinkedConsignment[]).filter(c => !already.has(c.cn_no));
+                setCnSuggestions(filtered);
+                setShowCnSuggestions(filtered.length > 0);
+            } catch { /* silent */ }
+        };
+        fetchCns();
+    }, [debouncedCnInput]);
+
+    // Debounced Broker Fetch
+    useEffect(() => {
+        const val = debouncedBrokerName.trim();
+        if (val.length < 2 || engagementType === 'direct') {
+            setBrokerSuggestions([]);
+            setShowBrokerSuggestions(false);
+            return;
+        }
+        // Only fetch if we don't already have an exact matched broker selected
+        if (brokerId && brokerName === val) return;
+
+        const fetchBrokers = async () => {
+            setBrokerFetching(true);
+            try {
+                const res = await fetch(`/api/brokers?q=${encodeURIComponent(val)}`);
+                const list = await res.json();
+                if (Array.isArray(list)) {
+                    setBrokerSuggestions(list);
+                    // Only auto-open the dropdown if user is actively focused (not on initial load)
+                    if (brokerFocusedRef.current) {
+                        setShowBrokerSuggestions(list.length > 0);
+                    }
+                    if (list.length === 0) setBrokerStatus('No broker found');
+                    else setBrokerStatus(`${list.length} brokers found`);
+                }
+            } catch {
+                setBrokerStatus('Error fetching brokers');
+            } finally {
+                setBrokerFetching(false);
+            }
+        };
+        fetchBrokers();
+    }, [debouncedBrokerName, engagementType, brokerId]);
 
     const updateHire = (field: string, value: number | string) => {
         setHireDetails(prev => {
             const next = { ...prev, [field]: value };
-            // Recalculate derived fields
-            next.totalExtra = (next.extraOverWeight || 0) + (next.overLength || 0) + (next.overHeight || 0) + (next.overWidth || 0) + (next.extraKmCharges || 0);
-            next.totalHire = (next.hire || 0) + (next.totalExtra || 0) + (next.detentCharges || 0) + (next.transitPass || 0);
-            next.lessTds = Math.round(next.totalHire * (next.tdsPercent / 100));
-            next.balAmount = next.totalHire - (next.advPayment || 0) - next.lessTds;
+            
+            // 1. If changing Rate Type, maintain current values but recalculate
+            if (next.rateType === 'mt') {
+                next.hire = Math.round((Number(next.chargeWeight) || 0) * (Number(next.rate) || 0));
+            }
+
+            // 2. Recalculate derived fields: Extras
+            next.totalExtra = (Number(next.extraOverWeight) || 0) + (Number(next.overLength) || 0) + (Number(next.overWidth) || 0) + (Number(next.overHeight) || 0) + (Number(next.extraKmCharges) || 0) + (Number(next.unloadingCharges) || 0);
+            
+            // 3. Recalculate Total Hire
+            next.totalHire = (Number(next.hire) || 0) + (next.totalExtra || 0) + (Number(next.detentCharges) || 0);
+            
+            // 4. Recalculate Final Balance and TDS
+            next.lessTds = Math.round(next.totalHire * ((Number(next.tdsPercent) || 0) / 100));
+            next.balAmount = next.totalHire - (Number(next.advPayment) || 0) - next.lessTds;
+            
             return next;
         });
+    };
+
+    const handleAddCn = async () => {
+        const cnNo = linkedCnInput.trim().toUpperCase();
+        if (!cnNo) return;
+
+        if (linkedConsignments.some((item) => item.cn_no.toUpperCase() === cnNo)) {
+            toast.error('CN already linked');
+            return;
+        }
+
+        try {
+            // First try exact match
+            const exactRes = await fetch(`/api/consignments/by-cn?cn=${encodeURIComponent(cnNo)}`);
+            if (exactRes.ok) {
+                const data = await exactRes.json();
+                if (data && data.cn_no) {
+                    setLinkedConsignments((prev) => [...prev, data]);
+                    setLinkedCnInput('');
+                    return;
+                }
+            }
+
+            // Fall back to partial search and pick exact match if found, or first result
+            const searchRes = await fetch(`/api/consignments/by-cn?search=${encodeURIComponent(cnNo)}`);
+            if (searchRes.ok) {
+                const list = await searchRes.json();
+                if (Array.isArray(list) && list.length > 0) {
+                    const already = new Set(linkedConsignments.map((c) => c.cn_no.toUpperCase()));
+                    const available = list.filter((c: any) => !already.has(String(c.cn_no).toUpperCase()));
+                    if (available.length === 0) {
+                        toast.error('All matching CNs are already linked');
+                        return;
+                    }
+                    // Prefer exact match, otherwise show suggestions to pick from
+                    const exact = available.find((c: any) => String(c.cn_no).toUpperCase() === cnNo);
+                    if (exact) {
+                        setLinkedConsignments((prev) => [...prev, exact]);
+                        setLinkedCnInput('');
+                        return;
+                    }
+                    // Multiple partial matches — show dropdown so user can pick
+                    setCnSuggestions(available);
+                    setShowCnSuggestions(true);
+                    toast.info(`${available.length} matching CN${available.length > 1 ? 's' : ''} found — pick from the list`);
+                    return;
+                }
+            }
+
+            toast.error(`No CN found matching "${cnNo}"`);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to fetch CN');
+        }
+    };
+
+    const generatePDF = async () => {
+        if (!challanNo) {
+            toast.error('Save challan first to generate PDF');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/challans/${editId || challanNo}/pdf`);
+            if (!response.ok) throw new Error('Failed to generate PDF');
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `challan-${challanNo}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success('PDF downloaded successfully');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to generate PDF');
+        }
     };
 
     const handleSave = async () => {
@@ -176,27 +614,17 @@ export default function NewChallanPage() {
         setIsSubmitting(true);
         try {
             const body = {
-                challan_no: `${challanPrefix}${challanNo}`,
+                challan_no: challanNo,
+                date_from: challanDate,
+                truck_schedule_date: truckScheduleDate || null,
                 origin_branch_code: originBranch,
-                destination_branch_code: destBranch,
-                challan_type: challanType,
-                sub_type: subType,
-                owner_type: ownerType,
+                destination_branch_code: null,
+                engagement_type: engagementType,
                 vehicle_no: vehicleNo.toUpperCase(),
                 driver_name: driverName,
                 driver_mobile: driverMobile,
-                
-                // Lane Details
-                loading_at: loadingAt === 'arc' ? 'ARC' : 'Party',
-                unloading_at: unloadingAt === 'arc' ? 'ARC' : 'Party',
-                loading_branch_code: originBranch,
-                unloading_branch_code: unloadingBranch,
-                loading_pincode: loadingPincode,
-                unloading_pincode: unloadingPincode,
-                loading_area: loadingArea,
-                unloading_area: unloadingArea,
-                trip_distance: tripDistance,
-                expected_trip_complete_at: expectedTripDate && expectedTripTime ? `${expectedTripDate}T${expectedTripTime}` : null,
+                loading_point: loadingPoint,
+                destination_point: destinationPoint,
 
                 // Owner/Broker
                 owner_pan: ownerPan.toUpperCase(),
@@ -229,8 +657,6 @@ export default function NewChallanPage() {
                 insurance_company_name: insCompany,
                 insurance_city: insCity,
                 finance_detail: financeDetail,
-                ewaybill_no: ewaybillNo,
-                ewaybill_date: ewaybillDate || null,
 
                 // ITDS
                 itds_ref_branch: itdsRefBranch,
@@ -240,53 +666,49 @@ export default function NewChallanPage() {
                 // Driver
                 driver_dl_no: driverDlNo,
                 driver_dl_validity: driverDlValidity || null,
-                driver_rto: driverRto,
+                driver_address: driverAddress,
                 trip_tracking_consent: tripTracking,
 
                 // Financials
                 total_hire_amount: hireDetails.totalHire,
                 extra_hire_amount: hireDetails.totalExtra,
                 advance_amount: hireDetails.advPayment,
-                hire_rate_per_kg: hireDetails.ratePerKg,
+                hire_rate_per_kg: hireDetails.rate, // Repurposed for rate
                 hire_amount: hireDetails.hire,
                 extra_over_weight: hireDetails.extraOverWeight,
                 extra_over_length: hireDetails.overLength,
-                extra_over_height: hireDetails.overHeight,
                 extra_over_width: hireDetails.overWidth,
+                extra_over_height: hireDetails.overHeight,
                 extra_km_charges: hireDetails.extraKmCharges,
                 detent_charges: hireDetails.detentCharges,
-                transit_pass_charges: hireDetails.transitPass,
+                unloading_charges: hireDetails.unloadingCharges,
                 total_extra_charges: hireDetails.totalExtra,
                 tds_percent: hireDetails.tdsPercent,
                 less_tds: hireDetails.lessTds,
-                bal_payment_branch_code: hireDetails.balPaymentBranch,
-                card_amount: hireDetails.cardAmount,
-                generic_no: hireDetails.genericNo,
-                card_no: hireDetails.cardNo,
-                credit_date: hireDetails.creditDate || null,
-                petro_card_branch_code: hireDetails.petroCardBranch,
 
                 // Others
-                engaged_by: engagedBy,
-                engaged_date: engagedDate || null,
-                remarks
+                remarks,
+                linked_cn_nos: linkedConsignments.map((item) => item.cn_no)
             };
 
-            const res = await fetch('/api/challans', {
-                method: 'POST',
+            const method = isEditMode ? 'PUT' : 'POST';
+            const url = isEditMode ? `/api/challans/${editId}` : '/api/challans';
+
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
 
             if (!res.ok) {
                 const error = await res.json();
-                throw new Error(error.error || 'Failed to save challan');
+                throw new Error(error.error || `Failed to ${isEditMode ? 'update' : 'save'} challan`);
             }
 
-            toast.success('Challan saved successfully!');
+            toast.success(`Challan ${isEditMode ? 'updated' : 'saved'} successfully!`);
             router.push('/dashboard/challans');
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to save');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to save');
         } finally {
             setIsSubmitting(false);
         }
@@ -309,18 +731,24 @@ export default function NewChallanPage() {
                             </Button>
                         </Link>
                         <div>
-                            <h1 className="text-lg font-bold tracking-tight">Challan Entry</h1>
+                            <h1 className="text-lg font-bold tracking-tight">
+                                {isLoading ? 'Loading...' : isEditMode ? 'Edit Challan' : 'New Challan'}
+                            </h1>
                             <p className="text-xs text-muted-foreground font-medium">
-                                Last Challan No. <span className="text-primary font-bold">KC300066954</span> DATE: 10/02/2026
+                                {isEditMode ? (
+                                    <>Challan No. <span className="text-primary font-bold">{challanNo || '---'}</span></>
+                                ) : (
+                                    <>Next Challan No. <span className="text-primary font-bold">{challanNo || '---'}</span></>
+                                )}
                             </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" className="gap-2 h-9 text-sm">
+                        <Button variant="outline" onClick={handleReset} className="gap-2 h-9 text-sm" disabled={isLoading}>
                             <RotateCcw className="h-4 w-4" /> Reset
                         </Button>
-                        <Button onClick={handleSave} disabled={isSubmitting} className="gap-2 h-9 shadow-lg shadow-primary/20 text-sm">
-                            <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Challan'}
+                        <Button onClick={handleSave} disabled={isSubmitting || isLoading} className="gap-2 h-9 shadow-lg shadow-primary/20 text-sm">
+                            <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : isEditMode ? 'Update' : 'Save Challan'}
                         </Button>
                     </div>
                 </div>
@@ -345,24 +773,9 @@ export default function NewChallanPage() {
                     <TabsContent value="challan-details">
                         <div className="space-y-5">
 
-                            {/* Challan Type Radio Bar */}
-                            <div className="flex flex-wrap gap-6 px-4 py-2 bg-card rounded-lg border shadow-sm items-center">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="challan_mode" value="MAIN" checked={challanType === 'MAIN'} onChange={() => setChallanType('MAIN')} className="accent-primary" />
-                                    <span className="text-sm font-bold">Main</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="challan_mode" value="INCLUDE" checked={challanType === 'INCLUDE'} onChange={() => setChallanType('INCLUDE')} className="accent-primary" />
-                                    <span className="text-sm font-bold">Include</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="challan_mode" value="FOC" checked={challanType === 'FOC'} onChange={() => setChallanType('FOC')} className="accent-primary" />
-                                    <span className="text-sm font-bold">FOC</span>
-                                </label>
-                            </div>
 
                             {/* ---- SECTION 1: General Details ---- */}
-                            <Card className="border-none shadow-md overflow-hidden bg-white">
+                            <Card className="border-none shadow-md overflow-visible bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
                                         <Info className="h-4 w-4" /> General Details
@@ -372,26 +785,14 @@ export default function NewChallanPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan Branch</Label>
-                                            <Select value={originBranch} onValueChange={setOriginBranch}>
+                                            <Select value={originBranch} onValueChange={setOriginBranch} disabled={branches.length === 0}>
                                                 <SelectTrigger className={inputCls + " bg-slate-50"}>
-                                                    <SelectValue placeholder="Select Branch" />
+                                                    <SelectValue placeholder={branches.length === 0 ? "Loading..." : "Select Branch"} />
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {branches.map(b => (
                                                         <SelectItem key={b.code} value={b.code}>{b.code} - {b.name}</SelectItem>
                                                     ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Challan Type</Label>
-                                            <Select value={subType} onValueChange={setSubType}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select Type" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Route">1 - Route</SelectItem>
-                                                    <SelectItem value="Local">2 - Local</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -402,237 +803,307 @@ export default function NewChallanPage() {
                                                 <Input type="time" className={inputCls + " w-28"} value={challanTime} onChange={(e) => setChallanTime(e.target.value)} />
                                             </div>
                                         </div>
+                                        <div className="space-y-1 lg:col-span-2">
+                                            <Label className={labelCls}>Truck Schedule Date <span className="text-xs text-muted-foreground">(Reach by)</span></Label>
+                                            <Input type="date" className={inputCls} value={truckScheduleDate} onChange={(e) => setTruckScheduleDate(e.target.value)} />
+                                        </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan No</Label>
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-2 text-xs font-bold text-muted-foreground select-none">{challanPrefix}</span>
-                                                <Input className={inputCls + " pl-10 font-mono font-bold bg-yellow-50/60 border-yellow-200"} value={challanNo} onChange={(e) => setChallanNo(e.target.value)} placeholder="Auto Generated" />
-                                            </div>
+                                            <Input className={inputCls + " font-mono font-bold bg-yellow-50/60 border-yellow-200"} value={challanNo} onChange={(e) => setChallanNo(e.target.value)} placeholder="Auto Generated" />
+                                        </div>
+
+                                        <div className="space-y-1 lg:col-span-2 relative">
+                                            <Label className={labelCls}>Vehicle No</Label>
+                                            <Input
+                                                className={inputCls + " uppercase"}
+                                                value={vehicleNo}
+                                                onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
+                                                onFocus={() => { vehicleFocusedRef.current = true; if (vehicleSuggestions.length > 0) setShowVehicleSuggestions(true); }}
+                                                onBlur={() => setTimeout(() => { vehicleFocusedRef.current = false; setShowVehicleSuggestions(false); }, 200)}
+                                                placeholder="Type to search Vehicle No."
+                                                autoComplete="off"
+                                            />
+                                            {showVehicleSuggestions && vehicleSuggestions.length > 0 && (
+                                                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg overflow-hidden max-h-60 overflow-y-auto">
+                                                    {vehicleSuggestions.map((v) => (
+                                                        <button
+                                                            key={v.id}
+                                                            type="button"
+                                                            className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b last:border-b-0 flex flex-col gap-1"
+                                                            onMouseDown={() => {
+                                                                setVehicleNo(v.vehicle_no);
+                                                                applyVehicleDetails(v);
+                                                                setVehicleSuggestions([]);
+                                                                setShowVehicleSuggestions(false);
+                                                            }}
+                                                        >
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="font-mono font-bold text-primary">{v.vehicle_no}</span>
+                                                                <span className="text-muted-foreground uppercase">{v.vehicle_type}</span>
+                                                            </div>
+                                                            <div className="text-slate-500 truncate">{v.owner_name} {v.owner_mobile ? `(${v.owner_mobile})` : ''}</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {vehicleOwnerStatus && <p className="text-[11px] text-muted-foreground mt-1">{vehicleOwnerStatus}</p>}
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Owner Type</Label>
-                                            <Select value={ownerType} onValueChange={setOwnerType}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select Owner Type" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Market">1 - Market</SelectItem>
-                                                    <SelectItem value="ARC">2 - ARC</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Label className={labelCls}>Loading Point</Label>
+                                            <Input className={inputCls} value={loadingPoint} onChange={(e) => setLoadingPoint(e.target.value)} placeholder="e.g. VERNA GOA" />
                                         </div>
-                                        <div className="space-y-1 lg:col-span-2">
-                                            <Label className={labelCls}>Vehicle No</Label>
-                                            <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1 uppercase"} value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} placeholder="AUTO EXTENDER VEHICLE NO." />
-                                                <Button type="button" variant="outline" className="h-9 text-xs bg-slate-100 font-bold px-3">FLEET CODE</Button>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1 lg:col-span-2">
-                                            <Label className={labelCls}>Destination Branch</Label>
-                                            <Select value={destBranch} onValueChange={setDestBranch}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="DESTINATION BRANCH" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {branches.map(b => (
-                                                        <SelectItem key={b.code} value={b.code}>{b.code} - {b.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-1 flex items-end gap-3">
-                                            <div className="space-y-1 flex-1">
-                                                <Label className={labelCls}>On Schedule Route?</Label>
-                                                <div className="flex items-center gap-2 h-9">
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant={onScheduleRoute ? "default" : "outline"}
-                                                        className={`h-7 px-4 text-xs font-bold ${onScheduleRoute ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                                                        onClick={() => setOnScheduleRoute(true)}
-                                                    >Yes</Button>
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant={!onScheduleRoute ? "destructive" : "outline"}
-                                                        className="h-7 px-4 text-xs font-bold"
-                                                        onClick={() => setOnScheduleRoute(false)}
-                                                    >No</Button>
-                                                </div>
-                                            </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Destination Point</Label>
+                                            <Input className={inputCls} value={destinationPoint} onChange={(e) => setDestinationPoint(e.target.value)} placeholder="e.g. MUMBAI" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
 
-                            {/* ---- SECTION 2: Challan Lane Details ---- */}
-                            <Card className="border-none shadow-md overflow-hidden bg-white">
+                            {/* ---- LINKED CNS ---- */}
+                            <Card className="border-none shadow-md overflow-visible bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
-                                        <MapPin className="h-4 w-4" /> Challan Lane Details
+                                        <Link2 className="h-4 w-4" /> Linked CNS Numbers
                                     </CardTitle>
                                 </CardHeader>
-                                <CardContent className="p-4 md:p-6">
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        {/* Loading Side */}
-                                        <div className="space-y-4 border rounded-md p-4 bg-slate-50/50">
-                                            <div className="flex items-center gap-4">
-                                                <Label className={labelCls + " min-w-[80px]"}>Loading At</Label>
-                                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                                    <input type="radio" name="loading_at" value="arc" checked={loadingAt === 'arc'} onChange={() => setLoadingAt('arc')} className="accent-primary" />
-                                                    <span className="text-xs font-bold">ARC Godown</span>
-                                                </label>
-                                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                                    <input type="radio" name="loading_at" value="party" checked={loadingAt === 'party'} onChange={() => setLoadingAt('party')} className="accent-primary" />
-                                                    <span className="text-xs font-bold">Party Godown</span>
-                                                </label>
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div className="space-y-1 sm:col-span-2">
-                                                    <Label className={labelCls}>Loading Branch</Label>
-                                                    <div className="flex gap-2">
-                                                        <Input className={inputCls + " w-20 bg-slate-100 font-mono font-bold"} value={originBranch} readOnly />
-                                                        <Input className={inputCls + " flex-1 bg-slate-100"} value={branches.find(b => b.code === originBranch)?.name || ''} readOnly />
-                                                    </div>
+                                <CardContent className="p-4 md:p-6 space-y-4">
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <div className="relative flex-1">
+                                            <Input
+                                                className={inputCls + " font-mono uppercase"}
+                                                value={linkedCnInput}
+                                                onChange={(e) => setLinkedCnInput(e.target.value.toUpperCase())}
+                                                onFocus={() => { if (cnSuggestions.length > 0) setShowCnSuggestions(true); }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') { e.preventDefault(); handleAddCn(); }
+                                                    if (e.key === 'Escape') setShowCnSuggestions(false);
+                                                }}
+                                                onBlur={() => setTimeout(() => setShowCnSuggestions(false), 150)}
+                                                placeholder="Type CN number to search..."
+                                            />
+                                            {showCnSuggestions && cnSuggestions.length > 0 && (
+                                                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg overflow-hidden">
+                                                    {cnSuggestions.map((cn) => {
+                                                        const weight = cn.charged_weight || cn.actual_weight || 0;
+                                                        return (
+                                                            <button
+                                                                key={cn.id}
+                                                                type="button"
+                                                                className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b last:border-b-0 flex items-center justify-between gap-4"
+                                                                onMouseDown={() => {
+                                                                    setLinkedConsignments(prev => [...prev, cn]);
+                                                                    setLinkedCnInput('');
+                                                                    setCnSuggestions([]);
+                                                                    setShowCnSuggestions(false);
+                                                                }}
+                                                            >
+                                                                <span className="font-mono font-bold text-primary">{cn.cn_no}</span>
+                                                                <span className="text-muted-foreground truncate flex-1 mx-2">{cn.goods_desc || cn.goods_class || '---'}</span>
+                                                                <span className="font-mono text-slate-500 shrink-0">{weight} {cn.load_unit || 'KG'}</span>
+                                                                <span className="text-slate-400 shrink-0">{cn.delivery_point || cn.dest_branch || ''}</span>
+                                                            </button>
+                                                        );
+                                                    })}
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Pin Code</Label>
-                                                    <Input className={inputCls} value={loadingPincode} onChange={(e) => setLoadingPincode(e.target.value)} placeholder="Pin Code" />
+                                            )}
+                                            {showCnSuggestions && cnSuggestions.length === 0 && linkedCnInput.length >= 2 && (
+                                                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg px-3 py-2 text-xs text-muted-foreground">
+                                                    No matching CNs found
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Area Name</Label>
-                                                    <Input className={inputCls} value={loadingArea} onChange={(e) => setLoadingArea(e.target.value)} placeholder="Area Name" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Trip Distance (KM)</Label>
-                                                    <Input type="number" className={inputCls} value={tripDistance} onChange={(e) => setTripDistance(Number(e.target.value))} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Next Loading Points</Label>
-                                                    <Select>
-                                                        <SelectTrigger className={inputCls}>
-                                                            <SelectValue placeholder="NEXT LOADING POINT" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="none">None</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
+                                            )}
                                         </div>
+                                        <Button type="button" onClick={handleAddCn} className="gap-2">
+                                            <Link2 className="h-4 w-4" /> Add CNS
+                                        </Button>
+                                    </div>
 
-                                        {/* Unloading Side */}
-                                        <div className="space-y-4 border rounded-md p-4 bg-slate-50/50">
-                                            <div className="flex items-center gap-4">
-                                                <Label className={labelCls + " min-w-[80px]"}>Unloading At</Label>
-                                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                                    <input type="radio" name="unloading_at" value="arc" checked={unloadingAt === 'arc'} onChange={() => setUnloadingAt('arc')} className="accent-primary" />
-                                                    <span className="text-xs font-bold">ARC Godown</span>
-                                                </label>
-                                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                                    <input type="radio" name="unloading_at" value="party" checked={unloadingAt === 'party'} onChange={() => setUnloadingAt('party')} className="accent-primary" />
-                                                    <span className="text-xs font-bold">Party Godown</span>
-                                                </label>
+                                    <div className="overflow-x-auto rounded-md border">
+                                        <div className="min-w-[920px]">
+                                            <div className="grid grid-cols-[70px_150px_180px_150px_1fr_120px_160px_48px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase text-muted-foreground border-b">
+                                                <div>Sr No</div>
+                                                <div>CNS No</div>
+                                                <div>Package Details</div>
+                                                <div>Type Of Package</div>
+                                                <div>Material Details</div>
+                                                <div>Weight</div>
+                                                <div>Destination</div>
+                                                <div></div>
                                             </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div className="space-y-1 sm:col-span-2">
-                                                    <Label className={labelCls}>Unloading Branch</Label>
-                                                    <Select value={unloadingBranch} onValueChange={setUnloadingBranch}>
-                                                        <SelectTrigger className={inputCls}>
-                                                            <SelectValue placeholder="UNLOADING BRANCH" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {branches.map(b => (
-                                                                <SelectItem key={b.code} value={b.code}>{b.code} - {b.name}</SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
+                                            {linkedConsignments.length === 0 ? (
+                                                <div className="px-3 py-6 text-sm text-muted-foreground text-center">
+                                                    No CNS numbers linked.
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Pin Code</Label>
-                                                    <Input className={inputCls} value={unloadingPincode} onChange={(e) => setUnloadingPincode(e.target.value)} placeholder="PIN CODE" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Area Name</Label>
-                                                    <Input className={inputCls} value={unloadingArea} onChange={(e) => setUnloadingArea(e.target.value)} placeholder="Area Name" />
-                                                </div>
-                                                <div className="space-y-1 sm:col-span-2">
-                                                    <Label className={labelCls}>Expected Trip Complete Date & Time</Label>
-                                                    <div className="flex gap-2">
-                                                        <Input type="date" className={inputCls + " flex-1"} value={expectedTripDate} onChange={(e) => setExpectedTripDate(e.target.value)} />
-                                                        <Input type="time" className={inputCls + " w-28"} value={expectedTripTime} onChange={(e) => setExpectedTripTime(e.target.value)} />
+                                            ) : linkedConsignments.map((cn, index) => {
+                                                const packageSummary = (cn.packages || [])
+                                                    .map((pkg) => `${pkg.qty || 0} ${pkg.method || 'Pkg'}`)
+                                                    .join(', ');
+                                                const packageTypes = Array.from(new Set((cn.packages || []).map((pkg) => pkg.method).filter(Boolean))).join(', ');
+                                                const weight = cn.charged_weight || cn.actual_weight || 0;
+
+                                                return (
+                                                    <div key={cn.id} className="grid grid-cols-[70px_150px_180px_150px_1fr_120px_160px_48px] gap-3 px-3 py-2 text-xs border-b last:border-b-0 items-center">
+                                                        <div className="font-mono">{index + 1}</div>
+                                                        <div className="font-mono font-bold text-primary">{cn.cn_no}</div>
+                                                        <div>{packageSummary || `${cn.no_of_pkg || 0} packages`}</div>
+                                                        <div>{packageTypes || cn.goods_class || '---'}</div>
+                                                        <div className="truncate" title={cn.goods_desc || cn.goods_class || ''}>{cn.goods_desc || cn.goods_class || '---'}</div>
+                                                        <div className="font-mono">{weight} {cn.load_unit || 'KG'}</div>
+                                                        <div className="truncate" title={cn.delivery_point || cn.dest_branch || ''}>{cn.delivery_point || cn.dest_branch || '---'}</div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-destructive"
+                                                            onClick={() => {
+                                                                setLinkedConsignments((prev) => prev.filter((item) => item.id !== cn.id));
+                                                            }}
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
                                                     </div>
-                                                </div>
-                                            </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
 
+
                             {/* ---- SECTION 3: Broker & Owner Information ---- */}
-                            <Card className="border-none shadow-md overflow-hidden bg-white">
+                            <Card className="border-none shadow-md overflow-visible bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
                                         <Users className="h-4 w-4" /> Broker & Owner Information
                                     </CardTitle>
                                 </CardHeader>
-                                <CardContent className="p-4 md:p-6">
+                                <CardContent className="p-4 md:p-6 space-y-6">
+
+                                    {/* Engagement Type selector */}
+                                    <div className="flex items-center gap-4">
+                                        <Label className={labelCls + " min-w-[120px]"}>Engaged Via</Label>
+                                        <Select value={engagementType} onValueChange={(v) => {
+                                            setEngagementType(v as 'broker' | 'direct');
+                                            if (v === 'direct') {
+                                                setBrokerId(''); setBrokerName(''); setBrokerCode('');
+                                                setBrokerAddress(''); setBrokerStatus('');
+                                            }
+                                        }}>
+                                            <SelectTrigger className={inputCls + " w-40"}>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="broker">Broker</SelectItem>
+                                                <SelectItem value="direct">Direct</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                         {/* Broker Side */}
-                                        <div className="space-y-4">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-4 border rounded-md p-4 bg-slate-50/50">
+                                            <p className={labelCls + " mb-1"}>Broker Details</p>
+                                            <div className="grid grid-cols-1 gap-4">
                                                 <div className="space-y-1">
-                                                    <Label className={labelCls}>Broker / Owner Name</Label>
-                                                    <Input className={inputCls} value={brokerName} onChange={(e) => setBrokerName(e.target.value)} placeholder="Engaged Broker/Owner Name" />
+                                                    <Label className={labelCls}>Broker Name</Label>
+                                                    <div className="relative">
+                                                        <Input
+                                                            className={inputCls + (engagementType === 'direct' ? ' bg-slate-100 opacity-60' : '')}
+                                                            value={brokerName}
+                                                            disabled={engagementType === 'direct'}
+                                                            onChange={(e) => {
+                                                                setBrokerName(e.target.value);
+                                                                setBrokerId(''); setBrokerCode(''); setBrokerAddress('');
+                                                                setBrokerStatus('');
+                                                            }}
+                                                            onFocus={() => { brokerFocusedRef.current = true; if (brokerSuggestions.length > 0) setShowBrokerSuggestions(true); }}
+                                                            onBlur={() => setTimeout(() => { brokerFocusedRef.current = false; setShowBrokerSuggestions(false); }, 200)}
+                                                            placeholder={engagementType === 'direct' ? 'Not applicable' : 'Type broker name to search...'}
+                                                            autoComplete="off"
+                                                        />
+                                                        {brokerFetching && <span className="absolute right-2 top-2 text-[10px] text-muted-foreground animate-pulse">Searching...</span>}
+                                                        
+                                                        {showBrokerSuggestions && brokerSuggestions.length > 0 && (
+                                                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg overflow-hidden max-h-60 overflow-y-auto">
+                                                                {brokerSuggestions.map((b) => (
+                                                                    <button
+                                                                        key={b.id}
+                                                                        type="button"
+                                                                        className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b last:border-b-0 flex flex-col gap-1"
+                                                                        onMouseDown={() => {
+                                                                            setBrokerId(b.id);
+                                                                            setBrokerName(b.name);
+                                                                            setBrokerCode(b.code);
+                                                                            setBrokerMobile(b.mobile || '');
+                                                                            setBrokerAddress(b.address || '');
+                                                                            setBrokerStatus('Broker details auto-filled');
+                                                                            setBrokerSuggestions([]);
+                                                                            setShowBrokerSuggestions(false);
+                                                                        }}
+                                                                    >
+                                                                        <div className="font-bold text-primary">{b.name} <span className="text-muted-foreground text-[10px] ml-1">({b.code})</span></div>
+                                                                        <div className="text-slate-500 truncate">{b.mobile} {b.address ? `- ${b.address}` : ''}</div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {brokerStatus && <p className="text-[11px] text-muted-foreground">{brokerStatus}</p>}
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Broker Code / Phone</Label>
-                                                    <div className="flex gap-2">
-                                                        <Input className={inputCls + " w-24"} value={brokerCode} onChange={(e) => setBrokerCode(e.target.value)} placeholder="CODE" />
-                                                        <Input className={inputCls + " flex-1"} value={brokerMobile} onChange={(e) => setBrokerMobile(e.target.value)} placeholder="Phone Number" />
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <Label className={labelCls}>Broker Code</Label>
+                                                        <Input className={inputCls + " bg-slate-100 font-mono"} value={brokerCode} readOnly disabled={engagementType === 'direct'} placeholder="Auto-filled" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className={labelCls}>Mobile <span className="text-[10px] font-normal text-primary">(editable)</span></Label>
+                                                        <Input
+                                                            className={inputCls}
+                                                            value={brokerMobile}
+                                                            onChange={(e) => setBrokerMobile(e.target.value)}
+                                                            placeholder="Phone number"
+                                                        />
                                                     </div>
                                                 </div>
-                                                <div className="space-y-1 sm:col-span-2">
+                                                <div className="space-y-1">
                                                     <Label className={labelCls}>Address</Label>
-                                                    <Input className={inputCls} value={brokerAddress} onChange={(e) => setBrokerAddress(e.target.value)} placeholder="Full Address" />
+                                                    <Input className={inputCls + " bg-slate-100"} value={brokerAddress} readOnly disabled={engagementType === 'direct'} placeholder="Auto-filled" />
+                                                </div>
+                                                {/* Broker Slip fields moved here */}
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <Label className={labelCls}>Broker Slip No.</Label>
+                                                        <Input className={inputCls} value={slipNo} onChange={(e) => setSlipNo(e.target.value)} placeholder="Slip No" disabled={engagementType === 'direct'} />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className={labelCls}>Broker Slip Date</Label>
+                                                        <Input type="date" className={inputCls} value={slipDate} onChange={(e) => setSlipDate(e.target.value)} disabled={engagementType === 'direct'} />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
 
                                         {/* Owner Side */}
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-4">
-                                                <Label className={labelCls + " min-w-[120px]"}>Engaged Through Owner</Label>
-                                                <Checkbox checked={engagedThroughOwner} onCheckedChange={(checked) => setEngagedThroughOwner(!!checked)} id="engaged_owner" />
-                                                <Label htmlFor="engaged_owner" className="text-xs font-bold cursor-pointer">Yes</Label>
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-4 border rounded-md p-4 bg-slate-50/50">
+                                            <p className={labelCls + " mb-1"}>Vehicle Owner Details <span className="text-[10px] normal-case font-normal">(auto-filled from vehicle no.)</span></p>
+                                            <div className="grid grid-cols-1 gap-4">
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>Owner Name / Mobile</Label>
                                                     <div className="flex gap-2">
-                                                        <Input className={inputCls + " flex-1"} value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Owner Name" />
-                                                        <Input className={inputCls + " w-32"} value={ownerMobile} onChange={(e) => setOwnerMobile(e.target.value)} placeholder="Mobile No" />
+                                                        <Input className={inputCls + " flex-1 bg-slate-100"} value={ownerName} readOnly placeholder="Owner Name" />
+                                                        <Input className={inputCls + " w-32 bg-slate-100"} value={ownerMobile} readOnly placeholder="Mobile No" />
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className={labelCls}>PAN No / Tel No</Label>
                                                     <div className="flex gap-2">
-                                                        <Input className={inputCls + " flex-1 uppercase"} value={ownerPan} onChange={(e) => setOwnerPan(e.target.value)} placeholder="PAN NO." />
-                                                        <Input className={inputCls + " w-32"} value={ownerTel} onChange={(e) => setOwnerTel(e.target.value)} placeholder="TEL NO." />
+                                                        <Input className={inputCls + " flex-1 uppercase bg-slate-100"} value={ownerPan} readOnly placeholder="PAN NO." />
+                                                        <Input className={inputCls + " w-32 bg-slate-100"} value={ownerTel} readOnly placeholder="TEL NO." />
                                                     </div>
                                                 </div>
-                                                <div className="space-y-1 sm:col-span-2">
+                                                <div className="space-y-1">
                                                     <Label className={labelCls}>Address</Label>
-                                                    <Input className={inputCls} value={ownerAddress} onChange={(e) => setOwnerAddress(e.target.value)} placeholder="Owner Address" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Owner Slip No.</Label>
-                                                    <Input className={inputCls} value={slipNo} onChange={(e) => setSlipNo(e.target.value)} placeholder="Slip No" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <Label className={labelCls}>Slip Date</Label>
-                                                    <Input type="date" className={inputCls} value={slipDate} onChange={(e) => setSlipDate(e.target.value)} />
+                                                    <Input className={inputCls + " bg-slate-100"} value={ownerAddress} readOnly placeholder="Owner Address" />
                                                 </div>
                                             </div>
                                         </div>
@@ -648,80 +1119,57 @@ export default function NewChallanPage() {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-4 md:p-6">
+                                    <p className="text-[11px] text-muted-foreground mb-4 flex items-center gap-1.5">🔒 All fields auto-filled from Vehicle Master when vehicle no is entered. Edit in <strong>Admin → Vehicle Management</strong>.</p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Vehicle Type</Label>
-                                            <Select value={vehicleType} onValueChange={setVehicleType}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select Type" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="open">Open Body</SelectItem>
-                                                    <SelectItem value="container">Container</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Input className={inputCls + " bg-slate-100"} value={vehicleType} readOnly />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Permit No</Label>
-                                            <Input className={inputCls} value={permitNo} onChange={(e) => setPermitNo(e.target.value)} placeholder="Permit No" />
+                                            <Input className={inputCls + " bg-slate-100"} value={permitNo} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Permit Validity</Label>
-                                            <Input type="date" className={inputCls} value={permitValidity} onChange={(e) => setPermitValidity(e.target.value)} />
+                                            <Input type="date" className={inputCls + " bg-slate-100"} value={permitValidity} readOnly />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Vehicle Make</Label>
-                                            <Select value={vehicleMake} onValueChange={setVehicleMake}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select Make" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="tata">TATA MOTORS</SelectItem>
-                                                    <SelectItem value="ashok">ASHOK LEYLAND</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Input className={inputCls + " bg-slate-100"} value={vehicleMake} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Engine No</Label>
-                                            <Input className={inputCls} value={engineNo} onChange={(e) => setEngineNo(e.target.value)} placeholder="Engine No" />
+                                            <Input className={inputCls + " bg-slate-100"} value={engineNo} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Chasis No</Label>
-                                            <Input className={inputCls} value={chasisNo} onChange={(e) => setChasisNo(e.target.value)} placeholder="Chasis No" />
+                                            <Input className={inputCls + " bg-slate-100"} value={chasisNo} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Tax Token No</Label>
-                                            <Input className={inputCls} value={taxTokenNo} onChange={(e) => setTaxTokenNo(e.target.value)} placeholder="Tax Token No" />
+                                            <Input className={inputCls + " bg-slate-100"} value={taxTokenNo} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Tax Token Validity</Label>
-                                            <Input type="date" className={inputCls} value={taxTokenValidity} onChange={(e) => setTaxTokenValidity(e.target.value)} />
+                                            <Input type="date" className={inputCls + " bg-slate-100"} value={taxTokenValidity} readOnly />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Tax Token Issued By</Label>
-                                            <Input className={inputCls} value={taxTokenIssuedBy} onChange={(e) => setTaxTokenIssuedBy(e.target.value)} placeholder="Issued By" />
+                                            <Input className={inputCls + " bg-slate-100"} value={taxTokenIssuedBy} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Vehicle Model</Label>
-                                            <Select value={vehicleModel} onValueChange={setVehicleModel}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select Model" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="lpt">LPT 1613</SelectItem>
-                                                    <SelectItem value="lpk">LPK 2518</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Input className={inputCls + " bg-slate-100"} value={vehicleModel} readOnly placeholder="Auto-filled" />
                                         </div>
                                     </div>
                                 </CardContent>
                             </Card>
 
-                            {/* ---- SECTION 5: Insurance & eWaybill ---- */}
+                            {/* ---- SECTION 5: Insurance ---- */}
                             <Card className="border-none shadow-md overflow-hidden bg-white">
                                 <CardHeader className="bg-primary/5 py-3 px-6 border-b">
                                     <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
-                                        <Shield className="h-4 w-4" /> Insurance & eWaybill Information
+                                        <Shield className="h-4 w-4" /> Insurance Details
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-4 md:p-6">
@@ -729,45 +1177,21 @@ export default function NewChallanPage() {
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Policy No & Valid Date</Label>
                                             <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1"} placeholder="Policy No" value={policyNo} onChange={(e) => setPolicyNo(e.target.value)} />
-                                                <Input type="date" className={inputCls + " w-36"} value={policyValidity} onChange={(e) => setPolicyValidity(e.target.value)} />
+                                                <Input className={inputCls + " flex-1 bg-slate-100"} value={policyNo} readOnly placeholder="Auto-filled" />
+                                                <Input type="date" className={inputCls + " w-36 bg-slate-100"} value={policyValidity} readOnly />
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className={labelCls}>Ins Company Name & City</Label>
-                                            <Select value={insCompany} onValueChange={setInsCompany}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select Insurance Company" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="lic">LIC</SelectItem>
-                                                    <SelectItem value="bajaj">BAJAJ ALLIANZ</SelectItem>
-                                                    <SelectItem value="icici">ICICI LOMBARD</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Label className={labelCls}>Insurance Company</Label>
+                                            <Input className={inputCls + " bg-slate-100"} value={insCompany} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Insurance City</Label>
-                                            <Select value={insCity} onValueChange={setInsCity}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Insurance City" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="goa">GOA</SelectItem>
-                                                    <SelectItem value="mumbai">MUMBAI</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Input className={inputCls + " bg-slate-100"} value={insCity} readOnly placeholder="Auto-filled" />
                                         </div>
                                         <div className="space-y-1 lg:col-span-2">
                                             <Label className={labelCls}>Finance Detail</Label>
-                                            <Input className={inputCls} placeholder="Finance Detail" value={financeDetail} onChange={(e) => setFinanceDetail(e.target.value)} />
-                                        </div>
-                                        <div className="space-y-1 lg:col-span-2">
-                                            <Label className={labelCls}>Cons. eWaybill No & Date</Label>
-                                            <div className="flex gap-2">
-                                                <Input className={inputCls + " flex-1"} placeholder="eWaybill No" value={ewaybillNo} onChange={(e) => setEwaybillNo(e.target.value)} />
-                                                <Input type="date" className={inputCls + " w-36"} value={ewaybillDate} onChange={(e) => setEwaybillDate(e.target.value)} />
-                                            </div>
+                                            <Input className={inputCls + " bg-slate-100"} value={financeDetail} readOnly placeholder="Auto-filled" />
                                         </div>
                                     </div>
                                 </CardContent>
@@ -798,18 +1222,9 @@ export default function NewChallanPage() {
                                             <Label className={labelCls}>Driver Mobile</Label>
                                             <Input className={inputCls} value={driverMobile} onChange={(e) => setDriverMobile(e.target.value)} placeholder="Driver Mobile" />
                                         </div>
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Driver RTO State</Label>
-                                            <Select value={driverRto} onValueChange={setDriverRto}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="RTO State" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="goa">GOA</SelectItem>
-                                                    <SelectItem value="maharashtra">MAHARASHTRA</SelectItem>
-                                                    <SelectItem value="karnataka">KARNATAKA</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                        <div className="space-y-1 lg:col-span-2">
+                                            <Label className={labelCls}>Driver Address</Label>
+                                            <Input className={inputCls} value={driverAddress} onChange={(e) => setDriverAddress(e.target.value)} placeholder="Driver Address" />
                                         </div>
                                         <div className="flex items-end pb-1 h-9 space-y-1">
                                             <label className="flex items-center gap-2 cursor-pointer">
@@ -856,171 +1271,148 @@ export default function NewChallanPage() {
                                         <CreditCard className="h-4 w-4" /> Hire Details
                                     </CardTitle>
                                 </CardHeader>
-                                <CardContent className="p-4 md:p-6">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-x-4 gap-y-4">
-                                        {/* Column 1: Quantities */}
-                                        <div className="lg:col-span-2 space-y-3">
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>No Of CNs</Label>
-                                                <Input type="number" className={inputCls} defaultValue="1"
-                                                    onChange={(e) => updateHire('noOfCns', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>No Of Package</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('noOfPackage', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Actual Weight (KG)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('actualWeight', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Charge Weight (KG)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('chargeWeight', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Vehicle Capacity (KG)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('vehicleCapacity', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>No Of Loading Points</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('noOfLoadingPoints', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>No Of Unloading Points</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('noOfUnloadingPoints', Number(e.target.value))} />
-                                            </div>
+                                <CardContent className="p-4 md:p-6 space-y-6">
+                                    {/* 1. Metrics Row (CNs / Packaging / Weight) */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b pb-4">
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>No Of CNs</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-slate-50"} value={hireDetails.noOfCns} readOnly />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>No Of Package</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-slate-50"} value={hireDetails.noOfPackage} readOnly />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Actual Weight (MT)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-slate-50"} value={hireDetails.actualWeight} readOnly />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Charged Weight (MT)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="Enter Weight"
+                                                value={hireDetails.chargeWeight}
+                                                onChange={(e) => updateHire('chargeWeight', Number(e.target.value))} />
+                                        </div>
+                                    </div>
+
+                                    {/* 2. Rates & Core Hire Row */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50/50 p-4 rounded-md border">
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Rate Type</Label>
+                                            <Select value={hireDetails.rateType} onValueChange={(v) => updateHire('rateType', v)}>
+                                                <SelectTrigger className={inputCls + " bg-white"}>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="mt">Per MT</SelectItem>
+                                                    <SelectItem value="fixed">Fixed</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
-                                        {/* Column 2: Rate / Extras */}
-                                        <div className="lg:col-span-2 space-y-3">
+                                        {hireDetails.rateType === 'mt' ? (
                                             <div className="space-y-1">
-                                                <Label className={labelCls}>Rate / KG (Rs.)</Label>
-                                                <Input type="number" className={redValueCls} value={hireDetails.ratePerKg}
-                                                    onChange={(e) => updateHire('ratePerKg', Number(e.target.value))} />
+                                                <Label className={labelCls}>Rate (Per MT)</Label>
+                                                <Input type="text" inputMode="numeric" className={inputCls + " bg-white"} placeholder="0.00"
+                                                    value={hireDetails.rate}
+                                                    onChange={(e) => updateHire('rate', Number(e.target.value))} />
                                             </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Hire (Rs.)</Label>
-                                                <Input type="number" className={redValueCls} value={hireDetails.hire}
-                                                    onChange={(e) => updateHire('hire', Number(e.target.value))} />
+                                        ) : (
+                                            <div className="flex items-end pb-2 h-full">
+                                                <span className="text-xs italic text-muted-foreground">Enter lump sum amount in Hire field directly.</span>
                                             </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Extra: Over weight (Rs.)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('extraOverWeight', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Over Length (Rs.)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('overLength', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Over Height (Rs.)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('overHeight', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Over Width (Rs.)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('overWidth', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Extra KM Charges (Rs.)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('extraKmCharges', Number(e.target.value))} />
-                                            </div>
-                                        </div>
+                                        )}
 
-                                        {/* Column 3: Charges / Totals */}
-                                        <div className="lg:col-span-2 space-y-3">
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Detent Charges (Rs.)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('detentCharges', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Transit Pass (Rs.)</Label>
-                                                <Input type="number" className={inputCls} defaultValue="0"
-                                                    onChange={(e) => updateHire('transitPass', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Total Extra (Rs.)</Label>
-                                                <div className={redValueCls + " flex items-center"}>{hireDetails.totalExtra.toFixed(0)}</div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Total Hire (Rs.)</Label>
-                                                <div className={redValueCls + " flex items-center"}>{hireDetails.totalHire.toFixed(0)}</div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Adv Payment (Rs.)</Label>
-                                                <Input type="number" className={redValueCls} value={hireDetails.advPayment}
-                                                    onChange={(e) => updateHire('advPayment', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>TDS % & Less TDS</Label>
-                                                <div className="flex gap-2 items-center">
-                                                    <Input type="number" className={inputCls + " w-16"} defaultValue="0"
-                                                        onChange={(e) => updateHire('tdsPercent', Number(e.target.value))} />
-                                                    <span className="text-xs font-bold text-muted-foreground">%</span>
-                                                    <div className="h-9 px-2 flex items-center text-sm font-bold text-red-600 flex-1">{hireDetails.lessTds}</div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls + " text-primary"}>Hire (Rs.)</Label>
+                                            {hireDetails.rateType === 'mt' ? (
+                                                <div className={redValueCls + " font-bold text-lg px-3 bg-white border rounded-md flex items-center h-9"}>
+                                                    {hireDetails.hire}
                                                 </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Petro Card Branch</Label>
-                                                <Select value={hireDetails.petroCardBranch} onValueChange={(v) => updateHire('petroCardBranch', v)}>
-                                                    <SelectTrigger className={inputCls}>
-                                                        <SelectValue placeholder="Petro card Branch" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="none">None</SelectItem>
-                                                        {branches.map(b => (
-                                                            <SelectItem key={b.code} value={b.code}>{b.code} - {b.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                            ) : (
+                                                <Input type="text" inputMode="numeric" className={redValueCls + " bg-white font-bold text-lg"} placeholder="Enter Hire Amt"
+                                                    value={hireDetails.hire}
+                                                    onChange={(e) => updateHire('hire', Number(e.target.value))} />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* 3. Additional Charges */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Over Length (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.overLength}
+                                                onChange={(e) => updateHire('overLength', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Over Height (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.overHeight}
+                                                onChange={(e) => updateHire('overHeight', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Over Width (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.overWidth}
+                                                onChange={(e) => updateHire('overWidth', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Extra KM Charges (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.extraKmCharges}
+                                                onChange={(e) => updateHire('extraKmCharges', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Detention Charge</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.detentCharges}
+                                                onChange={(e) => updateHire('detentCharges', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Extra Weight (Rs.)</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.extraOverWeight}
+                                                onChange={(e) => updateHire('extraOverWeight', Number(e.target.value))} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Unloading Charges</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls} placeholder="0"
+                                                value={hireDetails.unloadingCharges}
+                                                onChange={(e) => updateHire('unloadingCharges', Number(e.target.value))} />
+                                        </div>
+                                    </div>
+
+                                    {/* 4. Final Totals / Payment Row */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-primary/5 p-4 rounded-lg border border-primary/10 mt-4">
+                                        <div className="space-y-1 bg-white p-2 rounded shadow-sm">
+                                            <Label className={labelCls + " text-primary"}>Total Hire</Label>
+                                            <div className="font-black text-xl text-primary">₹{hireDetails.totalHire.toLocaleString()}</div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>Advance Payment</Label>
+                                            <Input type="text" inputMode="numeric" className={inputCls + " bg-white font-bold text-green-700"}
+                                                value={hireDetails.advPayment}
+                                                onChange={(e) => updateHire('advPayment', Number(e.target.value))} />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <Label className={labelCls}>TDS Deduction</Label>
+                                            <div className="flex gap-2 items-center">
+                                                <div className="relative flex-1">
+                                                    <Input type="text" inputMode="numeric" className={inputCls + " bg-white pr-6"}
+                                                        value={hireDetails.tdsPercent}
+                                                        onChange={(e) => updateHire('tdsPercent', Number(e.target.value))} />
+                                                    <span className="absolute right-2 top-2 text-xs text-slate-400">%</span>
+                                                </div>
+                                                <span className="text-xs font-bold">=</span>
+                                                <div className="font-bold text-red-600 flex-1">₹{hireDetails.lessTds.toLocaleString()}</div>
                                             </div>
                                         </div>
 
-                                        {/* Column 4: Card / Balance */}
-                                        <div className="lg:col-span-2 space-y-3">
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Credit Date</Label>
-                                                <Input type="date" className={inputCls} value={hireDetails.creditDate} onChange={(e) => updateHire('creditDate', e.target.value)} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Card Amount (Rs.)</Label>
-                                                <Input type="number" className={redValueCls} value={hireDetails.cardAmount} onChange={(e) => updateHire('cardAmount', Number(e.target.value))} />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Generic No</Label>
-                                                <Input className={inputCls} value={hireDetails.genericNo} onChange={(e) => updateHire('genericNo', e.target.value)} placeholder="Generic No" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Card No</Label>
-                                                <Input className={inputCls} value={hireDetails.cardNo} onChange={(e) => updateHire('cardNo', e.target.value)} placeholder="Card No" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Bal Amount (Rs.)</Label>
-                                                <div className={redValueCls + " flex items-center font-bold text-lg"}>{hireDetails.balAmount.toFixed(0)}</div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <Label className={labelCls}>Bal Payment Branch</Label>
-                                                <Select value={hireDetails.balPaymentBranch} onValueChange={(v) => updateHire('balPaymentBranch', v)}>
-                                                    <SelectTrigger className={inputCls}>
-                                                        <SelectValue placeholder="LBH BRANCH" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {branches.map(b => (
-                                                            <SelectItem key={b.code} value={b.code}>{b.code} - {b.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
+                                        <div className="space-y-1 bg-yellow-50 p-2 rounded shadow-sm border border-yellow-200">
+                                            <Label className={labelCls + " text-red-800"}>Balance Payment</Label>
+                                            <div className="font-black text-xl text-red-700">₹{hireDetails.balAmount.toLocaleString()}</div>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -1034,23 +1426,7 @@ export default function NewChallanPage() {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-4 md:p-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Engaged By</Label>
-                                            <Select value={engagedBy} onValueChange={setEngagedBy}>
-                                                <SelectTrigger className={inputCls}>
-                                                    <SelectValue placeholder="Select Employee" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="emp1">AMIT PANDEY [A8644]</SelectItem>
-                                                    <SelectItem value="emp2">RAHUL SHARMA [R1234]</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label className={labelCls}>Engaged Date</Label>
-                                            <Input type="date" className={inputCls} value={engagedDate} onChange={(e) => setEngagedDate(e.target.value)} />
-                                        </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-1 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Remarks</Label>
                                             <Input className={inputCls} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Remarks" />
@@ -1062,7 +1438,7 @@ export default function NewChallanPage() {
                             {/* Bottom Action Bar */}
                             <div className="flex justify-end gap-3 py-4">
                                 <Button type="button" variant="outline" onClick={() => router.back()} className="min-w-[100px]">Cancel</Button>
-                                <Button type="button" variant="outline" className="gap-2"><RotateCcw className="h-4 w-4" /> Reset</Button>
+                                <Button type="button" variant="outline" onClick={handleReset} className="gap-2"><RotateCcw className="h-4 w-4" /> Reset</Button>
                                 <Button onClick={handleSave} disabled={isSubmitting} className="gap-2 min-w-[140px] shadow-lg shadow-primary/20">
                                     <Save className="h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save Challan'}
                                 </Button>
@@ -1092,5 +1468,13 @@ export default function NewChallanPage() {
                 </Tabs>
             </div>
         </div>
+    );
+}
+
+export default function NewChallanPage() {
+    return (
+        <Suspense fallback={<div className="flex justify-center items-center h-screen">Loading form details...</div>}>
+            <NewChallanPageContent />
+        </Suspense>
     );
 }

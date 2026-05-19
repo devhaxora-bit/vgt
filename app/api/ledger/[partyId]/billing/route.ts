@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { findDuplicateBillRefNo, prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
 
 // POST /api/ledger/[partyId]/billing
 // Create a billing record for a party (admin only)
@@ -37,29 +38,58 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { billing_date, billing_period_from, billing_period_to, amount, bill_ref_no, narration, covered_cn_nos } = body;
+    const { billing_date, billing_period_from, billing_period_to, bill_ref_no, narration, covered_cn_nos, added_other_charges_amount } = body;
+    const normalizedBillRefNo = String(bill_ref_no || '').trim();
 
-    if (!narration || !amount) {
-        return NextResponse.json({ error: 'narration and amount are required' }, { status: 400 });
+    if (!billing_date || !normalizedBillRefNo) {
+        return NextResponse.json({ error: 'billing_date and bill_ref_no are required' }, { status: 400 });
     }
 
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-        return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
+    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateBillRefNo(supabase, {
+        partyId,
+        billRefNo: normalizedBillRefNo,
+    });
+
+    if (duplicateBillRefError) {
+        return NextResponse.json({ error: duplicateBillRefError }, { status: 500 });
     }
+
+    if (duplicateRecordId) {
+        return NextResponse.json({ error: 'Bill reference number already exists for this party' }, { status: 400 });
+    }
+
+    const { data: snapshotData, error: snapshotError } = await prepareBillingSnapshot(supabase, {
+        partyId,
+        coveredCnNos: covered_cn_nos,
+        addedOtherChargesAmount: added_other_charges_amount,
+    });
+
+    if (snapshotError || !snapshotData) {
+        return NextResponse.json({ error: snapshotError || 'Failed to prepare bill snapshot' }, { status: 400 });
+    }
+
+    if (snapshotData.finalBillAmount <= 0) {
+        return NextResponse.json({ error: 'Bill amount must be greater than zero' }, { status: 400 });
+    }
+
+    const normalizedNarration = narration?.trim() || `Freight bill ${normalizedBillRefNo}`;
 
     const { data, error } = await supabase
         .from('party_billing_records')
         .insert({
             party_ledger_account_id: account.id,
             party_id: partyId,
-            billing_date: billing_date || new Date().toISOString().split('T')[0],
+            billing_date,
             billing_period_from: billing_period_from || null,
             billing_period_to: billing_period_to || null,
-            amount: amountNum,
-            bill_ref_no: bill_ref_no || null,
-            narration,
-            covered_cn_nos: covered_cn_nos || null,
+            amount: snapshotData.finalBillAmount,
+            bill_ref_no: normalizedBillRefNo,
+            narration: normalizedNarration,
+            covered_cn_nos: snapshotData.normalizedCoveredCnNos,
+            cn_total_amount: snapshotData.cnTotalAmount,
+            added_other_charges_amount: snapshotData.addedOtherChargesAmount,
+            consignment_snapshot: snapshotData.consignmentSnapshot,
+            extra_charge_items: [],
             created_by: user.id,
         })
         .select()

@@ -4,19 +4,18 @@ import { z } from 'zod';
 
 // Validation schema for creating a challan
 const createChallanSchema = z.object({
+    challan_no: z.string().min(1, 'Challan number is required'),
+    date_from: z.string().optional(),
     origin_branch_code: z.string().min(1, 'Origin branch is required'),
-    destination_branch_code: z.string().min(1, 'Destination branch is required'),
-    owner_type: z.string().default('MARKET'),
-    challan_type: z.enum(['MAIN', 'FOC']),
+    destination_branch_code: z.string().optional().nullable(),
+    engagement_type: z.enum(['broker', 'direct']).default('broker'),
     vehicle_no: z.string().min(1, 'Vehicle number is required'),
     driver_name: z.string().optional(),
     driver_mobile: z.string().optional(),
-    total_hire_amount: z.number().min(0).default(0),
-    extra_hire_amount: z.number().min(0).default(0),
-    advance_amount: z.number().min(0).default(0),
-    date_from: z.string().optional(), // ISO date string
-    date_to: z.string().optional(),   // ISO date string
-});
+    total_hire_amount: z.coerce.number().min(0).default(0),
+    extra_hire_amount: z.coerce.number().min(0).default(0),
+    advance_amount: z.coerce.number().min(0).default(0),
+}).passthrough();
 
 export async function GET(request: Request) {
     const supabase = await createClient();
@@ -47,8 +46,8 @@ export async function GET(request: Request) {
         query = query.or(`origin_branch_code.eq.${branch},destination_branch_code.eq.${branch}`);
     }
 
-    if (type) {
-        query = query.eq('challan_type', type);
+    if (type && type !== 'ALL') {
+        query = query.eq('engagement_type', type);
     }
 
     if (status) {
@@ -81,31 +80,54 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const parseResult = createChallanSchema.safeParse(await request.json());
+    if (!parseResult.success) {
+        return NextResponse.json(
+            { error: parseResult.error.issues[0]?.message || 'Invalid challan data' },
+            { status: 400 }
+        );
+    }
+
+    const body = parseResult.data;
+
+    // Check if any linked CNs are already assigned to another challan
+    const linkedCns: string[] = Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [];
+    if (linkedCns.length > 0) {
+        const { data: conflictChallans } = await supabase
+            .from('challans')
+            .select('challan_no, linked_cn_nos')
+            .filter('linked_cn_nos', 'cs', JSON.stringify(linkedCns));
+
+        if (conflictChallans && conflictChallans.length > 0) {
+            const conflicts: string[] = [];
+            conflictChallans.forEach((ch: { challan_no: string; linked_cn_nos: string[] }) => {
+                (ch.linked_cn_nos || []).forEach((cn: string) => {
+                    if (linkedCns.includes(cn)) conflicts.push(`${cn} (in Challan ${ch.challan_no})`);
+                });
+            });
+            if (conflicts.length > 0) {
+                return NextResponse.json(
+                    { error: `The following CNs are already linked to another challan: ${conflicts.join(', ')}` },
+                    { status: 409 }
+                );
+            }
+        }
+    }
 
     // Prepare insert data from body
-    const insertData: any = {
+    const insertData: Record<string, unknown> = {
         challan_no: body.challan_no,
+        challan_type: body.challan_type || 'MAIN',
+        date_from: body.date_from || new Date().toISOString().split('T')[0],
+        truck_schedule_date: body.truck_schedule_date || null,
         origin_branch_code: body.origin_branch_code,
-        destination_branch_code: body.destination_branch_code,
-        challan_mode: body.challan_type || 'MAIN',
-        sub_type: body.sub_type || 'Route',
-        owner_type: body.owner_type || 'MARKET',
+        destination_branch_code: body.destination_branch_code || null,
+        engagement_type: body.engagement_type || 'broker',
         vehicle_no: body.vehicle_no,
         driver_name: body.driver_name,
         driver_mobile: body.driver_mobile,
-        
-        // Lane Details
-        loading_at: body.loading_at,
-        unloading_at: body.unloading_at,
-        loading_branch_code: body.loading_branch_code,
-        unloading_branch_code: body.unloading_branch_code,
-        loading_pincode: body.loading_pincode,
-        unloading_pincode: body.unloading_pincode,
-        loading_area: body.loading_area,
-        unloading_area: body.unloading_area,
-        trip_distance: body.trip_distance || 0,
-        expected_trip_complete_at: body.expected_trip_complete_at,
+        loading_point: body.loading_point,
+        destination_point: body.destination_point,
 
         // Owner/Broker
         owner_pan: body.owner_pan,
@@ -138,8 +160,6 @@ export async function POST(request: Request) {
         insurance_company_name: body.insurance_company_name,
         insurance_city: body.insurance_city,
         finance_detail: body.finance_detail,
-        ewaybill_no: body.ewaybill_no,
-        ewaybill_date: body.ewaybill_date,
 
         // ITDS
         itds_ref_branch: body.itds_ref_branch,
@@ -149,7 +169,7 @@ export async function POST(request: Request) {
         // Driver
         driver_dl_no: body.driver_dl_no,
         driver_dl_validity: body.driver_dl_validity,
-        driver_rto: body.driver_rto,
+        driver_address: body.driver_address,
         trip_tracking_consent: body.trip_tracking_consent || false,
 
         // Financials
@@ -165,20 +185,14 @@ export async function POST(request: Request) {
         extra_km_charges: body.extra_km_charges || 0,
         detent_charges: body.detent_charges || 0,
         transit_pass_charges: body.transit_pass_charges || 0,
+        unloading_charges: body.unloading_charges || 0,
         total_extra_charges: body.total_extra_charges || 0,
         tds_percent: body.tds_percent || 0,
         less_tds: body.less_tds || 0,
-        bal_payment_branch_code: body.bal_payment_branch_code,
-        card_amount: body.card_amount || 0,
-        generic_no: body.generic_no,
-        card_no: body.card_no,
-        credit_date: body.credit_date,
-        petro_card_branch_code: body.petro_card_branch_code,
 
         // Others
-        engaged_by: body.engaged_by,
-        engaged_date: body.engaged_date,
         remarks: body.remarks,
+        linked_cn_nos: Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [],
 
         created_by: user.id,
         status: 'ACTIVE'
@@ -192,22 +206,25 @@ export async function POST(request: Request) {
 
     if (error) {
         console.error("Failed to create challan:", error);
+        if (error.code === '23505') {
+            return NextResponse.json({ error: `Challan number ${body.challan_no} already exists for this branch. Please use a different number.` }, { status: 409 });
+        }
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // Increment sequence in branches table
-    if (insertData.origin_branch_code) {
+    if (body.origin_branch_code) {
         const { data: branchData } = await supabase
             .from("branches")
             .select("next_challan_no")
-            .eq("code", insertData.origin_branch_code.toUpperCase())
+            .eq("code", body.origin_branch_code.toUpperCase())
             .single();
 
         if (branchData) {
             await supabase
                 .from("branches")
                 .update({ next_challan_no: (branchData.next_challan_no || 0) + 1 })
-                .eq("code", insertData.origin_branch_code.toUpperCase());
+                .eq("code", body.origin_branch_code.toUpperCase());
         }
     }
 

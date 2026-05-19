@@ -1,5 +1,134 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from "next/server";
+import { resolveBillingPartyId } from '@/lib/server/resolveBillingParty';
+
+type ManagedCnRange = {
+    id: string;
+    range_start: number;
+    range_end: number;
+    next_cn_no: number;
+    status: 'active' | 'exhausted' | 'inactive';
+};
+
+const parseCnInteger = (value: unknown) => {
+    const parsed = parseInt(String(value), 10);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
+    if (!error) return false;
+    if (error.code === '42P01' || error.code === '42883') return true;
+
+    const message = String(error.message || '').toLowerCase();
+    return (
+        message.includes('branch_cn_ranges')
+        || message.includes('branch_cn_reserved_ranges')
+        || message.includes('next_available_branch_cn')
+        || message.includes('advance_branch_cn_sequence')
+    );
+};
+
+const normalizeNextAvailable = (
+    candidate: number,
+    rangeEnd: number,
+    reservedRanges: Array<{ range_start: number; range_end: number }>
+) => {
+    let next = candidate;
+
+    while (next <= rangeEnd) {
+        const reserved = reservedRanges.find((range) => next >= range.range_start && next <= range.range_end);
+        if (!reserved) {
+            return next;
+        }
+        next = reserved.range_end + 1;
+    }
+
+    return next;
+};
+
+const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClient>>, branchCode: string) => {
+    const { data: branch, error: branchError } = await supabase
+        .from('branches')
+        .select('id, code, next_cn_no')
+        .eq('code', branchCode)
+        .single();
+
+    if (branchError || !branch) {
+        return { error: `Booking branch ${branchCode} was not found.` };
+    }
+
+    const { data: cnRanges, error: cnRangesError } = await supabase
+        .from('branch_cn_ranges')
+        .select('id, range_start, range_end, next_cn_no, status')
+        .eq('branch_id', branch.id)
+        .order('created_at', { ascending: false });
+
+    if (cnRangesError) {
+        if (isMissingCnManagementSchema(cnRangesError)) {
+            return {
+                branch,
+                mode: 'legacy' as const,
+                activeRange: null,
+                latestRange: null,
+                expectedCn: Number(branch.next_cn_no || 800001),
+            };
+        }
+
+        return { error: cnRangesError.message };
+    }
+
+    const activeRange = ((cnRanges || []) as ManagedCnRange[]).find((range) => range.status === 'active') || null;
+    const latestRange = ((cnRanges || []) as ManagedCnRange[])[0] || null;
+
+    if (activeRange) {
+        const { data: reservedRanges, error: reservedRangesError } = await supabase
+            .from('branch_cn_reserved_ranges')
+            .select('range_start, range_end')
+            .eq('branch_id', branch.id)
+            .lte('range_start', activeRange.range_end)
+            .gte('range_end', activeRange.range_start)
+            .order('range_start', { ascending: true });
+
+        if (reservedRangesError) {
+            if (isMissingCnManagementSchema(reservedRangesError)) {
+                return {
+                    branch,
+                    mode: 'legacy' as const,
+                    activeRange: null,
+                    latestRange: null,
+                    expectedCn: Number(branch.next_cn_no || 800001),
+                };
+            }
+
+            return { error: reservedRangesError.message };
+        }
+
+        const expectedCn = normalizeNextAvailable(
+            Number(activeRange.next_cn_no),
+            Number(activeRange.range_end),
+            (reservedRanges || []).map((range) => ({
+                range_start: Number(range.range_start),
+                range_end: Number(range.range_end),
+            }))
+        );
+
+        return {
+            branch,
+            mode: 'range' as const,
+            activeRange,
+            latestRange,
+            expectedCn,
+        };
+    }
+
+    return {
+        branch,
+        mode: (latestRange ? 'range' : 'legacy') as 'range' | 'legacy',
+        activeRange: null,
+        latestRange,
+        expectedCn: latestRange ? null : Number(branch.next_cn_no || 800001),
+    };
+};
 
 export async function GET(request: Request) {
     const supabase = await createClient();
@@ -48,7 +177,7 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const insertData = {
+    const insertData: Record<string, unknown> = {
         cn_no: body.cn_no,
         bkg_date: body.bkg_date || new Date().toISOString().split("T")[0],
         booking_branch: body.booking_branch,
@@ -117,6 +246,7 @@ export async function POST(request: Request) {
         mhc_charges: parseFloat(body.mhc_charges) || 0,
         door_coll_charges: parseFloat(body.door_coll_charges) || 0,
         door_del_charges: parseFloat(body.door_del_charges) || 0,
+        traffic_challan_charges: parseFloat(body.traffic_challan_charges) || 0,
         other_charges: parseFloat(body.other_charges) || 0,
         total_freight: parseFloat(body.total_freight) || 0,
         advance_amount: parseFloat(body.advance_amount) || 0,
@@ -154,44 +284,65 @@ export async function POST(request: Request) {
         created_by: user.id,
     };
 
-    // Auto-resolve billing_party_id for ledger linkage (Priority: GSTIN -> Name -> Code)
-    let billingPartyRow = null;
-
-    if (body.billing_party_gst?.trim()) {
-        const { data } = await supabase
-            .from('parties')
-            .select('id')
-            .ilike('gstin', body.billing_party_gst.trim())
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-        billingPartyRow = data;
+    const { billingPartyId, error: billingPartyError } = await resolveBillingPartyId(supabase, body);
+    if (billingPartyError) {
+        return NextResponse.json({ error: billingPartyError }, { status: 400 });
     }
 
-    if (!billingPartyRow && body.billing_party?.trim()) {
-        const { data } = await supabase
-            .from('parties')
-            .select('id')
-            .ilike('name', body.billing_party.trim())
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-        billingPartyRow = data;
+    if (billingPartyId) {
+        insertData.billing_party_id = billingPartyId;
     }
 
-    if (!billingPartyRow && body.billing_party_code?.trim()) {
-        const { data } = await supabase
-            .from('parties')
-            .select('id')
-            .ilike('code', body.billing_party_code.trim())
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-        billingPartyRow = data;
+    if (typeof insertData.booking_branch !== "string" || !insertData.booking_branch) {
+        return NextResponse.json({ error: "Booking branch is required" }, { status: 400 });
     }
 
-    if (billingPartyRow?.id) {
-        (insertData as any).billing_party_id = billingPartyRow.id;
+    const bookingBranchCode = insertData.booking_branch.toUpperCase();
+    const submittedCnNo = parseCnInteger(insertData.cn_no);
+    const branchCnContext = await getBranchCnContext(supabase, bookingBranchCode);
+
+    if (branchCnContext.error) {
+        return NextResponse.json({ error: branchCnContext.error }, { status: 400 });
+    }
+
+    if (branchCnContext.mode === 'range') {
+        if (!branchCnContext.activeRange) {
+            const exhaustedRange = branchCnContext.latestRange;
+            const message = exhaustedRange?.status === 'exhausted'
+                ? `CN range ${exhaustedRange.range_start}-${exhaustedRange.range_end} is exhausted for branch ${bookingBranchCode}. Update Branch Management with a new range before creating more CNs.`
+                : `No active CN range is configured for branch ${bookingBranchCode}. Update Branch Management before creating more CNs.`;
+
+            return NextResponse.json({ error: message }, { status: 409 });
+        }
+
+        if (submittedCnNo === null) {
+            return NextResponse.json({ error: 'CN number must be numeric for range-managed branches.' }, { status: 400 });
+        }
+
+        if (branchCnContext.expectedCn === null || branchCnContext.expectedCn > Number(branchCnContext.activeRange.range_end)) {
+            return NextResponse.json({
+                error: `CN range ${branchCnContext.activeRange.range_start}-${branchCnContext.activeRange.range_end} is exhausted for branch ${bookingBranchCode}. Update Branch Management with a new range before creating more CNs.`,
+            }, { status: 409 });
+        }
+
+        if (submittedCnNo !== branchCnContext.expectedCn) {
+            return NextResponse.json({
+                error: `CN Number "${insertData.cn_no}" is not the next available CN for branch ${bookingBranchCode}. Expected ${branchCnContext.expectedCn}.`,
+            }, { status: 409 });
+        }
+
+        const { error: advanceError } = await supabase.rpc('advance_branch_cn_sequence', {
+            p_branch_code: bookingBranchCode,
+            p_cn_no: submittedCnNo,
+        });
+
+        if (advanceError) {
+            return NextResponse.json({ error: advanceError.message }, { status: 409 });
+        }
+    } else {
+        if (submittedCnNo === null) {
+            return NextResponse.json({ error: 'CN number must be numeric.' }, { status: 400 });
+        }
     }
 
     const { data, error } = await supabase
@@ -202,26 +353,18 @@ export async function POST(request: Request) {
 
     if (error) {
         console.error("Failed to create consignment:", error);
+
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Increment sequence in branches table if booking_branch matches a code
-    if (insertData.booking_branch) {
-        // We use an RPC or just update it manually if no complex locking is needed
-        // Since this is a simple low-traffic POC, updating directly is fine
-        // First get the current next_cn_no to be safe
-        const { data: branchData } = await supabase
-            .from("branches")
-            .select("next_cn_no")
-            .eq("code", insertData.booking_branch.toUpperCase())
-            .single();
+    if (branchCnContext.mode === 'legacy' && submittedCnNo !== null) {
+        const currentLegacyNext = Number(branchCnContext.expectedCn || 0);
+        const nextLegacyCn = Math.max(currentLegacyNext, submittedCnNo + 1);
 
-        if (branchData) {
-            await supabase
-                .from("branches")
-                .update({ next_cn_no: (branchData.next_cn_no || 0) + 1 })
-                .eq("code", insertData.booking_branch.toUpperCase());
-        }
+        await supabase
+            .from('branches')
+            .update({ next_cn_no: nextLegacyCn })
+            .eq('code', bookingBranchCode);
     }
 
     return NextResponse.json(data, { status: 201 });

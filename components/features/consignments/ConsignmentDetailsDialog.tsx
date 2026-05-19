@@ -146,6 +146,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         loading: c.mhc_charges || 0,
         doorColl: c.door_coll_charges || 0,
         doorDel: c.door_del_charges || 0,
+        trafficChallan: c.traffic_challan_charges || 0,
         other: c.other_charges || 0,
         total_freight: c.total_freight || 0,
         advance: c.advance_amount || 0,
@@ -318,7 +319,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div style="flex:1; text-align:center;">
                 <div class="head-blue" style="font-size:64px; line-height:1; margin-bottom:40px;">Visakha Golden Transport</div>
                 <div class="strong" style="font-size:18px; margin-bottom:6px;">D.No. 8-19-58/A, Gopal Nagar, Near Bank Colony, Vizianagaram-535003 (A.P.)</div>
-                <div style="font-size:16px;">Cell : 9701523640, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
+                <div style="font-size:16px;">Cell : 9392223404, Website : https://visakhagolden.com, Email : support@visakhagolden.com</div>
             </div>
         </div>
     </div>
@@ -467,6 +468,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     ${Number(c.mhc_charges || 0) > 0 ? `<span style="font-size:16px;">Loading Ch.</span><br/>` : ''}
                     ${Number(c.door_coll_charges || 0) > 0 ? `<span style="font-size:16px;">Door Coll. Ch.</span><br/>` : ''}
                     ${Number(c.door_del_charges || 0) > 0 ? `<span style="font-size:16px;">Door Del. Ch.</span><br/>` : ''}
+                    ${Number(c.traffic_challan_charges || 0) > 0 ? `<span style="font-size:16px;">Traffic Challan Ch.</span><br/>` : ''}
                     ${Number(c.other_charges || 0) > 0 ? `<span style="font-size:16px;">Other Ch. ${topayLabel}</span><br/>` : ''}
                     <br/><span class="strong" style="font-size:16px;">TOTAL</span>
                 </td>
@@ -479,6 +481,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     ${Number(c.mhc_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.mhc_charges).toFixed(2)}</span><br/>` : ''}
                     ${Number(c.door_coll_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_coll_charges).toFixed(2)}</span><br/>` : ''}
                     ${Number(c.door_del_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_del_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.traffic_challan_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.traffic_challan_charges).toFixed(2)}</span><br/>` : ''}
                     ${Number(c.other_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.other_charges).toFixed(2)}</span><br/>` : ''}
                     <br/><span class="strong amount-total ink" style="font-size:16px;">Rs. ${totalFreight.toFixed(2)}</span>
                 </td>
@@ -796,6 +799,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                             <ChargeItem label="Loading (MHC)" value={freight.loading} />
                                             <ChargeItem label="Door Coll." value={freight.doorColl} />
                                             <ChargeItem label="Door Del." value={freight.doorDel} />
+                                            <ChargeItem label="Traffic Challan" value={freight.trafficChallan} />
                                             <ChargeItem label="Other Charges" value={freight.other} />
                                         </div>
                                         <div className="p-4 bg-emerald-50/20 flex flex-col md:flex-row justify-between items-center gap-4">

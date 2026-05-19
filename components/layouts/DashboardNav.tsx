@@ -174,6 +174,8 @@ export default function DashboardNav() {
                         { title: 'User Management', href: '/dashboard/admin/users' },
                         { title: 'Branch Management', href: '/dashboard/admin/branches' },
                         { title: 'Party Management', href: '/dashboard/admin/parties' },
+                        { title: 'Broker Management', href: '/dashboard/admin/brokers' },
+                        { title: 'Vehicle Management', href: '/dashboard/admin/vehicles' },
                         { title: 'Role Configuration', href: '#' },
                         { title: 'Audit Logs', href: '#' },
                     ]

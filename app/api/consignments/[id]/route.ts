@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/utils/supabase/server";
+import { resolveBillingPartyId } from "@/lib/server/resolveBillingParty";
 
 const parseNumber = (value: unknown, fallback = 0) => {
     if (value === null || value === undefined || value === "") return fallback;
@@ -83,7 +84,7 @@ export async function PATCH(
         const { id } = await params;
         const body = await request.json();
 
-        const updateData = {
+        const updateData: Record<string, unknown> = {
             cn_no: body.cn_no,
             bkg_date: normalizeDate(body.bkg_date),
             booking_branch: body.booking_branch,
@@ -139,6 +140,7 @@ export async function PATCH(
             mhc_charges: parseNumber(body.mhc_charges),
             door_coll_charges: parseNumber(body.door_coll_charges),
             door_del_charges: parseNumber(body.door_del_charges),
+            traffic_challan_charges: parseNumber(body.traffic_challan_charges),
             other_charges: parseNumber(body.other_charges),
             total_freight: parseNumber(body.total_freight),
             advance_amount: parseNumber(body.advance_amount),
@@ -166,47 +168,12 @@ export async function PATCH(
             amount_in_words: body.amount_in_words,
         };
 
-        // Auto-resolve billing_party_id for ledger linkage (Priority: GSTIN -> Name -> Code)
-        let billingPartyRow = null;
-
-        if (body.billing_party_gst?.trim()) {
-            const { data } = await supabase
-                .from('parties')
-                .select('id')
-                .ilike('gstin', body.billing_party_gst.trim())
-                .eq('is_active', true)
-                .limit(1)
-                .maybeSingle();
-            billingPartyRow = data;
+        const { billingPartyId, error: billingPartyError } = await resolveBillingPartyId(supabase, body);
+        if (billingPartyError) {
+            return NextResponse.json({ error: billingPartyError }, { status: 400 });
         }
 
-        if (!billingPartyRow && body.billing_party?.trim()) {
-            const { data } = await supabase
-                .from('parties')
-                .select('id')
-                .ilike('name', body.billing_party.trim())
-                .eq('is_active', true)
-                .limit(1)
-                .maybeSingle();
-            billingPartyRow = data;
-        }
-
-        if (!billingPartyRow && body.billing_party_code?.trim()) {
-            const { data } = await supabase
-                .from('parties')
-                .select('id')
-                .ilike('code', body.billing_party_code.trim())
-                .eq('is_active', true)
-                .limit(1)
-                .maybeSingle();
-            billingPartyRow = data;
-        }
-
-        if (billingPartyRow?.id) {
-            (updateData as any).billing_party_id = billingPartyRow.id;
-        } else {
-            (updateData as any).billing_party_id = null; // Unlink if billing party removed or invalid
-        }
+        updateData.billing_party_id = billingPartyId;
 
         const { data, error } = await supabase
             .from("consignments")

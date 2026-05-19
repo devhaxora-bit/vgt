@@ -1,20 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, use } from 'react';
+import React, { useState, useEffect, useMemo, use, useCallback } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { composeBillRefNo, getBillRefPrefix } from '@/lib/billRef';
+import { downloadPartyLedgerReportPdf } from '@/lib/ledgerReportPdf';
 import {
-    ArrowLeft, BookOpen, Package, TrendingUp, AlertCircle, DollarSign,
-    Search, Calendar as CalendarIcon, RotateCcw, Plus, X, FileText,
+    ArrowLeft, Package, TrendingUp, AlertCircle, DollarSign,
+    Search, RotateCcw, Plus, FileText, Download,
     Truck, CheckCircle2, XCircle, CreditCard, Banknote, Building2,
-    ChevronRight, Loader2
+    Loader2, Eye, Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -25,11 +26,11 @@ import {
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-    Popover, PopoverContent, PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { toast } from 'sonner';
+import { BillingRecordViewDialog, EditBillingDialog } from '@/components/features/ledger/BillingRecordDialogs';
+import { BillingConsignmentPicker } from '@/components/features/ledger/BillingConsignmentPicker';
+import { BillingExtraChargesEditor, type BillingExtraChargeDraftItem } from '@/components/features/ledger/BillingExtraChargesEditor';
+import { BillingRecordPicker } from '@/components/features/ledger/BillingRecordPicker';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,30 +51,62 @@ interface Summary {
     total_billed: number;
     total_paid: number;
     unbilled_amount: number;
+    overbilled_amount?: number;
     outstanding: number;
     opening_balance: number;
 }
 
 interface Consignment {
     id: string; cn_no: string; bkg_date: string;
-    booking_branch: string; dest_branch: string;
+    invoice_no?: string;
+    booking_branch: string; loading_point?: string; dest_branch: string; delivery_point?: string;
     no_of_pkg: number; actual_weight: number; charged_weight: number;
-    load_unit: string; total_freight: number; bkg_basis: string;
+    load_unit: string; total_freight: number; basic_freight?: number; freight_rate?: number;
+    unload_charges?: number; retention_charges?: number; extra_km_charges?: number;
+    mhc_charges?: number; door_coll_charges?: number; door_del_charges?: number;
+    traffic_challan_charges?: number;
+    other_charges?: number; vehicle_no?: string; bkg_basis: string;
     goods_desc?: string; delivery_type?: string;
+}
+
+interface BillingExtraChargeItem {
+    label: string;
+    amount: number;
 }
 
 interface BillingRecord {
     id: string; billing_date: string; billing_period_from?: string;
     billing_period_to?: string; amount: number; bill_ref_no?: string;
     narration: string; covered_cn_nos?: string[]; status: string;
+    cn_total_amount?: number;
+    added_other_charges_amount?: number;
+    consignment_snapshot?: Array<Record<string, unknown>>;
+    extra_charge_items?: BillingExtraChargeItem[];
+    settled_amount?: number;
+    remaining_amount?: number;
     cancel_reason?: string; cancelled_at?: string;
+}
+
+interface PaymentDeductionItem {
+    label: string;
+    amount: number;
+}
+
+interface PaymentBillAllocation {
+    billing_record_id: string;
+    settled_amount: number;
+    received_amount: number;
+    deduction_items?: PaymentDeductionItem[];
 }
 
 interface PaymentReceipt {
     id: string; receipt_date: string; amount: number;
+    actual_received_amount?: number;
     payment_mode: string; reference_no?: string; bank_name?: string;
     narration?: string; status: string; reversal_reason?: string;
     reversed_at?: string;
+    related_billing_record_ids?: string[];
+    bill_allocations?: PaymentBillAllocation[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -101,12 +134,220 @@ const MODE_BADGE: Record<string, string> = {
     ADJUSTMENT: 'bg-slate-100 text-slate-700',
 };
 
+const parseMoney = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return 0;
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const roundMoney = (value: number) => Number(value.toFixed(2));
+
+const normalizeExtraChargeDraftItems = (items: BillingExtraChargeDraftItem[]) =>
+    items
+        .map((item) => ({
+            label: item.label.trim(),
+            amount: Number(parseMoney(item.amount).toFixed(2)),
+        }))
+        .filter((item) => item.label && item.amount > 0);
+
+const getConsignmentExtraCharges = (
+    consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
+) : number => {
+    const chargeValues: Array<number | undefined> = [
+        consignment.unload_charges,
+        consignment.extra_km_charges,
+        consignment.mhc_charges,
+        consignment.door_coll_charges,
+        consignment.door_del_charges,
+        consignment.traffic_challan_charges,
+        consignment.other_charges,
+    ];
+
+    return chargeValues.reduce<number>((sum, value) => sum + parseMoney(value), 0);
+};
+
+const getConsignmentBaseFreight = (
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'retention_charges' | 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
+) : number => {
+    const baseFreight = parseMoney(consignment.basic_freight);
+    if (baseFreight > 0) return baseFreight;
+
+    const totalFreight = parseMoney(consignment.total_freight);
+    const detention = parseMoney(consignment.retention_charges);
+    const extraCharges = getConsignmentExtraCharges(consignment);
+    const derivedFreight = totalFreight - detention - extraCharges;
+
+    return derivedFreight > 0 ? derivedFreight : totalFreight;
+};
+
+const getConsignmentChargeBreakdown = (
+    consignment: Pick<Consignment, 'basic_freight' | 'total_freight' | 'unload_charges' | 'retention_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
+) => {
+    const freight = getConsignmentBaseFreight(consignment);
+    const unloading = parseMoney(consignment.unload_charges);
+    const detention = parseMoney(consignment.retention_charges);
+    const extraKm = parseMoney(consignment.extra_km_charges);
+    const loading = parseMoney(consignment.mhc_charges);
+    const doorCollection = parseMoney(consignment.door_coll_charges);
+    const doorDelivery = parseMoney(consignment.door_del_charges);
+    const trafficChallan = parseMoney(consignment.traffic_challan_charges);
+    const other = parseMoney(consignment.other_charges);
+    const total = parseMoney(consignment.total_freight) || (
+        freight
+        + unloading
+        + detention
+        + extraKm
+        + loading
+        + doorCollection
+        + doorDelivery
+        + trafficChallan
+        + other
+    );
+
+    return {
+        freight,
+        unloading,
+        detention,
+        extraKm,
+        loading,
+        doorCollection,
+        doorDelivery,
+        trafficChallan,
+        other,
+        total,
+    };
+};
+
+const buildConsignmentBreakup = (consignments: Consignment[], selectedCnNos: string[]) => {
+    const selected = consignments.filter((consignment) => selectedCnNos.includes(consignment.cn_no));
+
+    const freightTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).freight, 0);
+    const unloadingTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).unloading, 0);
+    const detentionTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).detention, 0);
+    const extraKmTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).extraKm, 0);
+    const loadingChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).loading, 0);
+    const doorCollectionTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).doorCollection, 0);
+    const doorDeliveryTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).doorDelivery, 0);
+    const trafficChallanTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).trafficChallan, 0);
+    const otherChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).other, 0);
+    const ancillaryChargeTotal = selected.reduce<number>((sum, consignment) => (
+        sum
+        + getConsignmentChargeBreakdown(consignment).unloading
+        + getConsignmentChargeBreakdown(consignment).extraKm
+        + getConsignmentChargeBreakdown(consignment).loading
+        + getConsignmentChargeBreakdown(consignment).doorCollection
+        + getConsignmentChargeBreakdown(consignment).doorDelivery
+        + getConsignmentChargeBreakdown(consignment).trafficChallan
+        + getConsignmentChargeBreakdown(consignment).other
+    ), 0);
+    const cnChargeTotal = selected.reduce<number>((sum, consignment) => sum + getConsignmentChargeBreakdown(consignment).total, 0);
+
+    return {
+        selected,
+        freightTotal,
+        unloadingTotal,
+        detentionTotal,
+        extraKmTotal,
+        loadingChargeTotal,
+        doorCollectionTotal,
+        doorDeliveryTotal,
+        trafficChallanTotal,
+        otherChargeTotal,
+        ancillaryChargeTotal,
+        cnChargeTotal,
+    };
+};
+
+const buildSettledBillAmountMap = (paymentReceipts: PaymentReceipt[]) => {
+    const billSettledMap = new Map<string, number>();
+
+    paymentReceipts
+        .filter((receipt) => receipt.status === 'ACTIVE')
+        .forEach((receipt) => {
+            if ((receipt.bill_allocations || []).length > 0) {
+                receipt.bill_allocations?.forEach((allocation) => {
+                    billSettledMap.set(
+                        allocation.billing_record_id,
+                        roundMoney((billSettledMap.get(allocation.billing_record_id) || 0) + parseMoney(allocation.settled_amount))
+                    );
+                });
+                return;
+            }
+
+            if ((receipt.related_billing_record_ids || []).length === 1) {
+                const billId = receipt.related_billing_record_ids?.[0];
+                if (!billId) return;
+                billSettledMap.set(
+                    billId,
+                    roundMoney((billSettledMap.get(billId) || 0) + parseMoney(receipt.amount))
+                );
+            }
+        });
+
+    return billSettledMap;
+};
+
+const toDateInputValue = (value: Date) => format(value, 'yyyy-MM-dd');
+
+const getCurrentFinancialYearStart = (value = new Date()) => (
+    value.getMonth() >= 3 ? value.getFullYear() : value.getFullYear() - 1
+);
+
+const getMonthlyDateRange = (year: number, month: number) => {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+
+    return {
+        from: toDateInputValue(startDate),
+        to: toDateInputValue(endDate),
+        label: `${format(startDate, 'MMMM yyyy')}`,
+    };
+};
+
+const getQuarterDateRange = (financialYearStart: number, quarter: number) => {
+    const quarterOffsets = {
+        1: { startMonth: 3, endMonth: 5, yearOffset: 0, label: 'Q1 (Apr-Jun)' },
+        2: { startMonth: 6, endMonth: 8, yearOffset: 0, label: 'Q2 (Jul-Sep)' },
+        3: { startMonth: 9, endMonth: 11, yearOffset: 0, label: 'Q3 (Oct-Dec)' },
+        4: { startMonth: 0, endMonth: 2, yearOffset: 1, label: 'Q4 (Jan-Mar)' },
+    } as const;
+
+    const config = quarterOffsets[quarter as keyof typeof quarterOffsets] || quarterOffsets[1];
+    const startDate = new Date(financialYearStart + config.yearOffset, config.startMonth, 1);
+    const endDate = new Date(financialYearStart + config.yearOffset, config.endMonth + 1, 0);
+
+    return {
+        from: toDateInputValue(startDate),
+        to: toDateInputValue(endDate),
+        label: `${config.label} FY ${financialYearStart}-${String(financialYearStart + 1).slice(-2)}`,
+    };
+};
+
+const getFinancialYearDateRange = (financialYearStart: number) => {
+    const startDate = new Date(financialYearStart, 3, 1);
+    const endDate = new Date(financialYearStart + 1, 3, 0);
+
+    return {
+        from: toDateInputValue(startDate),
+        to: toDateInputValue(endDate),
+        label: `FY ${financialYearStart}-${String(financialYearStart + 1).slice(-2)}`,
+    };
+};
+
+const isWithinDateRange = (value: string | undefined | null, from: string, to: string) => {
+    const normalized = value?.slice(0, 10) || '';
+    if (!normalized) return false;
+    if (from && normalized < from) return false;
+    if (to && normalized > to) return false;
+    return true;
+};
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({
     label, value, icon: Icon, iconBg, valueClass, sub,
 }: {
-    label: string; value: string; icon: any; iconBg: string;
+    label: string; value: string; icon: React.ComponentType<{ className?: string }>; iconBg: string;
     valueClass?: string; sub?: string;
 }) {
     return (
@@ -130,19 +371,38 @@ function KpiCard({
 // ─── AddBillingDialog ─────────────────────────────────────────────────────────
 
 function AddBillingDialog({
-    open, onClose, partyId, onSuccess,
-}: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void }) {
+    open, onClose, partyId, onSuccess, consignments,
+}: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void; consignments: Consignment[] }) {
     const [form, setForm] = useState({
         billing_date: new Date().toISOString().split('T')[0],
-        billing_period_from: '', billing_period_to: '',
-        amount: '', bill_ref_no: '', narration: '', covered_cn_nos: '',
+        amount: '', bill_ref_no: '', narration: '',
+        covered_cn_nos: [] as string[],
     });
     const [saving, setSaving] = useState(false);
 
+    const consignmentBreakup = useMemo(
+        () => buildConsignmentBreakup(consignments, form.covered_cn_nos),
+        [consignments, form.covered_cn_nos]
+    );
+    const billRefPrefix = useMemo(
+        () => getBillRefPrefix(form.billing_date),
+        [form.billing_date]
+    );
+
+    const enteredOtherChargeAmount = roundMoney(parseMoney(form.amount));
+    const suggestedBillTotal = consignmentBreakup.cnChargeTotal;
+    const displayedExtraChargeTotal = roundMoney(consignmentBreakup.otherChargeTotal + enteredOtherChargeAmount);
+    const finalBillAmount = roundMoney(consignmentBreakup.cnChargeTotal + enteredOtherChargeAmount);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.narration.trim() || !form.amount) {
-            toast.error('Narration and Amount are required');
+        if (!form.bill_ref_no.trim()) {
+            toast.error('Bill No is required');
+            return;
+        }
+
+        if (finalBillAmount <= 0) {
+            toast.error('Bill amount must be greater than zero');
             return;
         }
         setSaving(true);
@@ -151,11 +411,11 @@ function AddBillingDialog({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    ...form,
-                    amount: parseFloat(form.amount),
-                    covered_cn_nos: form.covered_cn_nos
-                        ? form.covered_cn_nos.split(',').map(s => s.trim()).filter(Boolean)
-                        : null,
+                    billing_date: form.billing_date,
+                    bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no),
+                    narration: form.narration,
+                    added_other_charges_amount: enteredOtherChargeAmount,
+                    covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
                 }),
             });
             if (!res.ok) {
@@ -165,9 +425,9 @@ function AddBillingDialog({
             toast.success('Billing record created successfully');
             onSuccess();
             onClose();
-            setForm({ billing_date: new Date().toISOString().split('T')[0], billing_period_from: '', billing_period_to: '', amount: '', bill_ref_no: '', narration: '', covered_cn_nos: '' });
-        } catch (err: any) {
-            toast.error(err.message);
+            setForm({ billing_date: new Date().toISOString().split('T')[0], amount: '', bill_ref_no: '', narration: '', covered_cn_nos: [] });
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to create billing record');
         } finally {
             setSaving(false);
         }
@@ -175,54 +435,136 @@ function AddBillingDialog({
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
+            <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] max-h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
+                <DialogHeader className="px-6 py-4 border-b bg-slate-50">
                     <DialogTitle className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-primary" /> Add Billing Record
                     </DialogTitle>
                     <DialogDescription>
-                        Record a manual billing entry for this party. Amount is immutable after saving.
+                        Record a billing entry for this party. The typed amount is added into the bill other-charges column.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Billing Date *</Label>
-                            <Input type="date" value={form.billing_date} onChange={e => setForm(f => ({ ...f, billing_date: e.target.value }))} className="h-9" required />
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+                    <div className="grid gap-6 p-6 lg:grid-cols-[1.05fr_0.95fr]">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Billing Date *</Label>
+                                    <Input type="date" value={form.billing_date} onChange={e => setForm(f => ({ ...f, billing_date: e.target.value }))} className="h-9" required />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Bill No *</Label>
+                                    <div className="flex h-9 overflow-hidden rounded-md border bg-background shadow-sm">
+                                        <div className="flex items-center border-r bg-muted/40 px-3 text-xs font-bold text-muted-foreground">
+                                            {billRefPrefix}
+                                        </div>
+                                        <Input
+                                            placeholder="Enter bill number"
+                                            value={form.bill_ref_no}
+                                            onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))}
+                                            className="h-full border-0 shadow-none focus-visible:ring-0"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Add In Other Charges (₹)</Label>
+                                    <Input type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" />
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setForm((current) => ({ ...current, amount: '' }))}
+                                >
+                                    Use CN Total
+                                </Button>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
+                                <Input placeholder="Optional description" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
+                            </div>
                         </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Ref No</Label>
-                            <Input placeholder="e.g. BILL-001" value={form.bill_ref_no} onChange={e => setForm(f => ({ ...f, bill_ref_no: e.target.value }))} className="h-9" />
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Covered CNs</Label>
+                                <BillingConsignmentPicker
+                                    consignments={consignments}
+                                    value={form.covered_cn_nos}
+                                    onChange={(covered_cn_nos) => setForm((f) => ({ ...f, covered_cn_nos }))}
+                                />
+                            </div>
+
+                            <div className="rounded-lg border bg-muted/10">
+                                <div className="border-b px-4 py-3">
+                                    <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Bill Breakup Preview</div>
+                                    <div className="text-xs text-muted-foreground">Every freight-detail charge from the selected CNs is shown below. The entered amount is added on top and shown inside bill other charges.</div>
+                                </div>
+                                <div className="space-y-2 p-4 text-sm">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">CN Freight</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.freightTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Unloading Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.unloadingTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Detention Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.detentionTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Extra KM Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.extraKmTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Loading Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.loadingChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Door Coll Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.doorCollectionTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Door Del Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.doorDeliveryTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Traffic Challan Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.trafficChallanTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Other Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.otherChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Added Other Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(enteredOtherChargeAmount)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Bill Other Charges Column</span>
+                                        <span className="font-mono font-semibold">₹{fmt(displayedExtraChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">CN Total</span>
+                                        <span className="font-mono font-semibold">₹{fmt(consignmentBreakup.cnChargeTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between border-t pt-2 font-bold">
+                                        <span>Final Bill Amount</span>
+                                        <span className="font-mono text-emerald-700">₹{fmt(finalBillAmount)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">CN Total Without Added Amount</span>
+                                        <span className="font-mono text-emerald-700">₹{fmt(suggestedBillTotal)}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Period From</Label>
-                            <Input type="date" value={form.billing_period_from} onChange={e => setForm(f => ({ ...f, billing_period_from: e.target.value }))} className="h-9" />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Period To</Label>
-                            <Input type="date" value={form.billing_period_to} onChange={e => setForm(f => ({ ...f, billing_period_to: e.target.value }))} className="h-9" />
-                        </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Amount (₹) *</Label>
-                        <Input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" required />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Narration *</Label>
-                        <Input placeholder="e.g. Freight billing for March 2026" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" required />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">CNs Covered (comma-separated)</Label>
-                        <Input placeholder="801192, 801193, 801194" value={form.covered_cn_nos} onChange={e => setForm(f => ({ ...f, covered_cn_nos: e.target.value }))} className="h-9 font-mono" />
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-2">
+                    <div className="flex justify-end gap-2 border-t bg-slate-50 px-6 py-4">
                         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                         <Button type="submit" disabled={saving} className="gap-2">
                             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -238,23 +580,177 @@ function AddBillingDialog({
 // ─── AddPaymentDialog ─────────────────────────────────────────────────────────
 
 function AddPaymentDialog({
-    open, onClose, partyId, onSuccess,
-}: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void }) {
+    open, onClose, partyId, onSuccess, billingRecords, paymentReceipts,
+}: {
+    open: boolean;
+    onClose: () => void;
+    partyId: string;
+    onSuccess: () => void;
+    billingRecords: BillingRecord[];
+    paymentReceipts: PaymentReceipt[];
+}) {
+    interface PaymentBillAllocationDraft {
+        billing_record_id: string;
+        settled_amount: string;
+        deduction_items: BillingExtraChargeDraftItem[];
+    }
+
     const [form, setForm] = useState({
         receipt_date: new Date().toISOString().split('T')[0],
         amount: '', payment_mode: 'NEFT', reference_no: '', bank_name: '', narration: '',
+        related_billing_record_ids: [] as string[],
+        bill_allocations: [] as PaymentBillAllocationDraft[],
     });
     const [saving, setSaving] = useState(false);
 
+    const settledBillAmountMap = useMemo(
+        () => buildSettledBillAmountMap(paymentReceipts),
+        [paymentReceipts]
+    );
+
+    const payableBillingRecords = useMemo(
+        () => billingRecords
+            .filter((record) => record.status === 'ACTIVE')
+            .map((record) => {
+                const settledAmount = settledBillAmountMap.get(record.id) || 0;
+                const remainingAmount = Math.max(roundMoney(parseMoney(record.amount) - settledAmount), 0);
+
+                return {
+                    ...record,
+                    settled_amount: settledAmount,
+                    remaining_amount: remainingAmount,
+                };
+            })
+            .filter((record) => parseMoney(record.remaining_amount) > 0.009),
+        [billingRecords, settledBillAmountMap]
+    );
+
+    const payableBillingRecordMap = useMemo(
+        () => new Map(payableBillingRecords.map((record) => [record.id, record])),
+        [payableBillingRecords]
+    );
+
+    const syncBillAllocationDrafts = useCallback((selectedIds: string[], currentDrafts: PaymentBillAllocationDraft[]) => {
+        const currentDraftMap = new Map(currentDrafts.map((draft) => [draft.billing_record_id, draft]));
+
+        return selectedIds.map((billId) => {
+            const existingDraft = currentDraftMap.get(billId);
+            if (existingDraft) return existingDraft;
+
+            const bill = payableBillingRecordMap.get(billId);
+            const defaultSettledAmount = Math.max(parseMoney(bill?.remaining_amount ?? bill?.amount ?? 0), 0);
+
+            return {
+                billing_record_id: billId,
+                settled_amount: defaultSettledAmount > 0 ? defaultSettledAmount.toFixed(2) : '',
+                deduction_items: [],
+            };
+        });
+    }, [payableBillingRecordMap]);
+
+    const normalizedBillAllocations = useMemo(
+        () => form.bill_allocations
+            .filter((allocation) => form.related_billing_record_ids.includes(allocation.billing_record_id))
+            .map((allocation) => {
+                const deductionItems = normalizeExtraChargeDraftItems(allocation.deduction_items);
+                const deductionTotal = roundMoney(deductionItems.reduce((sum, item) => sum + item.amount, 0));
+                const settledAmount = roundMoney(parseMoney(allocation.settled_amount));
+                const receivedAmount = roundMoney(settledAmount - deductionTotal);
+
+                return {
+                    billing_record_id: allocation.billing_record_id,
+                    received_amount: receivedAmount,
+                    settled_amount: settledAmount,
+                    deduction_items: deductionItems,
+                };
+            }),
+        [form.bill_allocations, form.related_billing_record_ids]
+    );
+
+    const selectedBillActualReceivedTotal = useMemo(
+        () => roundMoney(normalizedBillAllocations.reduce((sum, allocation) => sum + allocation.received_amount, 0)),
+        [normalizedBillAllocations]
+    );
+
+    const selectedBillDeductionTotal = useMemo(
+        () => roundMoney(normalizedBillAllocations.reduce(
+            (sum, allocation) => sum + allocation.deduction_items.reduce((itemSum, item) => itemSum + item.amount, 0),
+            0
+        )),
+        [normalizedBillAllocations]
+    );
+
+    const selectedBillSettledTotal = useMemo(
+        () => roundMoney(normalizedBillAllocations.reduce((sum, allocation) => sum + allocation.settled_amount, 0)),
+        [normalizedBillAllocations]
+    );
+
+    const selectedAllocationDrafts = useMemo(
+        () => form.related_billing_record_ids.reduce<Array<{ bill: BillingRecord; draft: PaymentBillAllocationDraft }>>((entries, billId) => {
+            const bill = payableBillingRecordMap.get(billId);
+            const draft = form.bill_allocations.find((allocation) => allocation.billing_record_id === billId);
+
+            if (!bill || !draft) return entries;
+
+            entries.push({ bill, draft });
+            return entries;
+        }, []),
+        [form.related_billing_record_ids, form.bill_allocations, payableBillingRecordMap]
+    );
+
+    const usingBillAllocations = form.related_billing_record_ids.length > 0;
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.amount) { toast.error('Amount is required'); return; }
+
+        if (!usingBillAllocations && !form.amount) {
+            toast.error('Amount is required');
+            return;
+        }
+
+        if (usingBillAllocations) {
+            if (normalizedBillAllocations.length !== form.related_billing_record_ids.length) {
+                toast.error('Each selected bill must have a valid payment breakup');
+                return;
+            }
+
+            for (const allocation of normalizedBillAllocations) {
+                const bill = payableBillingRecordMap.get(allocation.billing_record_id);
+                if (!bill) {
+                    toast.error('One or more selected bills are invalid');
+                    return;
+                }
+
+                if (allocation.settled_amount <= 0) {
+                    toast.error('Each selected bill must have a positive settled amount');
+                    return;
+                }
+
+                if (allocation.received_amount < 0) {
+                    toast.error(`Deductions cannot exceed the settled amount for bill ${bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase()}`);
+                    return;
+                }
+
+                const remainingAmount = parseMoney(bill.remaining_amount ?? bill.amount);
+                if (allocation.settled_amount > remainingAmount + 0.009) {
+                    toast.error(`Settled amount cannot exceed the remaining balance for bill ${bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase()}`);
+                    return;
+                }
+            }
+        }
+
         setSaving(true);
         try {
             const res = await fetch(`/api/ledger/${partyId}/payments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
+                body: JSON.stringify({
+                    ...form,
+                    amount: usingBillAllocations ? selectedBillSettledTotal : parseFloat(form.amount),
+                    actual_received_amount: usingBillAllocations ? selectedBillActualReceivedTotal : parseMoney(form.amount),
+                    related_billing_record_ids: form.related_billing_record_ids.length > 0 ? form.related_billing_record_ids : null,
+                    bill_allocations: usingBillAllocations ? normalizedBillAllocations : [],
+                }),
             });
             if (!res.ok) {
                 const err = await res.json();
@@ -263,9 +759,18 @@ function AddPaymentDialog({
             toast.success('Payment receipt recorded successfully');
             onSuccess();
             onClose();
-            setForm({ receipt_date: new Date().toISOString().split('T')[0], amount: '', payment_mode: 'NEFT', reference_no: '', bank_name: '', narration: '' });
-        } catch (err: any) {
-            toast.error(err.message);
+            setForm({
+                receipt_date: new Date().toISOString().split('T')[0],
+                amount: '',
+                payment_mode: 'NEFT',
+                reference_no: '',
+                bank_name: '',
+                narration: '',
+                related_billing_record_ids: [],
+                bill_allocations: [],
+            });
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to record payment');
         } finally {
             setSaving(false);
         }
@@ -273,60 +778,225 @@ function AddPaymentDialog({
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
+            <DialogContent className="max-w-[92vw] w-[92vw] sm:max-w-5xl max-h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
+                <DialogHeader className="px-6 py-4 border-b bg-slate-50">
                     <DialogTitle className="flex items-center gap-2">
                         <Banknote className="h-4 w-4 text-primary" /> Record Payment
                     </DialogTitle>
                     <DialogDescription>
-                        Record money received from this party. Amount is immutable after saving.
+                        Link the receipt to bill numbers, enter how much is settled against each bill, and keep deduction breakup inside that settled amount.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Receipt Date *</Label>
-                            <Input type="date" value={form.receipt_date} onChange={e => setForm(f => ({ ...f, receipt_date: e.target.value }))} className="h-9" required />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-bold uppercase text-muted-foreground">Amount (₹) *</Label>
-                            <Input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" required />
-                        </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Payment Mode *</Label>
-                        <Select value={form.payment_mode} onValueChange={v => setForm(f => ({ ...f, payment_mode: v }))}>
-                            <SelectTrigger className="h-9">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'ADJUSTMENT'].map(m => (
-                                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {form.payment_mode !== 'CASH' && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                                <Label className="text-xs font-bold uppercase text-muted-foreground">Reference / UTR</Label>
-                                <Input placeholder="UTR / Cheque No" value={form.reference_no} onChange={e => setForm(f => ({ ...f, reference_no: e.target.value }))} className="h-9 font-mono" />
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+                    <div className="grid gap-6 p-6 lg:grid-cols-[0.95fr_1.05fr]">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Receipt Date *</Label>
+                                    <Input type="date" value={form.receipt_date} onChange={e => setForm(f => ({ ...f, receipt_date: e.target.value }))} className="h-9" required />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Payment Mode *</Label>
+                                    <Select value={form.payment_mode} onValueChange={v => setForm(f => ({ ...f, payment_mode: v }))}>
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'ADJUSTMENT'].map(m => (
+                                                <SelectItem key={m} value={m}>{m}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
+
+                            {!usingBillAllocations ? (
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Settled Amount (₹) *</Label>
+                                    <Input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} className="h-9 font-mono" required />
+                                </div>
+                            ) : (
+                                <div className="rounded-lg border bg-muted/10">
+                                    <div className="border-b px-4 py-3">
+                                        <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Receipt Summary</div>
+                                        <div className="text-xs text-muted-foreground">Main ledger impact uses the settled amount. Actual received is calculated after subtracting deduction breakup.</div>
+                                    </div>
+                                    <div className="space-y-2 p-4 text-sm">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-muted-foreground">Settled Amount</span>
+                                            <span className="font-mono font-semibold text-indigo-700">₹{fmt(selectedBillSettledTotal)}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-muted-foreground">Actual Received</span>
+                                            <span className="font-mono font-semibold">₹{fmt(selectedBillActualReceivedTotal)}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-muted-foreground">Deduction / Adjustment</span>
+                                            <span className="font-mono font-semibold">₹{fmt(selectedBillDeductionTotal)}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between border-t pt-2 font-bold">
+                                            <span>Receipt Posted To Ledger</span>
+                                            <span className="font-mono text-indigo-700">₹{fmt(selectedBillSettledTotal)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {form.payment_mode !== 'CASH' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-bold uppercase text-muted-foreground">Reference / UTR</Label>
+                                        <Input placeholder="UTR / Cheque No" value={form.reference_no} onChange={e => setForm(f => ({ ...f, reference_no: e.target.value }))} className="h-9 font-mono" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-bold uppercase text-muted-foreground">Bank</Label>
+                                        <Input placeholder="Bank name" value={form.bank_name} onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} className="h-9" />
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-bold uppercase text-muted-foreground">Bank</Label>
-                                <Input placeholder="Bank name" value={form.bank_name} onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} className="h-9" />
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Narration</Label>
+                                <Input placeholder="Payment remarks / against bills" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Numbers</Label>
+                                <BillingRecordPicker
+                                    billingRecords={payableBillingRecords}
+                                    value={form.related_billing_record_ids}
+                                    onChange={(related_billing_record_ids) => setForm((current) => ({
+                                        ...current,
+                                        related_billing_record_ids,
+                                        bill_allocations: syncBillAllocationDrafts(related_billing_record_ids, current.bill_allocations),
+                                    }))}
+                                />
                             </div>
                         </div>
-                    )}
 
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Narration</Label>
-                        <Input placeholder="Payment remarks / against bills" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
+                        <div className="space-y-4">
+                            {selectedAllocationDrafts.length === 0 ? (
+                                <div className="rounded-lg border border-dashed bg-muted/10 p-6 text-sm text-muted-foreground">
+                                    Select one or more unpaid bill numbers to record bill-wise settlement and deduction breakup.
+                                </div>
+                            ) : selectedAllocationDrafts.map(({ bill, draft }) => {
+                                const deductionTotal = roundMoney(
+                                    normalizeExtraChargeDraftItems(draft.deduction_items).reduce((sum, item) => sum + item.amount, 0)
+                                );
+                                const settledAmount = roundMoney(parseMoney(draft.settled_amount));
+                                const receivedAmount = roundMoney(settledAmount - deductionTotal);
+                                const remainingBeforeReceipt = parseMoney(bill.remaining_amount ?? bill.amount);
+                                const remainingAfterReceipt = Math.max(roundMoney(remainingBeforeReceipt - settledAmount), 0);
+                                const hasOverDeduction = receivedAmount < 0;
+                                const hasOverSettlement = settledAmount > remainingBeforeReceipt + 0.009;
+
+                                return (
+                                    <div key={bill.id} className="rounded-lg border bg-background shadow-sm">
+                                        <div className="border-b px-4 py-3">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="min-w-0">
+                                                    <div className="font-mono text-sm font-bold text-primary">
+                                                        {bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase()}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {fmtDate(bill.billing_date)} • Bill Amount ₹{fmt(parseMoney(bill.amount))}
+                                                    </div>
+                                                    {(bill.covered_cn_nos || []).length > 0 && (
+                                                        <div className="mt-1 text-[11px] text-muted-foreground break-words">
+                                                            CNs: {bill.covered_cn_nos?.join(', ')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="shrink-0 text-right text-xs">
+                                                    <div className="font-semibold text-indigo-700">Paid ₹{fmt(parseMoney(bill.settled_amount))}</div>
+                                                    <div className="font-semibold text-amber-700">Bal ₹{fmt(remainingBeforeReceipt)}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4 p-4">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-bold uppercase text-muted-foreground">Settled For This Bill (₹)</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    max={remainingBeforeReceipt > 0 ? remainingBeforeReceipt : undefined}
+                                                    value={draft.settled_amount}
+                                                    onChange={(e) => setForm((current) => ({
+                                                        ...current,
+                                                        bill_allocations: current.bill_allocations.map((allocation) => (
+                                                            allocation.billing_record_id === draft.billing_record_id
+                                                                ? { ...allocation, settled_amount: e.target.value }
+                                                                : allocation
+                                                        )),
+                                                    }))}
+                                                    className="h-9 font-mono"
+                                                    placeholder="0.00"
+                                                />
+                                                <div className="text-[11px] text-muted-foreground">
+                                                    Max allowed for this bill: ₹{fmt(remainingBeforeReceipt)}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid gap-3 text-sm md:grid-cols-4">
+                                                <div className="rounded-md border bg-muted/10 px-3 py-2">
+                                                    <div className="text-[11px] font-bold uppercase text-muted-foreground">Settled</div>
+                                                    <div className="font-mono font-semibold text-indigo-700">₹{fmt(settledAmount)}</div>
+                                                </div>
+                                                <div className="rounded-md border bg-muted/10 px-3 py-2">
+                                                    <div className="text-[11px] font-bold uppercase text-muted-foreground">Received</div>
+                                                    <div className={`font-mono font-semibold ${hasOverDeduction ? 'text-destructive' : 'text-foreground'}`}>
+                                                        ₹{fmt(Math.max(receivedAmount, 0))}
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-md border bg-muted/10 px-3 py-2">
+                                                    <div className="text-[11px] font-bold uppercase text-muted-foreground">Deductions</div>
+                                                    <div className="font-mono font-semibold text-amber-700">₹{fmt(deductionTotal)}</div>
+                                                </div>
+                                                <div className="rounded-md border bg-muted/10 px-3 py-2">
+                                                    <div className="text-[11px] font-bold uppercase text-muted-foreground">Balance After</div>
+                                                    <div className="font-mono font-semibold text-emerald-700">₹{fmt(remainingAfterReceipt)}</div>
+                                                </div>
+                                            </div>
+
+                                            {hasOverDeduction && (
+                                                <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                                                    Deductions cannot be greater than the settled amount for this bill.
+                                                </div>
+                                            )}
+
+                                            {hasOverSettlement && (
+                                                <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                                                    Settled amount cannot exceed this bill&apos;s remaining balance of ₹{fmt(remainingBeforeReceipt)}.
+                                                </div>
+                                            )}
+
+                                            <BillingExtraChargesEditor
+                                                items={draft.deduction_items}
+                                                onChange={(deduction_items) => setForm((current) => ({
+                                                    ...current,
+                                                    bill_allocations: current.bill_allocations.map((allocation) => (
+                                                        allocation.billing_record_id === draft.billing_record_id
+                                                            ? { ...allocation, deduction_items }
+                                                            : allocation
+                                                    )),
+                                                }))}
+                                                title="Deduction Breakup"
+                                                description="Add positive deduction lines inside this settled amount. Actual received becomes settled minus deductions."
+                                                emptyMessage="No deduction lines added for this bill."
+                                                lineLabel="Deduction"
+                                                descriptionPlaceholder="e.g. TDS / shortage / rate diff / damage recovery"
+                                                addButtonLabel="Add Deduction Line"
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-2">
+                    <div className="flex justify-end gap-2 border-t bg-slate-50 px-6 py-4">
                         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                         <Button type="submit" disabled={saving} className="gap-2">
                             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -386,18 +1056,23 @@ function CancelDialog({
 
 export default function PartyLedgerPage({ params }: { params: Promise<{ partyId: string }> }) {
     const { partyId } = use(params);
+    const currentDate = useMemo(() => new Date(), []);
+    const currentFinancialYearStart = useMemo(() => getCurrentFinancialYearStart(currentDate), [currentDate]);
 
     const [data, setData] = useState<{
         party: Party | null;
         account: LedgerAccount | null;
         summary: Summary;
         consignments: Consignment[];
+        all_consignments: Consignment[];
         billing_records: BillingRecord[];
         payment_receipts: PaymentReceipt[];
+        all_billing_records: BillingRecord[];
+        all_payment_receipts: PaymentReceipt[];
     }>({
         party: null, account: null,
-        summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, outstanding: 0, opening_balance: 0 },
-        consignments: [], billing_records: [], payment_receipts: [],
+        summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0 },
+        consignments: [], all_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -405,20 +1080,31 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     // Filters
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [reportPreset, setReportPreset] = useState<'custom' | 'monthly' | 'quarterly' | 'yearly'>('custom');
+    const [reportYear, setReportYear] = useState(currentDate.getFullYear());
+    const [reportQuarterYear, setReportQuarterYear] = useState(currentFinancialYearStart);
+    const [reportMonth, setReportMonth] = useState(currentDate.getMonth() + 1);
+    const [reportQuarter, setReportQuarter] = useState(currentDate.getMonth() >= 3 ? Math.floor((currentDate.getMonth() - 3) / 3) + 1 : 4);
     const [cnsSearch, setCnsSearch] = useState('');
+    const [billingSearch, setBillingSearch] = useState('');
+    const [billingStatusFilter, setBillingStatusFilter] = useState<'all' | 'ACTIVE' | 'CANCELLED'>('all');
+    const [billingDateFrom, setBillingDateFrom] = useState('');
+    const [billingDateTo, setBillingDateTo] = useState('');
+    const [isDownloadingReport, setIsDownloadingReport] = useState(false);
 
     // Dialogs
     const [showBillingDialog, setShowBillingDialog] = useState(false);
     const [showPaymentDialog, setShowPaymentDialog] = useState(false);
     const [cancelTarget, setCancelTarget] = useState<{ type: 'billing' | 'payment'; id: string } | null>(null);
+    const [selectedBillingRecord, setSelectedBillingRecord] = useState<BillingRecord | null>(null);
+    const [editingBillingRecord, setEditingBillingRecord] = useState<BillingRecord | null>(null);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
             if (dateFrom) params.set('dateFrom', dateFrom);
             if (dateTo) params.set('dateTo', dateTo);
-            if (cnsSearch) params.set('search', cnsSearch);
 
             const res = await fetch(`/api/ledger/${partyId}?${params.toString()}`);
             if (!res.ok) throw new Error('Failed to fetch');
@@ -430,9 +1116,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [partyId, dateFrom, dateTo]);
 
-    useEffect(() => { fetchData(); }, [partyId, dateFrom, dateTo, cnsSearch]);
+    useEffect(() => { void fetchData(); }, [fetchData]);
 
     useEffect(() => {
         fetch('/api/auth/me')
@@ -440,6 +1126,57 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             .then(r => setIsAdmin(r?.data?.role === 'admin'))
             .catch(console.error);
     }, []);
+
+    useEffect(() => {
+        if (reportPreset === 'custom') return;
+
+        const range = reportPreset === 'monthly'
+            ? getMonthlyDateRange(reportYear, reportMonth)
+            : reportPreset === 'quarterly'
+                ? getQuarterDateRange(reportQuarterYear, reportQuarter)
+                : getFinancialYearDateRange(reportQuarterYear);
+
+        setDateFrom(range.from);
+        setDateTo(range.to);
+    }, [reportMonth, reportPreset, reportQuarter, reportQuarterYear, reportYear]);
+
+    const reportPeriodLabel = useMemo(() => {
+        if (reportPreset === 'monthly') {
+            return getMonthlyDateRange(reportYear, reportMonth).label;
+        }
+
+        if (reportPreset === 'quarterly') {
+            return getQuarterDateRange(reportQuarterYear, reportQuarter).label;
+        }
+
+        if (reportPreset === 'yearly') {
+            return getFinancialYearDateRange(reportQuarterYear).label;
+        }
+
+        if (dateFrom || dateTo) {
+            return `${dateFrom || 'Start'} to ${dateTo || 'End'}`;
+        }
+
+        return 'All Dates';
+    }, [dateFrom, dateTo, reportMonth, reportPreset, reportQuarter, reportQuarterYear, reportYear]);
+
+    const monthOptions = useMemo(
+        () => Array.from({ length: 12 }, (_, index) => ({
+            value: String(index + 1),
+            label: format(new Date(2026, index, 1), 'MMMM'),
+        })),
+        []
+    );
+
+    const reportYearOptions = useMemo(
+        () => Array.from({ length: 6 }, (_, index) => currentDate.getFullYear() - 3 + index),
+        [currentDate]
+    );
+
+    const financialYearOptions = useMemo(
+        () => Array.from({ length: 6 }, (_, index) => currentFinancialYearStart - 3 + index),
+        [currentFinancialYearStart]
+    );
 
     const handleCancelBilling = async (reason: string) => {
         if (!cancelTarget) return;
@@ -452,7 +1189,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
             toast.success('Billing record cancelled');
             fetchData();
-        } catch (err: any) { toast.error(err.message); }
+        } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Failed to cancel billing record'); }
         setCancelTarget(null);
     };
 
@@ -467,37 +1204,228 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
             toast.success('Payment receipt reversed');
             fetchData();
-        } catch (err: any) { toast.error(err.message); }
+        } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Failed to reverse payment receipt'); }
         setCancelTarget(null);
     };
 
     // Monthly summary (computed client-side from CNS + billing records + payments)
     const monthlySummary = useMemo(() => {
-        const map: Record<string, { month: string; cns_count: number; cns_amount: number; billed: number; paid: number }> = {};
+        const map: Record<string, { month: string; cns_count: number; cns_amount: number; billed: number; cn_billed: number; paid: number }> = {};
 
         data.consignments.forEach(c => {
             const m = c.bkg_date?.slice(0, 7) || 'unknown';
-            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, paid: 0 };
+            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].cns_count += 1;
             map[m].cns_amount += parseFloat(String(c.total_freight)) || 0;
         });
 
         data.billing_records.filter(b => b.status === 'ACTIVE').forEach(b => {
             const m = b.billing_date?.slice(0, 7) || 'unknown';
-            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, paid: 0 };
+            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].billed += parseFloat(String(b.amount)) || 0;
+            map[m].cn_billed += parseFloat(String(b.cn_total_amount ?? b.amount)) || 0;
         });
 
         data.payment_receipts.filter(p => p.status === 'ACTIVE').forEach(p => {
             const m = p.receipt_date?.slice(0, 7) || 'unknown';
-            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, paid: 0 };
+            if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].paid += parseFloat(String(p.amount)) || 0;
         });
 
         return Object.values(map).sort((a, b) => b.month.localeCompare(a.month));
     }, [data]);
 
-    const { party, account, summary } = data;
+    const reportPayload = useMemo(() => {
+        if (!data.party) return null;
+
+        const reportConsignments = data.all_consignments.filter((record) => (
+            isWithinDateRange(record.bkg_date, dateFrom, dateTo)
+        ));
+        const reportBillingRecords = data.all_billing_records.filter((record) => (
+            isWithinDateRange(record.billing_date, dateFrom, dateTo)
+        ));
+        const reportPaymentReceipts = data.all_payment_receipts.filter((record) => (
+            isWithinDateRange(record.receipt_date, dateFrom, dateTo)
+        ));
+
+        const activeBills = reportBillingRecords.filter((record) => record.status === 'ACTIVE');
+        const activePayments = reportPaymentReceipts.filter((record) => record.status === 'ACTIVE');
+        const totalCnsAmount = roundMoney(reportConsignments.reduce((sum, record) => sum + parseMoney(record.total_freight), 0));
+        const totalBilled = roundMoney(activeBills.reduce((sum, record) => sum + parseMoney(record.amount), 0));
+        const totalCnBilled = roundMoney(activeBills.reduce((sum, record) => sum + parseMoney(record.cn_total_amount), 0));
+        const totalPaid = roundMoney(activePayments.reduce((sum, record) => sum + parseMoney(record.amount), 0));
+        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalCnBilled);
+        const openingBalance = roundMoney(parseMoney(data.account?.opening_balance));
+        const billingLookup = new Map(reportBillingRecords.map((record) => [record.id, record]));
+
+        return {
+            party: data.party,
+            periodLabel: reportPeriodLabel,
+            summary: {
+                totalCnsAmount,
+                totalCnsCount: reportConsignments.length,
+                totalBilled,
+                totalPaid,
+                unbilledAmount: Math.max(rawUnbilledAmount, 0),
+                overbilledAmount: Math.max(-rawUnbilledAmount, 0),
+                outstanding: roundMoney(openingBalance + totalBilled - totalPaid),
+            },
+            sections: {
+                cnsRows: reportConsignments.map((record) => ({
+                    cnNo: record.cn_no,
+                    date: fmtDate(record.bkg_date),
+                    route: `${record.loading_point || record.booking_branch || '—'} -> ${record.delivery_point || record.dest_branch || '—'}`,
+                    basis: record.bkg_basis,
+                    freight: `₹${fmt(parseMoney(record.total_freight))}`,
+                })),
+                billingRows: reportBillingRecords.map((record) => ({
+                    billNo: record.bill_ref_no || '—',
+                    date: fmtDate(record.billing_date),
+                    coveredCns: (record.covered_cn_nos || []).join(', ') || '—',
+                    cnTotal: `₹${fmt(parseMoney(record.cn_total_amount))}`,
+                    billed: `₹${fmt(parseMoney(record.amount))}`,
+                    status: record.status,
+                })),
+                paymentRows: reportPaymentReceipts.map((record) => ({
+                    date: fmtDate(record.receipt_date),
+                    mode: record.payment_mode || '—',
+                    reference: record.reference_no || '—',
+                    bills: ((record.bill_allocations || []).length > 0
+                        ? (record.bill_allocations || [])
+                            .map((allocation) => billingLookup.get(allocation.billing_record_id)?.bill_ref_no || billingLookup.get(allocation.billing_record_id)?.id.slice(0, 8).toUpperCase() || '—')
+                            .join(', ')
+                        : (record.related_billing_record_ids || [])
+                            .map((id) => billingLookup.get(id)?.bill_ref_no || billingLookup.get(id)?.id.slice(0, 8).toUpperCase() || '—')
+                            .join(', ')) || '—',
+                    settled: `₹${fmt(parseMoney(record.amount))}`,
+                    received: `₹${fmt(parseMoney(record.actual_received_amount ?? record.amount))}`,
+                    status: record.status,
+                })),
+            },
+        };
+    }, [data.account?.opening_balance, data.all_billing_records, data.all_consignments, data.all_payment_receipts, data.party, dateFrom, dateTo, reportPeriodLabel]);
+
+    const filteredBillingRecords = useMemo(() => {
+        const query = billingSearch.trim().toLowerCase();
+
+        return data.billing_records.filter((record) => {
+            if (billingStatusFilter !== 'all' && record.status !== billingStatusFilter) {
+                return false;
+            }
+
+            const billingDate = record.billing_date?.slice(0, 10) || '';
+            if (billingDateFrom && billingDate < billingDateFrom) {
+                return false;
+            }
+            if (billingDateTo && billingDate > billingDateTo) {
+                return false;
+            }
+
+            if (!query) return true;
+
+            const haystack = [
+                record.bill_ref_no || '',
+                record.narration || '',
+                (record.covered_cn_nos || []).join(' '),
+                data.party?.name || '',
+                data.party?.code || '',
+            ].join(' ').toLowerCase();
+
+            return haystack.includes(query);
+        });
+    }, [billingSearch, billingStatusFilter, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
+
+    const filteredConsignments = useMemo(() => {
+        const query = cnsSearch.trim().toLowerCase();
+        if (!query) return data.consignments;
+        return data.consignments.filter((c) =>
+            String(c.cn_no || '').toLowerCase().includes(query) ||
+            String(c.goods_desc || '').toLowerCase().includes(query)
+        );
+    }, [cnsSearch, data.consignments]);
+
+    const billingRecordMap = useMemo(
+        () => new Map(data.billing_records.map((record) => [record.id, record])),
+        [data.billing_records]
+    );
+
+    const { party, summary } = data;
+
+    const handleDownloadLedgerReport = useCallback(async () => {
+        if (!reportPayload || !party) return;
+
+        const totalRows = reportPayload.sections.cnsRows.length
+            + reportPayload.sections.billingRows.length
+            + reportPayload.sections.paymentRows.length;
+
+        if (totalRows === 0) {
+            toast.error('No ledger entries found for the selected period');
+            return;
+        }
+
+        setIsDownloadingReport(true);
+        try {
+            await downloadPartyLedgerReportPdf({
+                party: {
+                    name: party.name,
+                    code: party.code,
+                    type: party.type,
+                    gstin: party.gstin,
+                    address: party.address,
+                    branch_code: party.branch_code,
+                },
+                periodLabel: reportPayload.periodLabel,
+                generatedAt: format(new Date(), 'dd/MM/yyyy HH:mm'),
+                summary: reportPayload.summary,
+                sections: [
+                    {
+                        title: 'CNS Entries',
+                        columns: [
+                            { key: 'cnNo', label: 'CN No', width: 28 },
+                            { key: 'date', label: 'Date', width: 22 },
+                            { key: 'route', label: 'Route', width: 120 },
+                            { key: 'basis', label: 'Basis', width: 35 },
+                            { key: 'freight', label: 'Freight', width: 30, align: 'right' },
+                        ],
+                        rows: reportPayload.sections.cnsRows,
+                        emptyMessage: 'No CNS entries for this period.',
+                    },
+                    {
+                        title: 'Billing Records',
+                        columns: [
+                            { key: 'billNo', label: 'Bill No', width: 35 },
+                            { key: 'date', label: 'Date', width: 22 },
+                            { key: 'coveredCns', label: 'Covered CNs', width: 105 },
+                            { key: 'cnTotal', label: 'CN Total', width: 30, align: 'right' },
+                            { key: 'billed', label: 'Billed', width: 30, align: 'right' },
+                            { key: 'status', label: 'Status', width: 25, align: 'center' },
+                        ],
+                        rows: reportPayload.sections.billingRows,
+                        emptyMessage: 'No billing records for this period.',
+                    },
+                    {
+                        title: 'Payment Receipts',
+                        columns: [
+                            { key: 'date', label: 'Date', width: 22 },
+                            { key: 'mode', label: 'Mode', width: 24 },
+                            { key: 'reference', label: 'Reference', width: 36 },
+                            { key: 'bills', label: 'Linked Bills', width: 95 },
+                            { key: 'settled', label: 'Settled', width: 28, align: 'right' },
+                            { key: 'received', label: 'Received', width: 28, align: 'right' },
+                            { key: 'status', label: 'Status', width: 25, align: 'center' },
+                        ],
+                        rows: reportPayload.sections.paymentRows,
+                        emptyMessage: 'No payment receipts for this period.',
+                    },
+                ],
+            });
+            toast.success('Ledger report downloaded');
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : 'Failed to download ledger report');
+        } finally {
+            setIsDownloadingReport(false);
+        }
+    }, [party, reportPayload]);
 
     if (isLoading && !party) {
         return (
@@ -575,6 +1503,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     <KpiCard
                         label="Unbilled Amount"
                         value={`₹${fmt(summary.unbilled_amount)}`}
+                        sub={summary.overbilled_amount && summary.overbilled_amount > 0 ? `Overbilled ₹${fmt(summary.overbilled_amount)}` : undefined}
                         icon={AlertCircle}
                         iconBg="bg-amber-50"
                         valueClass="text-amber-700"
@@ -601,17 +1530,126 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     <CardContent className="p-4">
                         <div className="flex flex-wrap items-center gap-4">
                             <Label className="text-xs font-bold uppercase text-muted-foreground shrink-0">Date Filter</Label>
+                            <Select value={reportPreset} onValueChange={(value: 'custom' | 'monthly' | 'quarterly' | 'yearly') => setReportPreset(value)}>
+                                <SelectTrigger className="h-8 w-40 text-xs">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="custom">Custom Range</SelectItem>
+                                    <SelectItem value="monthly">Monthly</SelectItem>
+                                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                                    <SelectItem value="yearly">Yearly</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {reportPreset === 'monthly' && (
+                                <>
+                                    <Select value={String(reportMonth)} onValueChange={(value) => setReportMonth(Number(value))}>
+                                        <SelectTrigger className="h-8 w-36 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {monthOptions.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Select value={String(reportYear)} onValueChange={(value) => setReportYear(Number(value))}>
+                                        <SelectTrigger className="h-8 w-28 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {reportYearOptions.map((year) => (
+                                                <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </>
+                            )}
+
+                            {reportPreset === 'quarterly' && (
+                                <>
+                                    <Select value={String(reportQuarter)} onValueChange={(value) => setReportQuarter(Number(value))}>
+                                        <SelectTrigger className="h-8 w-40 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="1">Q1 (Apr-Jun)</SelectItem>
+                                            <SelectItem value="2">Q2 (Jul-Sep)</SelectItem>
+                                            <SelectItem value="3">Q3 (Oct-Dec)</SelectItem>
+                                            <SelectItem value="4">Q4 (Jan-Mar)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Select value={String(reportQuarterYear)} onValueChange={(value) => setReportQuarterYear(Number(value))}>
+                                        <SelectTrigger className="h-8 w-32 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {financialYearOptions.map((year) => (
+                                                <SelectItem key={year} value={String(year)}>
+                                                    FY {year}-{String(year + 1).slice(-2)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </>
+                            )}
+
+                            {reportPreset === 'yearly' && (
+                                <Select value={String(reportQuarterYear)} onValueChange={(value) => setReportQuarterYear(Number(value))}>
+                                    <SelectTrigger className="h-8 w-32 text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {financialYearOptions.map((year) => (
+                                            <SelectItem key={year} value={String(year)}>
+                                                FY {year}-{String(year + 1).slice(-2)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+
                             <div className="flex items-center gap-2">
-                                <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 w-36 text-xs" placeholder="From" />
+                                <Input
+                                    type="date"
+                                    value={dateFrom}
+                                    onChange={e => {
+                                        setReportPreset('custom');
+                                        setDateFrom(e.target.value);
+                                    }}
+                                    className="h-8 w-36 text-xs"
+                                    placeholder="From"
+                                />
                                 <span className="text-muted-foreground text-xs">to</span>
-                                <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 w-36 text-xs" placeholder="To" />
+                                <Input
+                                    type="date"
+                                    value={dateTo}
+                                    onChange={e => {
+                                        setReportPreset('custom');
+                                        setDateTo(e.target.value);
+                                    }}
+                                    className="h-8 w-36 text-xs"
+                                    placeholder="To"
+                                />
+                            </div>
+                            <div className="text-[11px] font-medium text-muted-foreground">
+                                {reportPeriodLabel}
                             </div>
                             {(dateFrom || dateTo) && (
                                 <Button variant="ghost" size="sm" className="h-8 text-muted-foreground gap-1"
-                                    onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                                    onClick={() => {
+                                        setReportPreset('custom');
+                                        setDateFrom('');
+                                        setDateTo('');
+                                    }}>
                                     <RotateCcw className="h-3 w-3" /> Clear
                                 </Button>
                             )}
+                            <Button size="sm" className="h-8 gap-2 ml-auto" onClick={() => void handleDownloadLedgerReport()} disabled={isDownloadingReport}>
+                                {isDownloadingReport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                                Download Ledger Report
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>
@@ -660,17 +1698,17 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {data.consignments.length === 0 ? (
+                                        {filteredConsignments.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={7} className="h-24 text-center text-muted-foreground text-sm">
-                                                    No CNS entries found for this party
+                                                    {cnsSearch ? `No CNS entries match "${cnsSearch}"` : 'No CNS entries found for this party'}
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            data.consignments.map(c => (
+                                            filteredConsignments.map(c => (
                                                 <TableRow key={c.id} className="hover:bg-primary/5 transition-colors border-b last:border-0">
                                                     <TableCell>
-                                                        <Link href={`/dashboard/consignments`}
+                                                        <Link href={`/dashboard/consignments/new?edit=${c.id}`}
                                                             className="font-bold text-primary text-xs hover:underline font-mono">
                                                             {c.cn_no}
                                                         </Link>
@@ -727,6 +1765,59 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 )}
                             </CardHeader>
                             <CardContent className="p-0">
+                                <div className="px-6 py-4 border-b bg-muted/10">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="relative min-w-[240px] flex-1">
+                                            <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Search bill ref, narration or CN..."
+                                                className="pl-9 h-8 text-xs"
+                                                value={billingSearch}
+                                                onChange={(e) => setBillingSearch(e.target.value)}
+                                            />
+                                        </div>
+                                        <Select
+                                            value={billingStatusFilter}
+                                            onValueChange={(value: 'all' | 'ACTIVE' | 'CANCELLED') => setBillingStatusFilter(value)}
+                                        >
+                                            <SelectTrigger className="h-8 w-[160px] text-xs">
+                                                <SelectValue placeholder="All Status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Status</SelectItem>
+                                                <SelectItem value="ACTIVE">Active</SelectItem>
+                                                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Input
+                                            type="date"
+                                            value={billingDateFrom}
+                                            onChange={(e) => setBillingDateFrom(e.target.value)}
+                                            className="h-8 w-[150px] text-xs"
+                                        />
+                                        <Input
+                                            type="date"
+                                            value={billingDateTo}
+                                            onChange={(e) => setBillingDateTo(e.target.value)}
+                                            className="h-8 w-[150px] text-xs"
+                                        />
+                                        {(billingSearch || billingStatusFilter !== 'all' || billingDateFrom || billingDateTo) && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 gap-1 text-xs"
+                                                onClick={() => {
+                                                    setBillingSearch('');
+                                                    setBillingStatusFilter('all');
+                                                    setBillingDateFrom('');
+                                                    setBillingDateTo('');
+                                                }}
+                                            >
+                                                <RotateCcw className="h-3 w-3" /> Reset
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
@@ -737,18 +1828,18 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             <TableHead className="font-bold text-xs py-3">CNs</TableHead>
                                             <TableHead className="font-bold text-xs py-3 text-right">Amount</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Status</TableHead>
-                                            {isAdmin && <TableHead className="py-3" />}
+                                            <TableHead className="py-3" />
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {data.billing_records.length === 0 ? (
+                                        {filteredBillingRecords.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={isAdmin ? 8 : 7} className="h-24 text-center text-muted-foreground text-sm">
-                                                    No billing records yet
+                                                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground text-sm">
+                                                    No billing records found
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            data.billing_records.map(b => (
+                                            filteredBillingRecords.map(b => (
                                                 <TableRow key={b.id} className={`hover:bg-primary/5 transition-colors border-b last:border-0 ${b.status === 'CANCELLED' ? 'opacity-50' : ''}`}>
                                                     <TableCell className="font-mono text-xs text-primary font-bold">{b.bill_ref_no || '—'}</TableCell>
                                                     <TableCell className="text-xs">{fmtDate(b.billing_date)}</TableCell>
@@ -768,29 +1859,47 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                             {b.status}
                                                         </Badge>
                                                     </TableCell>
-                                                    {isAdmin && (
-                                                        <TableCell className="text-right">
-                                                            {b.status === 'ACTIVE' && (
-                                                                <Button size="sm" variant="ghost"
-                                                                    className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
-                                                                    onClick={() => setCancelTarget({ type: 'billing', id: b.id })}>
-                                                                    Cancel
-                                                                </Button>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-7 px-2 text-xs"
+                                                                onClick={() => setSelectedBillingRecord(b)}
+                                                            >
+                                                                <Eye className="h-3.5 w-3.5 mr-1" /> View
+                                                            </Button>
+                                                            {isAdmin && b.status === 'ACTIVE' && (
+                                                                <>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                                                                        onClick={() => setEditingBillingRecord(b)}
+                                                                    >
+                                                                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                                                                    </Button>
+                                                                    <Button size="sm" variant="ghost"
+                                                                        className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
+                                                                        onClick={() => setCancelTarget({ type: 'billing', id: b.id })}>
+                                                                        Cancel
+                                                                    </Button>
+                                                                </>
                                                             )}
-                                                        </TableCell>
-                                                    )}
+                                                        </div>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))
                                         )}
                                     </TableBody>
                                 </Table>
-                                {data.billing_records.filter(b => b.status === 'ACTIVE').length > 0 && (
+                                {filteredBillingRecords.length > 0 && (
                                     <div className="px-6 py-3 border-t bg-muted/10 flex justify-between items-center">
                                         <span className="text-xs text-muted-foreground">
-                                            Active: {data.billing_records.filter(b => b.status === 'ACTIVE').length} records
+                                            Showing {filteredBillingRecords.length} of {data.billing_records.length} records
                                         </span>
                                         <span className="text-sm font-black text-emerald-700 font-mono">
-                                            Total: ₹{fmt(data.billing_records.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + (parseFloat(String(b.amount)) || 0), 0))}
+                                            Active Total: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + (parseFloat(String(b.amount)) || 0), 0))}
                                         </span>
                                     </div>
                                 )}
@@ -817,10 +1926,11 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         <TableRow>
                                             <TableHead className="font-bold text-xs py-3">Date</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Mode</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Bills / Breakup</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Reference</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Bank</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Narration</TableHead>
-                                            <TableHead className="font-bold text-xs py-3 text-right">Amount</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 text-right">Settled</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Status</TableHead>
                                             {isAdmin && <TableHead className="py-3" />}
                                         </TableRow>
@@ -828,7 +1938,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                     <TableBody>
                                         {data.payment_receipts.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={isAdmin ? 8 : 7} className="h-24 text-center text-muted-foreground text-sm">
+                                                <TableCell colSpan={isAdmin ? 9 : 8} className="h-24 text-center text-muted-foreground text-sm">
                                                     No payment receipts yet
                                                 </TableCell>
                                             </TableRow>
@@ -841,11 +1951,55 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                             {p.payment_mode}
                                                         </Badge>
                                                     </TableCell>
+                                                    <TableCell className="text-xs text-muted-foreground max-w-[260px]">
+                                                        {(p.bill_allocations || []).length > 0 ? (
+                                                            <div className="space-y-2 py-1">
+                                                                {p.bill_allocations?.map((allocation) => {
+                                                                    const bill = billingRecordMap.get(allocation.billing_record_id);
+                                                                    const deductionTotal = (allocation.deduction_items || []).reduce((sum, item) => sum + parseMoney(item.amount), 0);
+                                                                    return (
+                                                                        <div key={`${p.id}-${allocation.billing_record_id}`} className="rounded-md border bg-muted/10 px-2.5 py-2">
+                                                                            <div className="font-mono text-[11px] font-bold text-primary">
+                                                                                {bill?.bill_ref_no || bill?.id.slice(0, 8).toUpperCase() || '—'}
+                                                                            </div>
+                                                                            <div className="mt-1 text-[11px]">
+                                                                                Settled ₹{fmt(parseMoney(allocation.settled_amount))} • Received ₹{fmt(parseMoney(allocation.received_amount))}
+                                                                            </div>
+                                                                            {deductionTotal > 0 && (
+                                                                                <>
+                                                                                    <div className="mt-1 text-[11px] text-amber-700">
+                                                                                        Deductions ₹{fmt(deductionTotal)}
+                                                                                    </div>
+                                                                                    <div className="mt-1 text-[11px] text-muted-foreground">
+                                                                                        {(allocation.deduction_items || [])
+                                                                                            .map((item) => `${item.label} ₹${fmt(parseMoney(item.amount))}`)
+                                                                                            .join(', ')}
+                                                                                    </div>
+                                                                                </>
+                                                                            )}
+                                                                            {(bill?.covered_cn_nos || []).length > 0 && (
+                                                                                <div className="mt-1 text-[11px] truncate">
+                                                                                    CNs: {bill?.covered_cn_nos?.join(', ')}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        ) : p.related_billing_record_ids && p.related_billing_record_ids.length > 0
+                                                            ? p.related_billing_record_ids
+                                                                .map((id) => billingRecordMap.get(id)?.bill_ref_no || billingRecordMap.get(id)?.id.slice(0, 8).toUpperCase() || '—')
+                                                                .join(', ')
+                                                            : '—'}
+                                                    </TableCell>
                                                     <TableCell className="font-mono text-xs text-muted-foreground">{p.reference_no || '—'}</TableCell>
                                                     <TableCell className="text-xs">{p.bank_name || '—'}</TableCell>
                                                     <TableCell className="text-xs max-w-[180px] truncate" title={p.narration || ''}>{p.narration || '—'}</TableCell>
                                                     <TableCell className="text-right font-black text-sm text-indigo-700 font-mono">
-                                                        ₹{fmt(p.amount)}
+                                                        <div>₹{fmt(p.amount)}</div>
+                                                        <div className="text-[11px] font-semibold text-slate-600">
+                                                            Rec ₹{fmt(parseMoney(p.actual_received_amount ?? p.amount))}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Badge variant={p.status === 'ACTIVE' ? 'default' : 'outline'}
@@ -923,9 +2077,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     <TableCell className="text-right font-mono font-bold text-emerald-700">₹{fmt(m.billed)}</TableCell>
                                                     <TableCell className="text-right font-mono font-bold text-indigo-700">₹{fmt(m.paid)}</TableCell>
                                                     <TableCell className="text-right">
-                                                        {m.cns_amount - m.billed > 0 ? (
+                                                        {m.cns_amount - m.cn_billed > 0 ? (
                                                             <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                                                                ₹{fmt(m.cns_amount - m.billed)}
+                                                                ₹{fmt(m.cns_amount - m.cn_billed)}
                                                             </span>
                                                         ) : (
                                                             <span className="text-emerald-700 font-mono font-bold">Fully Billed</span>
@@ -948,12 +2102,36 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 onClose={() => setShowBillingDialog(false)}
                 partyId={partyId}
                 onSuccess={fetchData}
+                consignments={data.consignments}
+            />
+            <EditBillingDialog
+                open={!!editingBillingRecord}
+                onClose={() => setEditingBillingRecord(null)}
+                partyId={partyId}
+                record={editingBillingRecord}
+                onSuccess={fetchData}
+                consignments={data.all_consignments}
             />
             <AddPaymentDialog
                 open={showPaymentDialog}
                 onClose={() => setShowPaymentDialog(false)}
                 partyId={partyId}
                 onSuccess={fetchData}
+                billingRecords={data.all_billing_records}
+                paymentReceipts={data.all_payment_receipts}
+            />
+            <BillingRecordViewDialog
+                open={!!selectedBillingRecord}
+                onClose={() => setSelectedBillingRecord(null)}
+                party={party}
+                record={selectedBillingRecord}
+                consignments={data.all_consignments}
+                isAdmin={isAdmin}
+                onEdit={() => {
+                    if (!selectedBillingRecord) return;
+                    setEditingBillingRecord(selectedBillingRecord);
+                    setSelectedBillingRecord(null);
+                }}
             />
             {cancelTarget && (
                 <CancelDialog
