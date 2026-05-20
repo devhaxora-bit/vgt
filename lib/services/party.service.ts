@@ -52,6 +52,33 @@ export const getPartyByCode = async (code: string) => {
     return data as Party;
 };
 
+/**
+ * Returns the next sequential party code as a zero-padded 6-digit string.
+ * e.g. if max existing code is "000007", returns "000008".
+ * Falls back to "000001" if no parties exist yet.
+ */
+export const getNextPartyCode = async (): Promise<string> => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+        .from('parties')
+        .select('code')
+        .order('code', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (error || !data?.code) {
+        return '000001';
+    }
+
+    const maxNum = parseInt(data.code, 10);
+    if (isNaN(maxNum)) {
+        return '000001';
+    }
+
+    return String(maxNum + 1).padStart(6, '0');
+};
+
+
 export const createParty = async (party: PartyInput) => {
     const supabase = createClient();
     const { data, error } = await supabase

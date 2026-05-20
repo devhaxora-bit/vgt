@@ -18,7 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Party, PartyType, PartyInput } from '@/lib/types/party.types';
-import { createParty, updateParty, getPartyByCode } from '@/lib/services/party.service';
+import { createParty, updateParty, getPartyByCode, getNextPartyCode } from '@/lib/services/party.service';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface AddPartyDialogProps {
@@ -65,8 +65,10 @@ export function AddPartyDialog({
             } else {
                 setName(initialName);
                 setType(defaultType);
-                setCode(Math.floor(100000 + Math.random() * 900000).toString());
+                setCode('');
                 setGstin('');
+                // Fetch the next sequential code asynchronously
+                getNextPartyCode().then((nextCode) => setCode(nextCode)).catch(() => setCode('000001'));
                 setAddress('');
                 setPincode('');
                 setPhone('');
