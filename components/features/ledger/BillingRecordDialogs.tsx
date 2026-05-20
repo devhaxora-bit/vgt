@@ -933,16 +933,16 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .bill-cell { border-right: 1.2px solid #1d2f7a; padding: 4px 6px; font-size: 10px; font-weight: 700; line-height: 1.12; display: flex; align-items: center; }
 .bill-cell:last-child { border-right: none; }
 .bill-cell.center { text-align: center; justify-content: center; }
-.bill-cell.value { font-size: 11px; font-weight: 800; }
+.bill-cell.value { font-size: 13px; font-weight: 800; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
-.items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 8.8px; vertical-align: middle; }
+.items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 8.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
+.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
-.total-row td { height: 26px; font-size: 10px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
+.total-row td { height: 26px; font-size: 12px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
 .total-label { text-align: center; color: #1d2f7a; }
 .words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
 .notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
@@ -1009,22 +1009,22 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         <table class="items-table">
             <thead>
                 <tr>
-                    <th style="width:6%;">CNS<br/>No</th>
-                    <th style="width:5%;">Date</th>
-                    <th style="width:10%;">Invoice<br/>No</th>
-                    <th style="width:7%;">Vehicle no.</th>
-                    <th style="width:7%;">Loading<br/>Station</th>
-                    <th style="width:7%;">Destination</th>
-                    <th style="width:5%;">Charge Wt.</th>
+                    <th style="width:4.5%;">CNS<br/>No</th>
+                    <th style="width:7%;">Date</th>
+                    <th style="width:7.5%;">Invoice<br/>No</th>
+                    <th style="width:7.5%;">Vehicle no.</th>
+                    <th style="width:8.5%;">Loading<br/>Station</th>
+                    <th style="width:8.5%;">Destination</th>
+                    <th style="width:5.5%;">Charge Wt.</th>
                     <th style="width:4%;">Rate</th>
                     <th style="width:6%;">Freight</th>
-                    <th style="width:5%;">Detention</th>
-                    <th style="width:5%;">Loading</th>
-                    <th style="width:5%;">Unload</th>
-                    <th style="width:5%;">Extra KM</th>
-                    <th style="width:6%;">Traffic<br/>Challan</th>
-                    <th style="width:6%;">Other<br/>Charges</th>
-                    <th style="width:7%;">Total Billed<br/>Amount</th>
+                    <th style="width:6.5%;">Detention</th>
+                    <th style="width:6%;">Loading</th>
+                    <th style="width:6%;">Unload</th>
+                    <th style="width:4%;">Extra KM</th>
+                    <th style="width:4.5%;">Traffic<br/>Challan</th>
+                    <th style="width:5%;">Other<br/>Charges</th>
+                    <th style="width:9%;">Total Billed<br/>Amount</th>
                 </tr>
             </thead>
             <tbody>
