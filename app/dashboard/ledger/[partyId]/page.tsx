@@ -1256,52 +1256,111 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         const totalPaid = roundMoney(activePayments.reduce((sum, record) => sum + parseMoney(record.amount), 0));
         const rawUnbilledAmount = roundMoney(totalCnsAmount - totalCnBilled);
         const openingBalance = roundMoney(parseMoney(data.account?.opening_balance));
-        const billingLookup = new Map(reportBillingRecords.map((record) => [record.id, record]));
+        const billingLookup = new Map(data.all_billing_records.map((record) => [record.id, record]));
+        const settledBillAmountMap = buildSettledBillAmountMap(data.all_payment_receipts);
+        const activeBillByCn = new Map<string, BillingRecord>();
+        const cancelledBillByCn = new Map<string, BillingRecord>();
+
+        data.all_billing_records.forEach((record) => {
+            (record.covered_cn_nos || []).forEach((cnNo) => {
+                const normalizedCnNo = cnNo.trim();
+                if (!normalizedCnNo) return;
+
+                if (record.status === 'ACTIVE') {
+                    activeBillByCn.set(normalizedCnNo, record);
+                } else if (!cancelledBillByCn.has(normalizedCnNo)) {
+                    cancelledBillByCn.set(normalizedCnNo, record);
+                }
+            });
+        });
+
+        const cnsRows = reportConsignments.map((record) => {
+            const activeBill = activeBillByCn.get(record.cn_no);
+            const cancelledBill = cancelledBillByCn.get(record.cn_no);
+            const billPaidAmount = roundMoney(activeBill ? settledBillAmountMap.get(activeBill.id) || 0 : 0);
+            const billAmount = roundMoney(parseMoney(activeBill?.amount));
+            const charges = getConsignmentChargeBreakdown(record);
+            const chargedWeight = parseMoney(record.charged_weight) || parseMoney(record.actual_weight);
+
+            return {
+                cnNo: record.cn_no,
+                date: fmtDate(record.bkg_date),
+                invoiceNo: record.invoice_no || record.cn_no,
+                vehicleNo: record.vehicle_no || '—',
+                route: `${record.loading_point || record.booking_branch || '—'} -> ${record.delivery_point || record.dest_branch || '—'}`,
+                loadingStation: record.loading_point || record.booking_branch || '—',
+                destination: record.delivery_point || record.dest_branch || '—',
+                chargeWeight: chargedWeight > 0 ? `${fmt(chargedWeight)} ${record.load_unit || ''}`.trim() : '—',
+                rate: roundMoney(parseMoney(record.freight_rate)),
+                basis: record.bkg_basis,
+                freight: roundMoney(charges.freight),
+                detention: roundMoney(charges.detention),
+                loading: roundMoney(charges.loading),
+                unloading: roundMoney(charges.unloading),
+                extraKm: roundMoney(charges.extraKm),
+                trafficChallan: roundMoney(charges.trafficChallan),
+                otherCharges: roundMoney(charges.other + charges.doorCollection + charges.doorDelivery),
+                totalAmount: roundMoney(charges.total),
+                billedOnBill: activeBill?.bill_ref_no || cancelledBill?.bill_ref_no || null,
+                billStatus: activeBill ? 'BILLED' as const : cancelledBill ? 'CANCELLED' as const : 'UNBILLED' as const,
+                billAmount,
+                billPaidAmount,
+                billBalance: roundMoney(Math.max(billAmount - billPaidAmount, 0)),
+            };
+        });
+
+        const billRows = reportBillingRecords.map((record) => {
+            const billedAmount = roundMoney(parseMoney(record.amount));
+            const paidAmount = roundMoney(settledBillAmountMap.get(record.id) || 0);
+
+            return {
+                billNo: record.bill_ref_no || '—',
+                date: fmtDate(record.billing_date),
+                coveredCns: (record.covered_cn_nos || []).join(', ') || '—',
+                cnCount: (record.covered_cn_nos || []).length,
+                cnTotal: roundMoney(parseMoney(record.cn_total_amount)),
+                billedAmount,
+                paidAmount,
+                balance: roundMoney(Math.max(billedAmount - paidAmount, 0)),
+                status: record.status,
+            };
+        });
+
+        const paymentRows = reportPaymentReceipts.map((record) => ({
+            date: fmtDate(record.receipt_date),
+            mode: record.payment_mode || '—',
+            reference: record.reference_no || '—',
+            linkedBills: ((record.bill_allocations || []).length > 0
+                ? (record.bill_allocations || [])
+                    .map((allocation) => billingLookup.get(allocation.billing_record_id)?.bill_ref_no || billingLookup.get(allocation.billing_record_id)?.id.slice(0, 8).toUpperCase() || '—')
+                    .join(', ')
+                : (record.related_billing_record_ids || [])
+                    .map((id) => billingLookup.get(id)?.bill_ref_no || billingLookup.get(id)?.id.slice(0, 8).toUpperCase() || '—')
+                    .join(', ')) || '—',
+            amount: roundMoney(parseMoney(record.actual_received_amount ?? record.amount)),
+            status: record.status,
+        }));
+        const billedCnsCount = cnsRows.filter((record) => record.billStatus === 'BILLED').length;
 
         return {
             party: data.party,
             periodLabel: reportPeriodLabel,
             summary: {
+                openingBalance,
                 totalCnsAmount,
                 totalCnsCount: reportConsignments.length,
-                totalBilled,
+                billedCnsCount,
+                billedCnsAmount: totalCnBilled,
+                unbilledCnsCount: cnsRows.length - billedCnsCount,
+                unbilledCnsAmount: Math.max(rawUnbilledAmount, 0),
+                totalBilledAmount: totalBilled,
                 totalPaid,
-                unbilledAmount: Math.max(rawUnbilledAmount, 0),
-                overbilledAmount: Math.max(-rawUnbilledAmount, 0),
                 outstanding: roundMoney(openingBalance + totalBilled - totalPaid),
+                overbilledAmount: Math.max(-rawUnbilledAmount, 0),
             },
-            sections: {
-                cnsRows: reportConsignments.map((record) => ({
-                    cnNo: record.cn_no,
-                    date: fmtDate(record.bkg_date),
-                    route: `${record.loading_point || record.booking_branch || '—'} -> ${record.delivery_point || record.dest_branch || '—'}`,
-                    basis: record.bkg_basis,
-                    freight: `₹${fmt(parseMoney(record.total_freight))}`,
-                })),
-                billingRows: reportBillingRecords.map((record) => ({
-                    billNo: record.bill_ref_no || '—',
-                    date: fmtDate(record.billing_date),
-                    coveredCns: (record.covered_cn_nos || []).join(', ') || '—',
-                    cnTotal: `₹${fmt(parseMoney(record.cn_total_amount))}`,
-                    billed: `₹${fmt(parseMoney(record.amount))}`,
-                    status: record.status,
-                })),
-                paymentRows: reportPaymentReceipts.map((record) => ({
-                    date: fmtDate(record.receipt_date),
-                    mode: record.payment_mode || '—',
-                    reference: record.reference_no || '—',
-                    bills: ((record.bill_allocations || []).length > 0
-                        ? (record.bill_allocations || [])
-                            .map((allocation) => billingLookup.get(allocation.billing_record_id)?.bill_ref_no || billingLookup.get(allocation.billing_record_id)?.id.slice(0, 8).toUpperCase() || '—')
-                            .join(', ')
-                        : (record.related_billing_record_ids || [])
-                            .map((id) => billingLookup.get(id)?.bill_ref_no || billingLookup.get(id)?.id.slice(0, 8).toUpperCase() || '—')
-                            .join(', ')) || '—',
-                    settled: `₹${fmt(parseMoney(record.amount))}`,
-                    received: `₹${fmt(parseMoney(record.actual_received_amount ?? record.amount))}`,
-                    status: record.status,
-                })),
-            },
+            cnsRows,
+            billRows,
+            paymentRows,
         };
     }, [data.account?.opening_balance, data.all_billing_records, data.all_consignments, data.all_payment_receipts, data.party, dateFrom, dateTo, reportPeriodLabel]);
 
@@ -1344,6 +1403,31 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         );
     }, [cnsSearch, data.consignments]);
 
+    const consignmentBillingMap = useMemo(() => {
+        const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();
+
+        data.all_billing_records.forEach((record) => {
+            (record.covered_cn_nos || []).forEach((cnNo) => {
+                const normalizedCnNo = cnNo.trim();
+                if (!normalizedCnNo) return;
+
+                const billRef = record.bill_ref_no || record.id.slice(0, 8).toUpperCase();
+                if (record.status === 'ACTIVE') {
+                    recordsByCn.set(normalizedCnNo, { status: 'BILLED', billRef });
+                } else if (!recordsByCn.has(normalizedCnNo)) {
+                    recordsByCn.set(normalizedCnNo, { status: 'CANCELLED', billRef });
+                }
+            });
+        });
+
+        return recordsByCn;
+    }, [data.all_billing_records]);
+
+    const billingSettledAmountMap = useMemo(
+        () => buildSettledBillAmountMap(data.all_payment_receipts),
+        [data.all_payment_receipts]
+    );
+
     const billingRecordMap = useMemo(
         () => new Map(data.billing_records.map((record) => [record.id, record])),
         [data.billing_records]
@@ -1354,9 +1438,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const handleDownloadLedgerReport = useCallback(async () => {
         if (!reportPayload || !party) return;
 
-        const totalRows = reportPayload.sections.cnsRows.length
-            + reportPayload.sections.billingRows.length
-            + reportPayload.sections.paymentRows.length;
+        const totalRows = reportPayload.cnsRows.length
+            + reportPayload.billRows.length
+            + reportPayload.paymentRows.length;
 
         if (totalRows === 0) {
             toast.error('No ledger entries found for the selected period');
@@ -1377,47 +1461,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 periodLabel: reportPayload.periodLabel,
                 generatedAt: format(new Date(), 'dd/MM/yyyy HH:mm'),
                 summary: reportPayload.summary,
-                sections: [
-                    {
-                        title: 'CNS Entries',
-                        columns: [
-                            { key: 'cnNo', label: 'CN No', width: 28 },
-                            { key: 'date', label: 'Date', width: 22 },
-                            { key: 'route', label: 'Route', width: 120 },
-                            { key: 'basis', label: 'Basis', width: 35 },
-                            { key: 'freight', label: 'Freight', width: 30, align: 'right' },
-                        ],
-                        rows: reportPayload.sections.cnsRows,
-                        emptyMessage: 'No CNS entries for this period.',
-                    },
-                    {
-                        title: 'Billing Records',
-                        columns: [
-                            { key: 'billNo', label: 'Bill No', width: 35 },
-                            { key: 'date', label: 'Date', width: 22 },
-                            { key: 'coveredCns', label: 'Covered CNs', width: 105 },
-                            { key: 'cnTotal', label: 'CN Total', width: 30, align: 'right' },
-                            { key: 'billed', label: 'Billed', width: 30, align: 'right' },
-                            { key: 'status', label: 'Status', width: 25, align: 'center' },
-                        ],
-                        rows: reportPayload.sections.billingRows,
-                        emptyMessage: 'No billing records for this period.',
-                    },
-                    {
-                        title: 'Payment Receipts',
-                        columns: [
-                            { key: 'date', label: 'Date', width: 22 },
-                            { key: 'mode', label: 'Mode', width: 24 },
-                            { key: 'reference', label: 'Reference', width: 36 },
-                            { key: 'bills', label: 'Linked Bills', width: 95 },
-                            { key: 'settled', label: 'Settled', width: 28, align: 'right' },
-                            { key: 'received', label: 'Received', width: 28, align: 'right' },
-                            { key: 'status', label: 'Status', width: 25, align: 'center' },
-                        ],
-                        rows: reportPayload.sections.paymentRows,
-                        emptyMessage: 'No payment receipts for this period.',
-                    },
-                ],
+                cnsRows: reportPayload.cnsRows,
+                billRows: reportPayload.billRows,
+                paymentRows: reportPayload.paymentRows,
             });
             toast.success('Ledger report downloaded');
         } catch (error: unknown) {
@@ -1695,17 +1741,22 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             <TableHead className="font-bold text-xs py-3 text-right">Weight</TableHead>
                                             <TableHead className="font-bold text-xs py-3 text-right">Freight</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Basis</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Billing</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Bill Ref</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filteredConsignments.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground text-sm">
+                                                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground text-sm">
                                                     {cnsSearch ? `No CNS entries match "${cnsSearch}"` : 'No CNS entries found for this party'}
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            filteredConsignments.map(c => (
+                                            filteredConsignments.map(c => {
+                                                const billing = consignmentBillingMap.get(c.cn_no);
+
+                                                return (
                                                 <TableRow key={c.id} className="hover:bg-primary/5 transition-colors border-b last:border-0">
                                                     <TableCell>
                                                         <Link href={`/dashboard/consignments/new?edit=${c.id}`}
@@ -1734,14 +1785,36 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                             {c.bkg_basis}
                                                         </Badge>
                                                     </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline"
+                                                            className={`text-[9px] px-1.5 py-0 h-4 ${
+                                                                billing?.status === 'BILLED'
+                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                    : billing?.status === 'CANCELLED'
+                                                                        ? 'bg-red-50 text-red-700 border-red-200'
+                                                                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                            }`}>
+                                                            {billing?.status || 'UNBILLED'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs font-mono text-muted-foreground">
+                                                        {billing?.billRef || '—'}
+                                                    </TableCell>
                                                 </TableRow>
-                                            ))
+                                                );
+                                            })
                                         )}
                                     </TableBody>
                                 </Table>
                                 {data.consignments.length > 0 && (
                                     <div className="px-6 py-3 border-t bg-muted/10 flex justify-between items-center">
-                                        <span className="text-xs text-muted-foreground">{data.consignments.length} entries</span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {data.consignments.length} entries
+                                            {' | '}
+                                            {data.consignments.filter((record) => consignmentBillingMap.get(record.cn_no)?.status === 'BILLED').length} billed
+                                            {' | '}
+                                            {data.consignments.filter((record) => consignmentBillingMap.get(record.cn_no)?.status !== 'BILLED').length} unbilled
+                                        </span>
                                         <span className="text-sm font-black text-primary font-mono">
                                             Total: ₹{fmt(data.consignments.reduce((s, c) => s + (parseFloat(String(c.total_freight)) || 0), 0))}
                                         </span>
@@ -1826,7 +1899,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             <TableHead className="font-bold text-xs py-3">Period</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Narration</TableHead>
                                             <TableHead className="font-bold text-xs py-3">CNs</TableHead>
-                                            <TableHead className="font-bold text-xs py-3 text-right">Amount</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 text-right">Billed</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 text-right">Paid</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 text-right">Balance</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Status</TableHead>
                                             <TableHead className="py-3" />
                                         </TableRow>
@@ -1834,12 +1909,18 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                     <TableBody>
                                         {filteredBillingRecords.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground text-sm">
+                                                <TableCell colSpan={10} className="h-24 text-center text-muted-foreground text-sm">
                                                     No billing records found
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            filteredBillingRecords.map(b => (
+                                            filteredBillingRecords.map(b => {
+                                                const paidAmount = b.status === 'ACTIVE' ? parseMoney(billingSettledAmountMap.get(b.id)) : 0;
+                                                const balanceAmount = b.status === 'ACTIVE'
+                                                    ? roundMoney(Math.max(parseMoney(b.amount) - paidAmount, 0))
+                                                    : 0;
+
+                                                return (
                                                 <TableRow key={b.id} className={`hover:bg-primary/5 transition-colors border-b last:border-0 ${b.status === 'CANCELLED' ? 'opacity-50' : ''}`}>
                                                     <TableCell className="font-mono text-xs text-primary font-bold">{b.bill_ref_no || '—'}</TableCell>
                                                     <TableCell className="text-xs">{fmtDate(b.billing_date)}</TableCell>
@@ -1852,6 +1933,12 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     </TableCell>
                                                     <TableCell className="text-right font-black text-sm text-emerald-700 font-mono">
                                                         ₹{fmt(b.amount)}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-xs font-bold text-indigo-700 font-mono">
+                                                        {b.status === 'ACTIVE' ? `₹${fmt(paidAmount)}` : '—'}
+                                                    </TableCell>
+                                                    <TableCell className="text-right text-xs font-bold text-red-700 font-mono">
+                                                        {b.status === 'ACTIVE' ? `₹${fmt(balanceAmount)}` : '—'}
                                                     </TableCell>
                                                     <TableCell>
                                                         <Badge variant={b.status === 'ACTIVE' ? 'default' : 'outline'}
@@ -1889,7 +1976,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>
-                                            ))
+                                                );
+                                            })
                                         )}
                                     </TableBody>
                                 </Table>
@@ -1898,9 +1986,20 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         <span className="text-xs text-muted-foreground">
                                             Showing {filteredBillingRecords.length} of {data.billing_records.length} records
                                         </span>
-                                        <span className="text-sm font-black text-emerald-700 font-mono">
-                                            Active Total: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + (parseFloat(String(b.amount)) || 0), 0))}
-                                        </span>
+                                        <div className="flex flex-wrap items-center gap-4 text-sm font-black font-mono">
+                                            <span className="text-emerald-700">
+                                                Billed: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + parseMoney(b.amount), 0))}
+                                            </span>
+                                            <span className="text-indigo-700">
+                                                Paid: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + parseMoney(billingSettledAmountMap.get(b.id)), 0))}
+                                            </span>
+                                            <span className="text-red-700">
+                                                Balance: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => {
+                                                    const paidAmount = parseMoney(billingSettledAmountMap.get(b.id));
+                                                    return s + Math.max(parseMoney(b.amount) - paidAmount, 0);
+                                                }, 0))}
+                                            </span>
+                                        </div>
                                     </div>
                                 )}
                             </CardContent>
