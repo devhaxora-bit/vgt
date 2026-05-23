@@ -1583,7 +1583,12 @@ function NewConsignmentForm() {
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Remarks</Label>
-                                                        <Input className="h-8 text-xs" />
+                                                        <Input
+                                                            className="h-8 text-xs"
+                                                            value={remarks}
+                                                            onChange={(e) => setRemarks(e.target.value)}
+                                                            placeholder="Add remarks"
+                                                        />
                                                     </div>
                                                 </div>
                                             </CardContent>

@@ -867,7 +867,7 @@ export function BillingRecordViewDialog({
                 <tr class="item-row">
                     <td class="center">${row.cnNo}</td>
                     <td class="center">${row.date}</td>
-                    <td class="center">${row.invoiceNo}</td>
+                    <td class="center invoice-cell">${row.invoiceNo}</td>
                     <td class="center">${row.vehicleNo}</td>
                     <td class="center">${row.loadingStation}</td>
                     <td class="center">${row.deliveryStation}</td>
@@ -938,7 +938,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
-.items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; }
+.items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.invoice-cell { height: auto !important; white-space: normal !important; word-break: break-all !important; overflow: hidden !important; vertical-align: top !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
@@ -1011,20 +1012,20 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <tr>
                     <th style="width:4.5%;">CNS<br/>No</th>
                     <th style="width:7%;">Date</th>
-                    <th style="width:7.5%;">Invoice<br/>No</th>
+                    <th style="width:10%;">Invoice<br/>No</th>
                     <th style="width:7.5%;">Vehicle no.</th>
-                    <th style="width:8.5%;">Loading<br/>Station</th>
-                    <th style="width:8.5%;">Destination</th>
-                    <th style="width:5.5%;">Charge Wt.</th>
-                    <th style="width:4%;">Rate</th>
+                    <th style="width:8%;">Loading<br/>Station</th>
+                    <th style="width:8%;">Destination</th>
+                    <th style="width:5%;">Charge Wt.</th>
+                    <th style="width:3.5%;">Rate</th>
                     <th style="width:6%;">Freight</th>
-                    <th style="width:6.5%;">Detention</th>
-                    <th style="width:6%;">Loading</th>
-                    <th style="width:6%;">Unload</th>
+                    <th style="width:6%;">Detention</th>
+                    <th style="width:5.5%;">Loading</th>
+                    <th style="width:5.5%;">Unload</th>
                     <th style="width:4%;">Extra KM</th>
                     <th style="width:4.5%;">Traffic<br/>Challan</th>
                     <th style="width:5%;">Other<br/>Charges</th>
-                    <th style="width:9%;">Total Billed<br/>Amount</th>
+                    <th style="width:10%;">Total Billed<br/>Amount</th>
                 </tr>
             </thead>
             <tbody>
