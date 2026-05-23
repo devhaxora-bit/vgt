@@ -840,8 +840,9 @@ export function BillingRecordViewDialog({
                 detention: formatTableAmount(row.detention),
                 extraKm: formatTableAmount(row.extra_km),
                 loading: formatTableAmount(row.loading),
-                trafficChallan: formatTableAmount(row.traffic_challan),
-                otherCharges: formatSignedTableAmount(row.other_charges + row.door_collection + row.door_delivery),
+                otherCharges: formatSignedTableAmount(
+                    row.other_charges + row.door_collection + row.door_delivery + row.traffic_challan,
+                ),
                 totalAmount: formatSignedTableAmount(row.total_amount),
             }))
             : [{
@@ -858,7 +859,6 @@ export function BillingRecordViewDialog({
                 detention: '',
                 extraKm: '',
                 loading: '',
-                trafficChallan: '',
                 otherCharges: '',
                 totalAmount: fmt(displayTotal),
             }];
@@ -868,9 +868,9 @@ export function BillingRecordViewDialog({
                     <td class="center">${row.cnNo}</td>
                     <td class="center">${row.date}</td>
                     <td class="center invoice-cell">${row.invoiceNo}</td>
-                    <td class="center">${row.vehicleNo}</td>
-                    <td class="center">${row.loadingStation}</td>
-                    <td class="center">${row.deliveryStation}</td>
+                    <td class="center name-cell">${row.vehicleNo}</td>
+                    <td class="center name-cell">${row.loadingStation}</td>
+                    <td class="center name-cell">${row.deliveryStation}</td>
                     <td class="center">${row.chargeWt}</td>
                     <td class="center">${row.rate}</td>
                     <td class="amount">${row.freight}</td>
@@ -878,29 +878,15 @@ export function BillingRecordViewDialog({
                     <td class="amount">${row.loading}</td>
                     <td class="amount">${row.unloading}</td>
                     <td class="amount">${row.extraKm}</td>
-                    <td class="amount">${row.trafficChallan}</td>
                     <td class="amount">${row.otherCharges}</td>
                     <td class="amount">${row.totalAmount}</td>
                 </tr>
             `).join('');
         const blankRows = Array.from({ length: Math.max(0, minimumDetailRows - detailRows.length) }, () => `
                 <tr class="item-row blank-row">
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
+                    <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+                    <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+                    <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
                 </tr>
             `).join('');
 
@@ -939,7 +925,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.invoice-cell { height: auto !important; white-space: normal !important; word-break: break-all !important; overflow: hidden !important; vertical-align: top !important; padding-top: 4px !important; padding-bottom: 4px !important; }
+.invoice-cell, .name-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
+.invoice-cell { word-break: break-all !important; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
@@ -1012,27 +999,26 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <tr>
                     <th style="width:4.5%;">CNS<br/>No</th>
                     <th style="width:7%;">Date</th>
-                    <th style="width:10%;">Invoice<br/>No</th>
-                    <th style="width:7.5%;">Vehicle no.</th>
-                    <th style="width:8%;">Loading<br/>Station</th>
-                    <th style="width:8%;">Destination</th>
+                    <th style="width:9.5%;">Invoice<br/>No</th>
+                    <th style="width:9.5%;">Vehicle no.</th>
+                    <th style="width:10%;">Loading<br/>Station</th>
+                    <th style="width:10%;">Destination</th>
                     <th style="width:5%;">Charge Wt.</th>
-                    <th style="width:3.5%;">Rate</th>
+                    <th style="width:5.5%;">Rate</th>
                     <th style="width:6%;">Freight</th>
                     <th style="width:6%;">Detention</th>
                     <th style="width:5.5%;">Loading</th>
                     <th style="width:5.5%;">Unload</th>
                     <th style="width:4%;">Extra KM</th>
-                    <th style="width:4.5%;">Traffic<br/>Challan</th>
                     <th style="width:5%;">Other<br/>Charges</th>
-                    <th style="width:10%;">Total Billed<br/>Amount</th>
+                    <th style="width:7%;">Total Billed<br/>Amount</th>
                 </tr>
             </thead>
             <tbody>
                 ${coveredRows}
                 ${blankRows}
                 <tr class="total-row">
-                    <td colspan="14"></td>
+                    <td colspan="13"></td>
                     <td class="total-label">TOTAL</td>
                     <td class="amount" style="color: #111;">${fmt(displayTotal)}</td>
                 </tr>
