@@ -999,15 +999,15 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <tr>
                     <th style="width:4.5%;">CNS<br/>No</th>
                     <th style="width:7%;">Date</th>
-                    <th style="width:9.5%;">Invoice<br/>No</th>
-                    <th style="width:9.5%;">Vehicle no.</th>
+                    <th style="width:13%;">Invoice<br/>No</th>
+                    <th style="width:8%;">Vehicle no.</th>
                     <th style="width:10%;">Loading<br/>Station</th>
                     <th style="width:10%;">Destination</th>
                     <th style="width:5%;">Charge Wt.</th>
                     <th style="width:5.5%;">Rate</th>
                     <th style="width:6%;">Freight</th>
-                    <th style="width:6%;">Detention</th>
-                    <th style="width:5.5%;">Loading</th>
+                    <th style="width:5%;">Detention</th>
+                    <th style="width:4.5%;">Loading</th>
                     <th style="width:5.5%;">Unload</th>
                     <th style="width:4%;">Extra KM</th>
                     <th style="width:5%;">Other<br/>Charges</th>
