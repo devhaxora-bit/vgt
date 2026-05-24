@@ -204,12 +204,23 @@ export default function LedgerPage() {
                 hour: '2-digit', minute: '2-digit', hour12: true,
             });
 
+            const branchNameByCode = new Map(
+                branchOptions.map((branch) => {
+                    const separator = branch.label.indexOf(' - ');
+                    const name = separator >= 0
+                        ? branch.label.slice(separator + 3).trim()
+                        : branch.label;
+                    return [branch.value, name];
+                }),
+            );
+
             await downloadLedgerSummaryPdf({
                 rows: filtered.map(p => ({
                     party_code: p.party_code,
                     party_name: p.party_name,
                     party_type: p.party_type,
                     branch_code: p.branch_code,
+                    branch_name: p.branch_code ? branchNameByCode.get(p.branch_code) ?? null : null,
                     total_cns_count: p.total_cns_count,
                     total_cns_amount: p.total_cns_amount,
                     total_billed: p.total_billed,
@@ -221,6 +232,9 @@ export default function LedgerPage() {
                 periodLabel,
                 filters: {
                     branch: branchFilter !== 'all' ? branchFilter : undefined,
+                    branchName: branchFilter !== 'all'
+                        ? branchNameByCode.get(branchFilter)
+                        : undefined,
                     billingStatus: billingFilter !== 'all' ? billingFilter : undefined,
                     paymentStatus: paymentFilter !== 'all' ? paymentFilter : undefined,
                     outstandingOnly,

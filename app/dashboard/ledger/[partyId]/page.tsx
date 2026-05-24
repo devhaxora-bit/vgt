@@ -36,7 +36,8 @@ import { BillingRecordPicker } from '@/components/features/ledger/BillingRecordP
 
 interface Party {
     id: string; name: string; code: string; type: string;
-    phone?: string; gstin?: string; address?: string; branch_code?: string;
+    phone?: string; gstin?: string; address?: string;
+    branch_code?: string; branch_name?: string | null;
 }
 
 interface LedgerAccount {
@@ -1457,6 +1458,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     gstin: party.gstin,
                     address: party.address,
                     branch_code: party.branch_code,
+                    branch_name: party.branch_name,
                 },
                 periodLabel: reportPayload.periodLabel,
                 generatedAt: format(new Date(), 'dd/MM/yyyy HH:mm'),

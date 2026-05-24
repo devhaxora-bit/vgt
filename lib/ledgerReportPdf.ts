@@ -1,3 +1,5 @@
+import { formatBranchLabel as formatBranch } from '@/lib/formatBranchLabel';
+
 export type LedgerParty = {
     name: string;
     code: string;
@@ -5,6 +7,7 @@ export type LedgerParty = {
     gstin?: string | null;
     address?: string | null;
     branch_code?: string | null;
+    branch_name?: string | null;
 };
 
 export type LedgerSummary = {
@@ -94,6 +97,9 @@ const safe = (value: string | number | null | undefined) => String(value ?? '')
     .replace(/'/g, '&#39;');
 const titleText = (value: string | null | undefined) => safe(String(value ?? '').trim() || '-');
 
+const partyBranchLabel = (party: LedgerParty) =>
+    formatBranch(party.branch_code, party.branch_name);
+
 const loadLogo = async (): Promise<string> => {
     try {
         const res = await fetch('/vgt_logo.png');
@@ -110,14 +116,17 @@ const loadLogo = async (): Promise<string> => {
 };
 
 /** Rows per page when the company header + summary are shown (page 1 only). */
-const CNS_ROWS_COVER = 5;
-const BILL_ROWS_COVER = 7;
-const PAYMENT_ROWS_COVER = 9;
+const CNS_ROWS_COVER = 12;
+const BILL_ROWS_COVER = 14;
+const PAYMENT_ROWS_COVER = 16;
 
 /** Rows per page on continuation pages (no company header). */
-const CNS_ROWS_CONT = 15;
-const BILL_ROWS_CONT = 17;
-const PAYMENT_ROWS_CONT = 19;
+const CNS_ROWS_CONT = 18;
+const BILL_ROWS_CONT = 20;
+const PAYMENT_ROWS_CONT = 22;
+
+const blankRowCount = (rowCount: number, rowCapacity: number, isLast: boolean) =>
+    Math.max(0, rowCapacity - rowCount - (isLast ? 1 : 0));
 
 const paginateSection = <T>(
     rows: T[],
@@ -251,7 +260,7 @@ const cnsTable = (
                         <td class="amount">${fmt(row.billBalance)}</td>
                     </tr>
                 `).join('')}
-                ${isCoverPage ? '' : blankRows(Math.max(0, rowCapacity - rows.length), 12)}
+                ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), 12)}
                 ${isLast ? `
                     <tr class="total-row">
                         <td class="total-label">TOTAL</td>
@@ -307,7 +316,7 @@ const billTable = (
                         <td class="status-cell ${statusClass(row.status)}">${titleText(row.status)}</td>
                     </tr>
                 `).join('')}
-                ${isCoverPage ? '' : blankRows(Math.max(0, rowCapacity - rows.length), 9)}
+                ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), 9)}
                 ${isLast ? `
                     <tr class="total-row">
                         <td class="total-label">ACTIVE TOTAL</td>
@@ -359,7 +368,7 @@ const paymentTable = (
                     <td class="status-cell ${statusClass(row.status)}">${titleText(row.status)}</td>
                 </tr>
             `).join('')}
-            ${isCoverPage ? '' : blankRows(Math.max(0, rowCapacity - rows.length), 6)}
+            ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), 6)}
             ${isLast ? `
                 <tr class="total-row">
                     <td class="total-label">ACTIVE TOTAL</td>
@@ -412,12 +421,15 @@ const reportCoverHtml = (payload: PartyLedgerReportPayload, logoUrl: string) => 
             <div class="party-line">
                 <span>Code:</span> ${titleText(payload.party.code)}
                 <span>Type:</span> ${titleText(payload.party.type)}
-                <span>Branch:</span> ${titleText(payload.party.branch_code)}
                 <span>GSTIN:</span> ${titleText(payload.party.gstin)}
+            </div>
+            <div class="party-line party-branch-line">
+                <span>Branch:</span> ${titleText(partyBranchLabel(payload.party))}
             </div>
         </div>
         <div class="right-block">
             <div class="meta-row"><div class="meta-label">Report :</div><div class="meta-value">Party Ledger</div></div>
+            <div class="meta-row"><div class="meta-label">Branch :</div><div class="meta-value">${titleText(partyBranchLabel(payload.party))}</div></div>
             <div class="meta-row"><div class="meta-label">Period :</div><div class="meta-value">${titleText(payload.periodLabel)}</div></div>
             <div class="meta-row"><div class="meta-label">Generated :</div><div class="meta-value">${titleText(payload.generatedAt)}</div></div>
         </div>
@@ -439,7 +451,7 @@ const pageHtml = (
             ${isCoverPage ? reportCoverHtml(payload, logoUrl) : ''}
             <div class="section-wrap">${sectionTable(payload, page)}</div>
             <div class="footer-row">
-                <span>${titleText(payload.party.name)}</span>
+                <span>${titleText(payload.party.name)} · ${titleText(partyBranchLabel(payload.party))}</span>
                 <span>Page ${pageIndex + 1} of ${pageCount}</span>
             </div>
         </div>
@@ -469,13 +481,14 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
 .header-pan { text-align: right; font-size: 11px; font-weight: 800; line-height: 1.35; }
 .header-pan span { color: #1d2f7a; }
-.detail-grid { display: grid; grid-template-columns: 56% 44%; min-height: 63px; border-bottom: 1.2px solid #1d2f7a; }
+.detail-grid { display: grid; grid-template-columns: 56% 44%; min-height: 84px; border-bottom: 1.2px solid #1d2f7a; }
 .party-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 7px 10px; min-width: 0; }
 .party-name { font-size: 12px; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; line-height: 1.2; }
 .party-line { font-size: 9.6px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .party-line span { margin-left: 8px; color: #1d2f7a; font-weight: 800; }
 .party-line span:first-child { margin-left: 0; }
-.right-block { display: grid; grid-template-rows: repeat(3, 1fr); }
+.right-block { display: grid; grid-template-rows: repeat(4, 1fr); }
+.party-branch-line { color: #1d2f7a; font-weight: 800; }
 .meta-row { display: grid; grid-template-columns: 27% 73%; border-bottom: 1.2px solid #1d2f7a; min-height: 21px; }
 .meta-row:last-child { border-bottom: none; }
 .meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 3px 6px; color: #1d2f7a; font-size: 9.5px; font-weight: 800; }

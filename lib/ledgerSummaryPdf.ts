@@ -1,8 +1,11 @@
+import { formatBranchLabel } from '@/lib/formatBranchLabel';
+
 export type LedgerSummaryPartyRow = {
     party_code: string;
     party_name: string;
     party_type: string;
     branch_code: string | null;
+    branch_name?: string | null;
     total_cns_count: number;
     total_cns_amount: number;
     total_billed: number;
@@ -17,6 +20,7 @@ export type LedgerSummaryPdfPayload = {
     periodLabel: string;
     filters: {
         branch?: string;
+        branchName?: string;
         billingStatus?: string;
         paymentStatus?: string;
         outstandingOnly?: boolean;
@@ -59,7 +63,9 @@ const splitRows = (rows: LedgerSummaryPartyRow[]) => {
 
 const describeFilters = (filters: LedgerSummaryPdfPayload['filters']) => {
     const values: string[] = [];
-    if (filters.branch) values.push(`Branch: ${filters.branch}`);
+    if (filters.branch) {
+        values.push(`Branch: ${formatBranchLabel(filters.branch, filters.branchName)}`);
+    }
     if (filters.billingStatus) values.push(`Billing: ${filters.billingStatus.replace(/_/g, ' ')}`);
     if (filters.paymentStatus) values.push(`Payment: ${filters.paymentStatus.replace(/_/g, ' ')}`);
     if (filters.outstandingOnly) values.push('Outstanding Only');
@@ -79,7 +85,7 @@ const buildRow = (row: LedgerSummaryPartyRow) => `
     <tr>
         <td>${safe(row.party_code)}</td>
         <td class="party-name">${safe(row.party_name)}</td>
-        <td class="center">${safe(row.branch_code || '—')}</td>
+        <td class="center branch-cell">${safe(formatBranchLabel(row.branch_code, row.branch_name))}</td>
         <td class="amount">${fmt(row.total_cns_count)}</td>
         <td class="amount">${fmt(row.total_cns_amount)}</td>
         <td class="amount">${fmt(row.total_billed)}</td>
@@ -103,8 +109,8 @@ const buildTable = (rows: LedgerSummaryPartyRow[], allRows: LedgerSummaryPartyRo
             <thead>
                 <tr>
                     <th style="width:7%;">Code</th>
-                    <th style="width:25%;">Party Name</th>
-                    <th style="width:7%;">Branch</th>
+                    <th style="width:21%;">Party Name</th>
+                    <th style="width:11%;">Branch</th>
                     <th style="width:5%;">CNS</th>
                     <th style="width:12%;">CNS<br/>Amount</th>
                     <th style="width:11%;">Billed</th>
@@ -217,6 +223,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
 .items-table tbody td { height: 22px; font-size: 10.2px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+.items-table tbody td.branch-cell { white-space: normal; overflow-wrap: anywhere; line-height: 1.2; vertical-align: middle; }
 .items-table .party-name { text-align: left; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 7px; font-variant-numeric: tabular-nums; }
