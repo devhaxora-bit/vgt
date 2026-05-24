@@ -4,7 +4,12 @@ import React, { useState, useEffect, useMemo, use, useCallback } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { composeBillRefNo, getBillRefPrefix } from '@/lib/billRef';
-import { downloadPartyLedgerReportPdf } from '@/lib/ledgerReportPdf';
+import {
+    applyLedgerCnsFilter,
+    downloadPartyLedgerReportPdf,
+    type LedgerCnsFilter,
+    type PartyLedgerReportPayload,
+} from '@/lib/ledgerReportPdf';
 import {
     ArrowLeft, Package, TrendingUp, AlertCircle, DollarSign,
     Search, RotateCcw, Plus, FileText, Download,
@@ -61,7 +66,8 @@ interface Consignment {
     id: string; cn_no: string; bkg_date: string;
     invoice_no?: string;
     booking_branch: string; loading_point?: string; dest_branch: string; delivery_point?: string;
-    no_of_pkg: number; actual_weight: number; charged_weight: number;
+    no_of_pkg: number; total_qty?: number; is_loose?: boolean;
+    actual_weight: number; charged_weight: number;
     load_unit: string; total_freight: number; basic_freight?: number; freight_rate?: number;
     unload_charges?: number; retention_charges?: number; extra_km_charges?: number;
     mhc_charges?: number; door_coll_charges?: number; door_del_charges?: number;
@@ -1010,6 +1016,94 @@ function AddPaymentDialog({
     );
 }
 
+// ─── Ledger report download ───────────────────────────────────────────────────
+
+function LedgerReportDownloadDialog({
+    open,
+    onClose,
+    reportPayload,
+    isDownloading,
+    onDownload,
+}: {
+    open: boolean;
+    onClose: () => void;
+    reportPayload: PartyLedgerReportPayload | null;
+    isDownloading: boolean;
+    onDownload: (filter: LedgerCnsFilter) => Promise<void>;
+}) {
+    const [filter, setFilter] = useState<LedgerCnsFilter>('all');
+
+    useEffect(() => {
+        if (open) setFilter('all');
+    }, [open]);
+
+    const counts = useMemo(() => {
+        if (!reportPayload) {
+            return { all: 0, billed: 0, unbilled: 0 };
+        }
+        const billed = reportPayload.cnsRows.filter((row) => row.billStatus === 'BILLED').length;
+        return {
+            all: reportPayload.cnsRows.length,
+            billed,
+            unbilled: reportPayload.cnsRows.length - billed,
+        };
+    }, [reportPayload]);
+
+    const filteredCount = filter === 'all' ? counts.all : filter === 'billed' ? counts.billed : counts.unbilled;
+
+    const handleDownload = async () => {
+        if (filteredCount === 0) {
+            toast.error(`No ${filter === 'billed' ? 'billed' : filter === 'unbilled' ? 'unbilled' : ''} CNS entries for the selected period`);
+            return;
+        }
+        await onDownload(filter);
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(next) => { if (!next && !isDownloading) onClose(); }}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Download className="h-4 w-4" /> Download Ledger Report
+                    </DialogTitle>
+                    <DialogDescription>
+                        Choose which consignments to include in the PDF for this period.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 mt-2">
+                    <div className="space-y-1.5">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground">CNS entries</Label>
+                        <Select
+                            value={filter}
+                            onValueChange={(value: LedgerCnsFilter) => setFilter(value)}
+                            disabled={isDownloading}
+                        >
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="billed">Billed CNS ({counts.billed})</SelectItem>
+                                <SelectItem value="unbilled">Unbilled CNS ({counts.unbilled})</SelectItem>
+                                <SelectItem value="all">All CNS ({counts.all})</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        {filteredCount} consignment{filteredCount === 1 ? '' : 's'} will be included.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={onClose} disabled={isDownloading}>Cancel</Button>
+                        <Button onClick={() => void handleDownload()} disabled={isDownloading || filteredCount === 0} className="gap-2">
+                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            Download PDF
+                        </Button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ─── CancelDialog ─────────────────────────────────────────────────────────────
 
 function CancelDialog({
@@ -1092,6 +1186,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const [billingDateFrom, setBillingDateFrom] = useState('');
     const [billingDateTo, setBillingDateTo] = useState('');
     const [isDownloadingReport, setIsDownloadingReport] = useState(false);
+    const [showLedgerDownloadDialog, setShowLedgerDownloadDialog] = useState(false);
 
     // Dialogs
     const [showBillingDialog, setShowBillingDialog] = useState(false);
@@ -1436,40 +1531,57 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
     const { party, summary } = data;
 
-    const handleDownloadLedgerReport = useCallback(async () => {
-        if (!reportPayload || !party) return;
+    const buildLedgerDownloadPayload = useCallback((): PartyLedgerReportPayload | null => {
+        if (!reportPayload || !party) return null;
 
-        if (reportPayload.cnsRows.length === 0) {
-            toast.error('No ledger entries found for the selected period');
+        return {
+            party: {
+                name: party.name,
+                code: party.code,
+                type: party.type,
+                gstin: party.gstin,
+                address: party.address,
+                branch_code: party.branch_code,
+                branch_name: party.branch_name,
+            },
+            periodLabel: reportPayload.periodLabel,
+            generatedAt: format(new Date(), 'dd/MM/yyyy HH:mm'),
+            summary: reportPayload.summary,
+            cnsRows: reportPayload.cnsRows,
+            billRows: reportPayload.billRows,
+            paymentRows: reportPayload.paymentRows,
+        };
+    }, [party, reportPayload]);
+
+    const handleDownloadLedgerReport = useCallback(async (cnsFilter: LedgerCnsFilter) => {
+        const basePayload = buildLedgerDownloadPayload();
+        if (!basePayload) return;
+
+        const filteredPayload = applyLedgerCnsFilter(basePayload, cnsFilter);
+        if (filteredPayload.cnsRows.length === 0) {
+            toast.error('No ledger entries found for the selected filter');
             return;
         }
 
         setIsDownloadingReport(true);
         try {
-            await downloadPartyLedgerReportPdf({
-                party: {
-                    name: party.name,
-                    code: party.code,
-                    type: party.type,
-                    gstin: party.gstin,
-                    address: party.address,
-                    branch_code: party.branch_code,
-                    branch_name: party.branch_name,
-                },
-                periodLabel: reportPayload.periodLabel,
-                generatedAt: format(new Date(), 'dd/MM/yyyy HH:mm'),
-                summary: reportPayload.summary,
-                cnsRows: reportPayload.cnsRows,
-                billRows: reportPayload.billRows,
-                paymentRows: reportPayload.paymentRows,
-            });
+            await downloadPartyLedgerReportPdf(basePayload, cnsFilter);
             toast.success('Ledger report downloaded');
+            setShowLedgerDownloadDialog(false);
         } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : 'Failed to download ledger report');
         } finally {
             setIsDownloadingReport(false);
         }
-    }, [party, reportPayload]);
+    }, [buildLedgerDownloadPayload]);
+
+    const openLedgerDownloadDialog = useCallback(() => {
+        if (!reportPayload || reportPayload.cnsRows.length === 0) {
+            toast.error('No ledger entries found for the selected period');
+            return;
+        }
+        setShowLedgerDownloadDialog(true);
+    }, [reportPayload]);
 
     if (isLoading && !party) {
         return (
@@ -1690,7 +1802,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                     <RotateCcw className="h-3 w-3" /> Clear
                                 </Button>
                             )}
-                            <Button size="sm" className="h-8 gap-2 ml-auto" onClick={() => void handleDownloadLedgerReport()} disabled={isDownloadingReport}>
+                            <Button size="sm" className="h-8 gap-2 ml-auto" onClick={openLedgerDownloadDialog} disabled={isDownloadingReport}>
                                 {isDownloadingReport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                                 Download Ledger Report
                             </Button>
@@ -1734,7 +1846,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         <TableRow>
                                             <TableHead className="font-bold text-xs py-3">CN No</TableHead>
                                             <TableHead className="font-bold text-xs py-3">Date</TableHead>
-                                            <TableHead className="font-bold text-xs py-3">Route</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">From</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">To</TableHead>
                                             <TableHead className="font-bold text-xs py-3 text-center">Pkgs</TableHead>
                                             <TableHead className="font-bold text-xs py-3 text-right">Weight</TableHead>
                                             <TableHead className="font-bold text-xs py-3 text-right">Freight</TableHead>
@@ -1746,7 +1859,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                     <TableBody>
                                         {filteredConsignments.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground text-sm">
+                                                <TableCell colSpan={10} className="h-24 text-center text-muted-foreground text-sm">
                                                     {cnsSearch ? `No CNS entries match "${cnsSearch}"` : 'No CNS entries found for this party'}
                                                 </TableCell>
                                             </TableRow>
@@ -1763,12 +1876,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                         </Link>
                                                     </TableCell>
                                                     <TableCell className="text-xs text-muted-foreground">{fmtDate(c.bkg_date)}</TableCell>
-                                                    <TableCell className="text-xs">
-                                                        <span className="font-medium">{c.booking_branch}</span>
-                                                        <span className="text-muted-foreground mx-1">→</span>
-                                                        <span className="font-medium">{c.dest_branch}</span>
+                                                    <TableCell className="text-xs font-medium">
+                                                        {c.loading_point || c.booking_branch || '—'}
                                                     </TableCell>
-                                                    <TableCell className="text-center text-xs">{c.no_of_pkg}</TableCell>
+                                                    <TableCell className="text-xs font-medium">
+                                                        {c.delivery_point || c.dest_branch || '—'}
+                                                    </TableCell>
+                                                    <TableCell className="text-center text-xs">
+                                                        {c.is_loose ? 'LOOSE' : (c.total_qty ?? c.no_of_pkg ?? 0)}
+                                                    </TableCell>
                                                     <TableCell className="text-right text-xs font-mono">
                                                         {(c.actual_weight || 0).toFixed(1)} {c.load_unit || 'KG'}
                                                     </TableCell>
@@ -2238,6 +2354,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     onConfirm={cancelTarget.type === 'billing' ? handleCancelBilling : handleReversePayment}
                 />
             )}
+            <LedgerReportDownloadDialog
+                open={showLedgerDownloadDialog}
+                onClose={() => setShowLedgerDownloadDialog(false)}
+                reportPayload={buildLedgerDownloadPayload()}
+                isDownloading={isDownloadingReport}
+                onDownload={handleDownloadLedgerReport}
+            />
         </div>
     );
 }
