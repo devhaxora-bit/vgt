@@ -46,6 +46,18 @@ export async function GET(
         return NextResponse.json({ error: 'Party not found' }, { status: 404 });
     }
 
+    let branch_name: string | null = null;
+    if (party.branch_code) {
+        const { data: branch } = await supabase
+            .from('branches')
+            .select('name')
+            .eq('code', party.branch_code)
+            .maybeSingle();
+        branch_name = branch?.name ?? null;
+    }
+
+    const partyWithBranch = { ...party, branch_name };
+
     // 2. Ledger account
     const { data: account } = await supabase
         .from('party_ledger_accounts')
@@ -126,7 +138,7 @@ export async function GET(
     };
 
     return NextResponse.json({
-        party,
+        party: partyWithBranch,
         account: account || null,
         summary,
         consignments: consignments || [],

@@ -997,21 +997,21 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         <table class="items-table">
             <thead>
                 <tr>
-                    <th style="width:4.5%;">CNS<br/>No</th>
-                    <th style="width:7%;">Date</th>
-                    <th style="width:9.5%;">Invoice<br/>No</th>
-                    <th style="width:9.5%;">Vehicle no.</th>
-                    <th style="width:10%;">Loading<br/>Station</th>
-                    <th style="width:10%;">Destination</th>
-                    <th style="width:5%;">Charge Wt.</th>
+                    <th style="width:4%;">CNS<br/>No</th>
+                    <th style="width:6.5%;">Date</th>
+                    <th style="width:15%;">Invoice<br/>No</th>
+                    <th style="width:7%;">Vehicle no.</th>
+                    <th style="width:9%;">Loading<br/>Station</th>
+                    <th style="width:9%;">Destination</th>
+                    <th style="width:4.5%;">Charge Wt.</th>
                     <th style="width:5.5%;">Rate</th>
-                    <th style="width:6%;">Freight</th>
+                    <th style="width:5%;">Freight</th>
                     <th style="width:6%;">Detention</th>
                     <th style="width:5.5%;">Loading</th>
                     <th style="width:5.5%;">Unload</th>
-                    <th style="width:4%;">Extra KM</th>
+                    <th style="width:5.5%;">Extra KM</th>
                     <th style="width:5%;">Other<br/>Charges</th>
-                    <th style="width:7%;">Total Billed<br/>Amount</th>
+                    <th style="width:6.5%;">Total Billed<br/>Amount</th>
                 </tr>
             </thead>
             <tbody>
