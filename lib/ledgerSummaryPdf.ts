@@ -204,25 +204,25 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
 .header-logo img { width: 102px; max-width: 100%; filter: grayscale(1) contrast(1.6) brightness(0.2); object-fit: contain; }
 .header-copy { text-align: center; }
-.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
-.header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
+.header-title { font-size: 17px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
+.header-line { display: flex; justify-content: center; gap: 34px; font-size: 12px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 .header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
-.header-pan { text-align: right; font-size: 11px; font-weight: 800; line-height: 1.35; }
+.header-pan { text-align: right; font-size: 12px; font-weight: 800; line-height: 1.35; }
 .header-pan span { color: #1d2f7a; }
 .detail-grid { display: grid; grid-template-columns: 56% 44%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; min-height: 58px; }
 .report-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 8px 10px; }
-.report-title { color: #111; font-size: 13px; font-weight: 800; text-transform: uppercase; }
-.report-line { font-size: 10px; font-weight: 700; color: #111; text-transform: uppercase; overflow-wrap: anywhere; }
+.report-title { color: #111; font-size: 14px; font-weight: 800; text-transform: uppercase; }
+.report-line { font-size: 11px; font-weight: 700; color: #111; text-transform: uppercase; overflow-wrap: anywhere; }
 .right-block { display: grid; grid-template-rows: 1fr 1fr; }
 .meta-row { display: grid; grid-template-columns: 28% 72%; min-height: 29px; border-bottom: 1.2px solid #1d2f7a; }
 .meta-row:last-child { border-bottom: none; }
-.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 4px 6px; color: #1d2f7a; font-size: 10px; font-weight: 800; }
-.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 4px 6px; font-size: 11px; font-weight: 800; text-align: center; overflow-wrap: anywhere; }
+.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 4px 6px; color: #1d2f7a; font-size: 11px; font-weight: 800; }
+.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 4px 6px; font-size: 12px; font-weight: 800; text-align: center; overflow-wrap: anywhere; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 5px 6px; vertical-align: middle; overflow: hidden; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
-.items-table tbody td { height: 22px; font-size: 10.2px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+.items-table thead th { text-align: center; font-size: 11.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
+.items-table tbody td { height: 22px; font-size: 11.2px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
 .items-table tbody td.branch-cell { white-space: normal; overflow-wrap: anywhere; line-height: 1.2; vertical-align: middle; }
 .items-table .party-name { text-align: left; }
 .items-table .center { text-align: center; }
@@ -230,9 +230,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .unbilled:not(:empty) { background: rgba(255, 221, 120, 0.28); }
 .items-table .outstanding:not(:empty) { background: rgba(255, 162, 162, 0.22); }
 .blank-row td { font-weight: 400; background: #fff; }
-.total-row td { height: 25px; font-size: 11px; font-weight: 800; background: rgba(29, 47, 122, 0.12); color: #111; }
+.total-row td { height: 25px; font-size: 12px; font-weight: 800; background: rgba(29, 47, 122, 0.12); color: #111; }
 .total-label { color: #1d2f7a !important; }
-.footer-row { margin-top: auto; border-top: 1.2px solid #1d2f7a; display: flex; justify-content: space-between; padding: 6px 9px; color: #1d2f7a; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.footer-row { margin-top: auto; border-top: 1.2px solid #1d2f7a; display: flex; justify-content: space-between; padding: 6px 9px; color: #1d2f7a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
 </style>
 </head>
 <body>
