@@ -82,10 +82,14 @@ export type PartyLedgerReportPayload = {
     sections?: unknown;
 };
 
-type SectionPage =
-    | { kind: 'cns'; rows: CnsRow[]; isLast: boolean; rowCapacity: number; isCoverPage: boolean }
-    | { kind: 'bills'; rows: BillRow[]; isLast: boolean; rowCapacity: number; isCoverPage: boolean }
-    | { kind: 'payments'; rows: PaymentRow[]; isLast: boolean; rowCapacity: number; isCoverPage: boolean };
+type SectionPage = {
+    rows: CnsRow[];
+    isLast: boolean;
+    rowCapacity: number;
+    isCoverPage: boolean;
+};
+
+const CNS_TABLE_COLUMNS = 11;
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -115,15 +119,12 @@ const loadLogo = async (): Promise<string> => {
     }
 };
 
-/** Rows per page when the company header + summary are shown (page 1 only). */
-const CNS_ROWS_COVER = 12;
-const BILL_ROWS_COVER = 14;
-const PAYMENT_ROWS_COVER = 16;
-
-/** Rows per page on continuation pages (no company header). */
-const CNS_ROWS_CONT = 18;
-const BILL_ROWS_CONT = 20;
-const PAYMENT_ROWS_CONT = 22;
+/**
+ * Body row capacity tuned for 200mm landscape pages (html2canvas).
+ * Cover page has header + summary + branch block; continuation pages use full height.
+ */
+const CNS_ROWS_COVER = 14;
+const CNS_ROWS_CONT = 28;
 
 const blankRowCount = (rowCount: number, rowCapacity: number, isLast: boolean) =>
     Math.max(0, rowCapacity - rowCount - (isLast ? 1 : 0));
@@ -147,63 +148,57 @@ const paginateSection = <T>(
 
 const buildSectionPages = (payload: PartyLedgerReportPayload): SectionPage[] => {
     const firstPageFlag = { value: true };
-
-    const cnsChunked = paginateSection(payload.cnsRows, CNS_ROWS_COVER, CNS_ROWS_CONT, firstPageFlag).pages;
-    const billChunked = paginateSection(payload.billRows, BILL_ROWS_COVER, BILL_ROWS_CONT, firstPageFlag).pages;
-    const paymentChunked = paginateSection(
-        payload.paymentRows,
-        PAYMENT_ROWS_COVER,
-        PAYMENT_ROWS_CONT,
-        firstPageFlag,
-    ).pages;
+    const chunks = paginateSection(payload.cnsRows, CNS_ROWS_COVER, CNS_ROWS_CONT, firstPageFlag).pages;
 
     let useCoverCapacity = true;
     let isFirstDocPage = true;
-    const withCapacity = <T>(
-        chunks: T[][],
-        coverCap: number,
-        contCap: number,
-        kind: SectionPage['kind'],
-    ): SectionPage[] => chunks.map((rows, index, pages) => {
-        const rowCapacity = useCoverCapacity ? coverCap : contCap;
+    return chunks.map((rows, index, pages) => {
+        const rowCapacity = useCoverCapacity ? CNS_ROWS_COVER : CNS_ROWS_CONT;
         const isCoverPage = isFirstDocPage;
         useCoverCapacity = false;
         isFirstDocPage = false;
         return {
-            kind,
             rows,
             isLast: index === pages.length - 1,
             rowCapacity,
             isCoverPage,
-        } as SectionPage;
+        };
     });
-
-    return [
-        ...withCapacity(cnsChunked, CNS_ROWS_COVER, CNS_ROWS_CONT, 'cns'),
-        ...withCapacity(billChunked, BILL_ROWS_COVER, BILL_ROWS_CONT, 'bills'),
-        ...withCapacity(paymentChunked, PAYMENT_ROWS_COVER, PAYMENT_ROWS_CONT, 'payments'),
-    ];
 };
 
-const activeBillTotals = (rows: BillRow[]) => rows
-    .filter((row) => row.status === 'ACTIVE')
-    .reduce((totals, row) => ({
-        cnCount: totals.cnCount + Number(row.cnCount || 0),
-        cnTotal: totals.cnTotal + Number(row.cnTotal || 0),
-        billed: totals.billed + Number(row.billedAmount || 0),
-        paid: totals.paid + Number(row.paidAmount || 0),
-        balance: totals.balance + Number(row.balance || 0),
-    }), { cnCount: 0, cnTotal: 0, billed: 0, paid: 0, balance: 0 });
+/** PDF omits cancelled bills — those CNS rows appear as unbilled with no bill amounts. */
+const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReportPayload => {
+    const cnsRows = payload.cnsRows.map((row) => {
+        if (row.billStatus !== 'CANCELLED') return row;
+        return {
+            ...row,
+            billedOnBill: null,
+            billStatus: 'UNBILLED' as const,
+            billAmount: 0,
+            billPaidAmount: 0,
+            billBalance: 0,
+        };
+    });
 
-const activePaymentTotal = (rows: PaymentRow[]) => rows
-    .filter((row) => row.status === 'ACTIVE')
-    .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const billedCnsCount = cnsRows.filter((row) => row.billStatus === 'BILLED').length;
 
-const statusClass = (status: string) => {
-    if (status === 'BILLED' || status === 'ACTIVE') return 'ok';
-    if (status === 'CANCELLED') return 'bad';
-    if (status === 'REVERSED') return 'warn';
-    return 'wait';
+    return {
+        ...payload,
+        cnsRows,
+        billRows: payload.billRows.filter((row) => row.status !== 'CANCELLED'),
+        summary: {
+            ...payload.summary,
+            unbilledCnsCount: cnsRows.length - billedCnsCount,
+        },
+    };
+};
+
+const billStatusCell = (row: CnsRow) => {
+    if (row.billStatus === 'BILLED') {
+        const billNo = String(row.billedOnBill ?? '').trim() || 'BILLED';
+        return `<td class="status-cell ok">${titleText(billNo)}</td>`;
+    }
+    return `<td class="status-cell wait">UNBILLED</td>`;
 };
 
 const blankRows = (count: number, cells: number) => Array.from({ length: count }, () => `
@@ -235,10 +230,9 @@ const cnsTable = (
                     <th style="width:8%;">Vehicle no.</th>
                     <th style="width:11%;">Loading<br/>Station</th>
                     <th style="width:11%;">Destination</th>
-                    <th style="width:7%;">CNS<br/>Total</th>
-                    <th style="width:7%;">Bill<br/>Status</th>
-                    <th style="width:12%;">Bill Ref</th>
-                    <th style="width:7%;">Bill<br/>Amt.</th>
+                    <th style="width:8%;">CNS<br/>Amount</th>
+                    <th style="width:12%;">Bill<br/>No</th>
+                    <th style="width:8%;">Bill<br/>Amt.</th>
                     <th style="width:6%;">Received</th>
                     <th style="width:6%;">Balance</th>
                 </tr>
@@ -253,20 +247,19 @@ const cnsTable = (
                         <td class="center">${titleText(row.loadingStation)}</td>
                         <td class="center">${titleText(row.destination)}</td>
                         <td class="amount">${fmt(row.totalAmount)}</td>
-                        <td class="status-cell ${statusClass(row.billStatus)}">${safe(row.billStatus)}</td>
-                        <td>${titleText(row.billedOnBill)}</td>
+                        ${billStatusCell(row)}
                         <td class="amount">${fmt(row.billAmount)}</td>
                         <td class="amount">${fmt(row.billPaidAmount)}</td>
                         <td class="amount">${fmt(row.billBalance)}</td>
                     </tr>
                 `).join('')}
-                ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), 12)}
+                ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), CNS_TABLE_COLUMNS)}
                 ${isLast ? `
                     <tr class="total-row">
                         <td class="total-label">TOTAL</td>
                         <td colspan="5"></td>
                         <td class="amount">${fmt(cnsTotal)}</td>
-                        <td colspan="5"></td>
+                        <td colspan="4"></td>
                     </tr>
                 ` : ''}
             </tbody>
@@ -274,127 +267,12 @@ const cnsTable = (
     `;
 };
 
-const billTable = (
-    payload: PartyLedgerReportPayload,
-    rows: BillRow[],
-    isLast: boolean,
-    rowCapacity: number,
-    isCoverPage: boolean,
-) => {
-    const totals = activeBillTotals(payload.billRows);
-    const activeCount = payload.billRows.filter((row) => row.status === 'ACTIVE').length;
-    return `
-        <div class="section-head">
-            <span>B. Billing Records</span>
-            <span>${payload.billRows.length} bills | ${activeCount} active</span>
-        </div>
-        <table class="items-table bill-table">
-            <thead>
-                <tr>
-                    <th style="width:14%;">Bill No</th>
-                    <th style="width:8%;">Date</th>
-                    <th style="width:24%;">CNS Covered</th>
-                    <th style="width:6%;">CNS</th>
-                    <th style="width:11%;">CNS Total</th>
-                    <th style="width:11%;">Billed</th>
-                    <th style="width:9%;">Paid</th>
-                    <th style="width:9%;">Balance</th>
-                    <th style="width:8%;">Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rows.map((row) => `
-                    <tr>
-                        <td>${titleText(row.billNo)}</td>
-                        <td class="center">${titleText(row.date)}</td>
-                        <td>${titleText(row.coveredCns)}</td>
-                        <td class="amount">${fmt(row.cnCount)}</td>
-                        <td class="amount">${fmt(row.cnTotal)}</td>
-                        <td class="amount">${fmt(row.billedAmount)}</td>
-                        <td class="amount">${fmt(row.paidAmount)}</td>
-                        <td class="amount">${fmt(row.balance)}</td>
-                        <td class="status-cell ${statusClass(row.status)}">${titleText(row.status)}</td>
-                    </tr>
-                `).join('')}
-                ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), 9)}
-                ${isLast ? `
-                    <tr class="total-row">
-                        <td class="total-label">ACTIVE TOTAL</td>
-                        <td></td>
-                        <td></td>
-                        <td class="count">${fmt(totals.cnCount)}</td>
-                        <td class="amount">${fmt(totals.cnTotal)}</td>
-                        <td class="amount">${fmt(totals.billed)}</td>
-                        <td class="amount">${fmt(totals.paid)}</td>
-                        <td class="amount">${fmt(totals.balance)}</td>
-                        <td></td>
-                    </tr>
-                ` : ''}
-            </tbody>
-        </table>
-    `;
-};
-
-const paymentTable = (
-    payload: PartyLedgerReportPayload,
-    rows: PaymentRow[],
-    isLast: boolean,
-    rowCapacity: number,
-    isCoverPage: boolean,
-) => `
-    <div class="section-head">
-        <span>C. Payment Receipts</span>
-        <span>${payload.paymentRows.length} receipts | Active received ${fmt(activePaymentTotal(payload.paymentRows))}</span>
-    </div>
-    <table class="items-table payment-table">
-        <thead>
-            <tr>
-                <th style="width:10%;">Date</th>
-                <th style="width:12%;">Mode</th>
-                <th style="width:18%;">Reference</th>
-                <th style="width:42%;">Linked Bills</th>
-                <th style="width:11%;">Amount</th>
-                <th style="width:7%;">Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${rows.map((row) => `
-                <tr>
-                    <td class="center">${titleText(row.date)}</td>
-                    <td class="center">${titleText(row.mode)}</td>
-                    <td>${titleText(row.reference)}</td>
-                    <td>${titleText(row.linkedBills)}</td>
-                    <td class="amount">${fmt(row.amount)}</td>
-                    <td class="status-cell ${statusClass(row.status)}">${titleText(row.status)}</td>
-                </tr>
-            `).join('')}
-            ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), 6)}
-            ${isLast ? `
-                <tr class="total-row">
-                    <td class="total-label">ACTIVE TOTAL</td>
-                    <td colspan="3"></td>
-                    <td class="amount">${fmt(activePaymentTotal(payload.paymentRows))}</td>
-                    <td></td>
-                </tr>
-            ` : ''}
-        </tbody>
-    </table>
-`;
-
-const sectionTable = (payload: PartyLedgerReportPayload, page: SectionPage) => {
-    if (page.kind === 'cns') {
-        return cnsTable(payload, page.rows, page.isLast, page.rowCapacity, page.isCoverPage);
-    }
-    if (page.kind === 'bills') {
-        return billTable(payload, page.rows, page.isLast, page.rowCapacity, page.isCoverPage);
-    }
-    return paymentTable(payload, page.rows, page.isLast, page.rowCapacity, page.isCoverPage);
-};
+const sectionTable = (payload: PartyLedgerReportPayload, page: SectionPage) =>
+    cnsTable(payload, page.rows, page.isLast, page.rowCapacity, page.isCoverPage);
 
 const summaryTiles = (summary: LedgerSummary) => `
     <div class="summary-grid">
-        <div class="summary-tile"><span>Total CNS</span><strong>${fmt(summary.totalCnsAmount)}</strong><small>${summary.totalCnsCount} consignments</small></div>
-        <div class="summary-tile good"><span>Billed CNS</span><strong>${fmt(summary.billedCnsAmount)}</strong><small>${summary.billedCnsCount} billed</small></div>
+        <div class="summary-tile"><span>Total CNS Amount</span><strong>${fmt(summary.totalCnsAmount)}</strong><small>${summary.totalCnsCount} consignments</small></div>
         <div class="summary-tile warning"><span>Unbilled</span><strong>${fmt(summary.unbilledCnsAmount)}</strong><small>${summary.unbilledCnsCount} pending</small></div>
         <div class="summary-tile"><span>Total Billed</span><strong>${fmt(summary.totalBilledAmount)}</strong><small>Active bills</small></div>
         <div class="summary-tile"><span>Total Paid</span><strong>${fmt(summary.totalPaid)}</strong><small>Receipts</small></div>
@@ -449,7 +327,7 @@ const pageHtml = (
     <div class="page${isCoverPage ? ' page--cover' : ' page--continuation'}">
         <div class="sheet">
             ${isCoverPage ? reportCoverHtml(payload, logoUrl) : ''}
-            <div class="section-wrap">${sectionTable(payload, page)}</div>
+            <div class="section-wrap${isCoverPage ? ' section-wrap--cover' : ' section-wrap--cont'}">${sectionTable(payload, page)}</div>
             <div class="footer-row">
                 <span>${titleText(payload.party.name)} · ${titleText(partyBranchLabel(payload.party))}</span>
                 <span>Page ${pageIndex + 1} of ${pageCount}</span>
@@ -467,49 +345,51 @@ const htmlDocument = (payload: PartyLedgerReportPayload, pages: SectionPage[], l
 @page { size: A4 landscape; margin: 5mm; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
-.page { width: 287mm; height: 200mm; max-height: 200mm; margin: 0 auto; padding: 0; background: #fff; page-break-after: always; overflow: hidden; }
+.page { width: 287mm; height: 200mm; max-height: 200mm; margin: 0 auto; padding: 0; background: #fff; page-break-after: always; overflow: hidden; box-sizing: border-box; }
 .page:last-child { page-break-after: auto; }
-.sheet { border: 1.2px solid #1d2f7a; height: 100%; display: flex; flex-direction: column; overflow: visible; }
-.header-band, .detail-grid, .summary-grid, .section-wrap, .footer-row { flex-shrink: 0; }
+.sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
+.header-band, .detail-grid, .summary-grid, .footer-row { flex-shrink: 0; }
+.section-wrap { flex: 1 1 auto; min-height: 0; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.section-wrap .items-table { flex: 0 1 auto; height: auto; max-height: 100%; }
 .page--continuation .section-head { margin-top: 0; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
 .header-logo img { width: 102px; max-width: 100%; filter: grayscale(1) contrast(1.6) brightness(0.2); object-fit: contain; }
 .header-copy { text-align: center; }
-.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
-.header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
+.header-title { font-size: 17px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
+.header-line { display: flex; justify-content: center; gap: 34px; font-size: 12px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 .header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
-.header-pan { text-align: right; font-size: 11px; font-weight: 800; line-height: 1.35; }
+.header-pan { text-align: right; font-size: 12px; font-weight: 800; line-height: 1.35; }
 .header-pan span { color: #1d2f7a; }
 .detail-grid { display: grid; grid-template-columns: 56% 44%; min-height: 84px; border-bottom: 1.2px solid #1d2f7a; }
 .party-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 7px 10px; min-width: 0; }
-.party-name { font-size: 12px; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; line-height: 1.2; }
-.party-line { font-size: 9.6px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.party-name { font-size: 13px; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; line-height: 1.2; }
+.party-line { font-size: 10.6px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .party-line span { margin-left: 8px; color: #1d2f7a; font-weight: 800; }
 .party-line span:first-child { margin-left: 0; }
 .right-block { display: grid; grid-template-rows: repeat(4, 1fr); }
 .party-branch-line { color: #1d2f7a; font-weight: 800; }
 .meta-row { display: grid; grid-template-columns: 27% 73%; border-bottom: 1.2px solid #1d2f7a; min-height: 21px; }
 .meta-row:last-child { border-bottom: none; }
-.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 3px 6px; color: #1d2f7a; font-size: 9.5px; font-weight: 800; }
-.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 3px 6px; font-size: 10.2px; font-weight: 800; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; padding: 8px; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
+.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 3px 6px; color: #1d2f7a; font-size: 10.5px; font-weight: 800; }
+.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 3px 6px; font-size: 11.2px; font-weight: 800; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; padding: 8px; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
 .summary-tile { min-width: 0; min-height: 42px; border: 1px solid rgba(29, 47, 122, 0.55); background: rgba(29, 47, 122, 0.08); padding: 5px 6px 4px; overflow: visible; display: flex; flex-direction: column; justify-content: flex-start; gap: 1px; }
 .summary-tile span, .summary-tile small { display: block; line-height: 1.35; overflow: visible; white-space: nowrap; }
-.summary-tile span { color: #1d2f7a; font-size: 8px; font-weight: 800; text-transform: uppercase; }
-.summary-tile strong { display: block; color: #111; font-size: 11px; font-weight: 800; line-height: 1.35; overflow: visible; white-space: nowrap; }
-.summary-tile small { color: #4c5675; font-size: 7.5px; font-weight: 700; line-height: 1.3; }
+.summary-tile span { color: #1d2f7a; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.summary-tile strong { display: block; color: #111; font-size: 12px; font-weight: 800; line-height: 1.35; overflow: visible; white-space: nowrap; }
+.summary-tile small { color: #4c5675; font-size: 8.5px; font-weight: 700; line-height: 1.3; }
 .summary-tile.good { background: rgba(61, 166, 104, 0.11); }
 .summary-tile.warning { background: rgba(255, 207, 84, 0.22); }
 .summary-tile.danger { background: rgba(235, 93, 93, 0.12); }
-.section-head { margin: 8px 0 0; border-top: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; background: rgba(29, 47, 122, 0.12); display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; color: #1d2f7a; font-size: 10.6px; font-weight: 800; text-transform: uppercase; line-height: 1.35; flex-shrink: 0; }
+.section-head { margin: 8px 0 0; border-top: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; background: rgba(29, 47, 122, 0.12); display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; color: #1d2f7a; font-size: 11.6px; font-weight: 800; text-transform: uppercase; line-height: 1.35; flex-shrink: 0; }
 .section-head span { overflow: visible; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-bottom: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 4px 4px 5px; vertical-align: middle; overflow: hidden; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { color: #1d2f7a; background: rgba(29, 47, 122, 0.12); text-align: center; font-size: 9.6px; font-weight: 800; line-height: 1.22; padding-top: 6px; padding-bottom: 7px; }
-.items-table tbody td { min-height: 19px; height: 19px; color: #111; font-size: 8.8px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
-.items-table tbody td.status-cell { text-align: center; vertical-align: middle; font-size: 7.5px; font-weight: 800; color: #1d2f7a; background: rgba(29, 47, 122, 0.08); padding: 3px 4px; white-space: nowrap; }
+.items-table thead th { color: #1d2f7a; background: rgba(29, 47, 122, 0.12); text-align: center; font-size: 10.6px; font-weight: 800; line-height: 1.22; padding-top: 6px; padding-bottom: 7px; }
+.items-table tbody td { min-height: 19px; height: 19px; color: #111; font-size: 9.8px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+.items-table tbody td.status-cell { text-align: center; vertical-align: middle; font-size: 8.5px; font-weight: 800; color: #1d2f7a; background: rgba(29, 47, 122, 0.08); padding: 3px 4px; white-space: nowrap; }
 .items-table tbody td.status-cell.ok { color: #11653d; background: rgba(41, 171, 105, 0.14); }
 .items-table tbody td.status-cell.bad { color: #a32727; background: rgba(221, 81, 81, 0.13); }
 .items-table tbody td.status-cell.warn { color: #8b5a08; background: rgba(235, 174, 55, 0.18); }
@@ -517,20 +397,16 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .cns-table tbody td:nth-child(3),
 .cns-table tbody td:nth-child(5),
 .cns-table tbody td:nth-child(6),
-.cns-table tbody td:nth-child(9),
-.bill-table tbody td:nth-child(3),
-.payment-table tbody td:nth-child(3),
-.payment-table tbody td:nth-child(4) { height: auto; white-space: normal; word-break: break-word; overflow-wrap: anywhere; overflow: hidden; text-overflow: clip; vertical-align: top; padding-top: 3px; padding-bottom: 3px; }
+.cns-table tbody td:nth-child(8) { height: auto; white-space: normal; word-break: break-word; overflow-wrap: anywhere; overflow: hidden; text-overflow: clip; vertical-align: top; padding-top: 3px; padding-bottom: 3px; }
 .cns-table tbody td:nth-child(3) { word-break: break-all; }
-.bill-table tbody td, .payment-table tbody td { font-size: 9.2px; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
 .items-table .count { text-align: center; font-variant-numeric: tabular-nums; }
 .blank-row td { font-weight: 400; background: #fff; }
-.total-row td { height: 23px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 9.7px; font-weight: 800; }
+.total-row td { height: 23px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 10.7px; font-weight: 800; }
 .total-label { color: #1d2f7a !important; }
-.footer-row { margin-top: auto; border-top: 1.2px solid #1d2f7a; display: flex; justify-content: space-between; gap: 8px; padding: 6px 9px; color: #1d2f7a; font-size: 8.7px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
-.footer-row span { overflow: hidden; text-overflow: ellipsis; }
+.footer-row { margin-top: auto; flex-shrink: 0; border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px 8px; color: #1d2f7a; font-size: 9.7px; font-weight: 800; line-height: 1.35; text-transform: uppercase; white-space: nowrap; }
+.footer-row span { overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
 </style>
 </head>
 <body>
@@ -539,7 +415,8 @@ ${pages.map((page, index) => pageHtml(payload, page, logoUrl, index, pages.lengt
 </html>`;
 
 export const downloadPartyLedgerReportPdf = async (payload: PartyLedgerReportPayload): Promise<void> => {
-    const pages = buildSectionPages(payload);
+    const pdfPayload = preparePdfPayload(payload);
+    const pages = buildSectionPages(pdfPayload);
     if (pages.length === 0) throw new Error('No ledger rows found for this report');
 
     const logoUrl = await loadLogo();
@@ -557,7 +434,7 @@ export const downloadPartyLedgerReportPdf = async (payload: PartyLedgerReportPay
         if (!doc) throw new Error('Failed to create ledger export document');
 
         doc.open();
-        doc.write(htmlDocument(payload, pages, logoUrl));
+        doc.write(htmlDocument(pdfPayload, pages, logoUrl));
         doc.close();
 
         await Promise.all(Array.from(doc.images).map((image) => {

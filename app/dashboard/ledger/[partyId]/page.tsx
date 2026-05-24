@@ -1439,11 +1439,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const handleDownloadLedgerReport = useCallback(async () => {
         if (!reportPayload || !party) return;
 
-        const totalRows = reportPayload.cnsRows.length
-            + reportPayload.billRows.length
-            + reportPayload.paymentRows.length;
-
-        if (totalRows === 0) {
+        if (reportPayload.cnsRows.length === 0) {
             toast.error('No ledger entries found for the selected period');
             return;
         }
