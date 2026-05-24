@@ -71,6 +71,8 @@ export type PaymentRow = {
     status: string;
 };
 
+export type LedgerCnsFilter = 'all' | 'billed' | 'unbilled';
+
 export type PartyLedgerReportPayload = {
     party: LedgerParty;
     periodLabel: string;
@@ -80,6 +82,42 @@ export type PartyLedgerReportPayload = {
     billRows: BillRow[];
     paymentRows: PaymentRow[];
     sections?: unknown;
+};
+
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const sumCnsAmount = (rows: CnsRow[]) =>
+    roundMoney(rows.reduce((sum, row) => sum + Number(row.totalAmount || 0), 0));
+
+/** Restrict PDF CNS rows and summary counts to billed, unbilled, or all. */
+export const applyLedgerCnsFilter = (
+    payload: PartyLedgerReportPayload,
+    filter: LedgerCnsFilter,
+): PartyLedgerReportPayload => {
+    if (filter === 'all') return payload;
+
+    const cnsRows = filter === 'billed'
+        ? payload.cnsRows.filter((row) => row.billStatus === 'BILLED')
+        : payload.cnsRows.filter((row) => row.billStatus !== 'BILLED');
+
+    const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
+    const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
+    const filterSuffix = filter === 'billed' ? ' · Billed CNS' : ' · Unbilled CNS';
+
+    return {
+        ...payload,
+        periodLabel: `${payload.periodLabel}${filterSuffix}`,
+        cnsRows,
+        summary: {
+            ...payload.summary,
+            totalCnsCount: cnsRows.length,
+            totalCnsAmount: sumCnsAmount(cnsRows),
+            billedCnsCount: billedRows.length,
+            billedCnsAmount: sumCnsAmount(billedRows),
+            unbilledCnsCount: unbilledRows.length,
+            unbilledCnsAmount: sumCnsAmount(unbilledRows),
+        },
+    };
 };
 
 type SectionPage = {
@@ -121,13 +159,16 @@ const loadLogo = async (): Promise<string> => {
 
 /**
  * Body row capacity tuned for 200mm landscape pages (html2canvas).
- * Cover page has header + summary + branch block; continuation pages use full height.
+ * Keep conservative — multi-line cells and the total row need headroom above the footer.
  */
-const CNS_ROWS_COVER = 14;
-const CNS_ROWS_CONT = 28;
+const CNS_ROWS_COVER = 8;
+const CNS_ROWS_CONT = 16;
+
+/** Extra tbody rows reserved so multi-line cells + total row do not push the footer off-page. */
+const FOOTER_SAFETY_ROWS = 3;
 
 const blankRowCount = (rowCount: number, rowCapacity: number, isLast: boolean) =>
-    Math.max(0, rowCapacity - rowCount - (isLast ? 1 : 0));
+    Math.max(0, rowCapacity - FOOTER_SAFETY_ROWS - rowCount - (isLast ? 1 : 0));
 
 const paginateSection = <T>(
     rows: T[],
@@ -326,11 +367,11 @@ const pageHtml = (
     return `
     <div class="page${isCoverPage ? ' page--cover' : ' page--continuation'}">
         <div class="sheet">
-            ${isCoverPage ? reportCoverHtml(payload, logoUrl) : ''}
+            ${isCoverPage ? `<div class="cover-block">${reportCoverHtml(payload, logoUrl)}</div>` : ''}
             <div class="section-wrap${isCoverPage ? ' section-wrap--cover' : ' section-wrap--cont'}">${sectionTable(payload, page)}</div>
             <div class="footer-row">
-                <span>${titleText(payload.party.name)} · ${titleText(partyBranchLabel(payload.party))}</span>
-                <span>Page ${pageIndex + 1} of ${pageCount}</span>
+                <span class="footer-party">${titleText(payload.party.name)} · ${titleText(partyBranchLabel(payload.party))}</span>
+                <span class="footer-page">Page ${pageIndex + 1} of ${pageCount}</span>
             </div>
         </div>
     </div>
@@ -345,12 +386,15 @@ const htmlDocument = (payload: PartyLedgerReportPayload, pages: SectionPage[], l
 @page { size: A4 landscape; margin: 5mm; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
-.page { width: 287mm; height: 200mm; max-height: 200mm; margin: 0 auto; padding: 0; background: #fff; page-break-after: always; overflow: hidden; box-sizing: border-box; }
+.page { width: 287mm; height: 200mm; max-height: 200mm; margin: 0 auto; padding: 0 0 1.5mm; background: #fff; page-break-after: always; overflow: hidden; box-sizing: border-box; }
 .page:last-child { page-break-after: auto; }
-.sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
-.header-band, .detail-grid, .summary-grid, .footer-row { flex-shrink: 0; }
-.section-wrap { flex: 1 1 auto; min-height: 0; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; }
-.section-wrap .items-table { flex: 0 1 auto; height: auto; max-height: 100%; }
+.sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: grid; grid-template-rows: 1fr 12mm; overflow: hidden; box-sizing: border-box; }
+.page--cover .sheet { grid-template-rows: auto 1fr 12mm; }
+.cover-block { min-height: 0; overflow: visible; }
+.header-band, .detail-grid, .summary-grid { flex-shrink: 0; }
+.section-wrap { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.section-wrap .section-head { flex-shrink: 0; }
+.section-wrap .items-table { flex: 0 1 auto; min-height: 0; max-height: 100%; }
 .page--continuation .section-head { margin-top: 0; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
@@ -405,8 +449,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .blank-row td { font-weight: 400; background: #fff; }
 .total-row td { height: 23px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 10.7px; font-weight: 800; }
 .total-label { color: #1d2f7a !important; }
-.footer-row { margin-top: auto; flex-shrink: 0; border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px 8px; color: #1d2f7a; font-size: 9.7px; font-weight: 800; line-height: 1.35; text-transform: uppercase; white-space: nowrap; }
-.footer-row span { overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
+.footer-row { border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2.5mm 10px 3.2mm; color: #1d2f7a; font-size: 9.2px; font-weight: 800; line-height: 1.45; text-transform: uppercase; overflow: visible; box-sizing: border-box; }
+.footer-party { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.45; padding-bottom: 1px; }
+.footer-page { flex: 0 0 auto; white-space: nowrap; line-height: 1.45; padding-bottom: 1px; }
 </style>
 </head>
 <body>
@@ -414,8 +459,11 @@ ${pages.map((page, index) => pageHtml(payload, page, logoUrl, index, pages.lengt
 </body>
 </html>`;
 
-export const downloadPartyLedgerReportPdf = async (payload: PartyLedgerReportPayload): Promise<void> => {
-    const pdfPayload = preparePdfPayload(payload);
+export const downloadPartyLedgerReportPdf = async (
+    payload: PartyLedgerReportPayload,
+    cnsFilter: LedgerCnsFilter = 'all',
+): Promise<void> => {
+    const pdfPayload = preparePdfPayload(applyLedgerCnsFilter(payload, cnsFilter));
     const pages = buildSectionPages(pdfPayload);
     if (pages.length === 0) throw new Error('No ledger rows found for this report');
 
@@ -455,19 +503,21 @@ export const downloadPartyLedgerReportPdf = async (payload: PartyLedgerReportPay
 
         for (let index = 0; index < pageElements.length; index++) {
             const page = pageElements[index];
+            const captureWidth = page.offsetWidth;
+            const captureHeight = page.offsetHeight;
             const canvas = await html2canvas(page, {
                 scale: 3,
                 useCORS: true,
                 backgroundColor: '#ffffff',
-                width: page.scrollWidth,
-                height: page.scrollHeight,
-                windowWidth: page.scrollWidth,
-                windowHeight: page.scrollHeight,
+                width: captureWidth,
+                height: captureHeight,
+                windowWidth: captureWidth,
+                windowHeight: captureHeight,
             });
             if (index > 0) pdf.addPage('a4', 'landscape');
             const imgWidthMm = 287;
-            const imgHeightMm = Math.min(200, (canvas.height / canvas.width) * imgWidthMm);
-            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 5, 5, imgWidthMm, imgHeightMm, undefined, 'FAST');
+            const imgHeightMm = 198;
+            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 5, 5.5, imgWidthMm, imgHeightMm, undefined, 'FAST');
         }
 
         const partyCode = String(payload.party.code || 'ledger').replace(/[^a-zA-Z0-9_-]/g, '') || 'ledger';
