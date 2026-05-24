@@ -123,11 +123,12 @@ export const applyLedgerCnsFilter = (
 type SectionPage = {
     rows: CnsRow[];
     isLast: boolean;
-    rowCapacity: number;
     isCoverPage: boolean;
+    blankCount: number;
 };
 
 const CNS_TABLE_COLUMNS = 11;
+const PAGE_LAYOUT_BUFFER_PX = 6;
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -155,56 +156,6 @@ const loadLogo = async (): Promise<string> => {
     } catch {
         return `${window.location.origin}/vgt_logo.png`;
     }
-};
-
-/**
- * Body row capacity tuned for 200mm landscape pages (html2canvas).
- * Keep conservative — multi-line cells and the total row need headroom above the footer.
- */
-const CNS_ROWS_COVER = 8;
-const CNS_ROWS_CONT = 16;
-
-/** Extra tbody rows reserved so multi-line cells + total row do not push the footer off-page. */
-const FOOTER_SAFETY_ROWS = 3;
-
-const blankRowCount = (rowCount: number, rowCapacity: number, isLast: boolean) =>
-    Math.max(0, rowCapacity - FOOTER_SAFETY_ROWS - rowCount - (isLast ? 1 : 0));
-
-const paginateSection = <T>(
-    rows: T[],
-    coverSize: number,
-    contSize: number,
-    isFirstDocumentPage: { value: boolean },
-): { pages: T[][]; isFirstDocumentPage: { value: boolean } } => {
-    const pages: T[][] = [];
-    let index = 0;
-    while (index < rows.length) {
-        const size = isFirstDocumentPage.value ? coverSize : contSize;
-        pages.push(rows.slice(index, index + size));
-        index += size;
-        isFirstDocumentPage.value = false;
-    }
-    return { pages, isFirstDocumentPage };
-};
-
-const buildSectionPages = (payload: PartyLedgerReportPayload): SectionPage[] => {
-    const firstPageFlag = { value: true };
-    const chunks = paginateSection(payload.cnsRows, CNS_ROWS_COVER, CNS_ROWS_CONT, firstPageFlag).pages;
-
-    let useCoverCapacity = true;
-    let isFirstDocPage = true;
-    return chunks.map((rows, index, pages) => {
-        const rowCapacity = useCoverCapacity ? CNS_ROWS_COVER : CNS_ROWS_CONT;
-        const isCoverPage = isFirstDocPage;
-        useCoverCapacity = false;
-        isFirstDocPage = false;
-        return {
-            rows,
-            isLast: index === pages.length - 1,
-            rowCapacity,
-            isCoverPage,
-        };
-    });
 };
 
 /** PDF omits cancelled bills — those CNS rows appear as unbilled with no bill amounts. */
@@ -242,59 +193,124 @@ const billStatusCell = (row: CnsRow) => {
     return `<td class="status-cell wait">UNBILLED</td>`;
 };
 
+const cnsTableHeadHtml = () => `
+    <thead>
+        <tr>
+            <th style="width:5%;">CNS<br/>No</th>
+            <th style="width:7%;">Date</th>
+            <th style="width:13%;">Invoice<br/>No</th>
+            <th style="width:8%;">Vehicle no.</th>
+            <th style="width:11%;">Loading<br/>Station</th>
+            <th style="width:11%;">Destination</th>
+            <th style="width:8%;">CNS<br/>Amount</th>
+            <th style="width:12%;">Bill<br/>No</th>
+            <th style="width:8%;">Bill<br/>Amt.</th>
+            <th style="width:6%;">Received</th>
+            <th style="width:6%;">Balance</th>
+        </tr>
+    </thead>
+`;
+
+const cnsDataRowHtml = (row: CnsRow) => `
+    <tr class="cns-data-row">
+        <td class="center">${titleText(row.cnNo)}</td>
+        <td class="center">${titleText(row.date)}</td>
+        <td class="center">${titleText(row.invoiceNo)}</td>
+        <td class="center">${titleText(row.vehicleNo)}</td>
+        <td class="center">${titleText(row.loadingStation)}</td>
+        <td class="center">${titleText(row.destination)}</td>
+        <td class="amount">${fmt(row.totalAmount)}</td>
+        ${billStatusCell(row)}
+        <td class="amount">${fmt(row.billAmount)}</td>
+        <td class="amount">${fmt(row.billPaidAmount)}</td>
+        <td class="amount">${fmt(row.billBalance)}</td>
+    </tr>
+`;
+
 const blankRows = (count: number, cells: number) => Array.from({ length: count }, () => `
     <tr class="blank-row">${Array.from({ length: cells }, () => '<td>&nbsp;</td>').join('')}</tr>
 `).join('');
+
+const measureTbodyBudget = (pageEl: HTMLElement) => {
+    const sectionWrap = pageEl.querySelector<HTMLElement>('.section-wrap');
+    const sectionHead = pageEl.querySelector<HTMLElement>('.section-head');
+    const thead = pageEl.querySelector<HTMLElement>('.items-table thead');
+    if (!sectionWrap || !sectionHead || !thead) return 0;
+    return Math.max(
+        0,
+        sectionWrap.offsetHeight - sectionHead.offsetHeight - thead.offsetHeight - PAGE_LAYOUT_BUFFER_PX,
+    );
+};
+
+const measureLedgerPages = (
+    doc: Document,
+    rows: CnsRow[],
+): SectionPage[] => {
+    if (rows.length === 0) return [];
+
+    const coverBudget = measureTbodyBudget(doc.getElementById('measure-cover-page') as HTMLElement) || 280;
+    const contBudget = measureTbodyBudget(doc.getElementById('measure-cont-page') as HTMLElement) || 620;
+    const rowEls = Array.from(doc.querySelectorAll<HTMLTableRowElement>('#measure-all-rows .cns-data-row'));
+    const rowHeights = rowEls.map((el) => el.offsetHeight);
+    const blankRowEl = doc.querySelector<HTMLTableRowElement>('#measure-blank-row');
+    const totalRowEl = doc.querySelector<HTMLTableRowElement>('#measure-total-row');
+    const blankRowHeight = Math.max(blankRowEl?.offsetHeight || 20, 1);
+    const totalRowHeight = totalRowEl?.offsetHeight || 23;
+
+    const pages: SectionPage[] = [];
+    let rowIndex = 0;
+    let isCoverPage = true;
+
+    while (rowIndex < rows.length) {
+        const budget = Math.max(isCoverPage ? coverBudget : contBudget, blankRowHeight);
+        const pageRows: CnsRow[] = [];
+        let usedHeight = 0;
+
+        while (rowIndex < rows.length) {
+            const rowHeight = rowHeights[rowIndex] ?? blankRowHeight;
+            const isFinalRow = rowIndex === rows.length - 1;
+            const reserveTotal = isFinalRow ? totalRowHeight : 0;
+
+            if (pageRows.length > 0 && usedHeight + rowHeight + reserveTotal > budget) {
+                break;
+            }
+
+            pageRows.push(rows[rowIndex]);
+            usedHeight += rowHeight;
+            rowIndex += 1;
+        }
+
+        const isLast = rowIndex >= rows.length;
+        const remaining = budget - usedHeight - (isLast ? totalRowHeight : 0);
+        const blankCount = Math.max(0, Math.floor(remaining / blankRowHeight));
+
+        pages.push({
+            rows: pageRows,
+            isLast,
+            isCoverPage,
+            blankCount,
+        });
+        isCoverPage = false;
+    }
+
+    return pages;
+};
 
 const cnsTable = (
     payload: PartyLedgerReportPayload,
     rows: CnsRow[],
     isLast: boolean,
-    rowCapacity: number,
-    isCoverPage: boolean,
+    blankCount: number,
 ) => {
-    const totalUnbilled = payload.cnsRows.filter((row) => row.billStatus !== 'BILLED').length;
-    const totalBilled = payload.cnsRows.filter((row) => row.billStatus === 'BILLED').length;
     const cnsTotal = payload.cnsRows.reduce((sum, row) => sum + Number(row.totalAmount || 0), 0);
 
     return `
-        <div class="section-head">
-            <span>A. CNS Ledger Details</span>
-            <span>${payload.cnsRows.length} CNS | ${totalBilled} billed | ${totalUnbilled} unbilled</span>
-        </div>
+        ${sectionHeadHtml(payload)}
         <table class="items-table cns-table">
-            <thead>
-                <tr>
-                    <th style="width:5%;">CNS<br/>No</th>
-                    <th style="width:7%;">Date</th>
-                    <th style="width:13%;">Invoice<br/>No</th>
-                    <th style="width:8%;">Vehicle no.</th>
-                    <th style="width:11%;">Loading<br/>Station</th>
-                    <th style="width:11%;">Destination</th>
-                    <th style="width:8%;">CNS<br/>Amount</th>
-                    <th style="width:12%;">Bill<br/>No</th>
-                    <th style="width:8%;">Bill<br/>Amt.</th>
-                    <th style="width:6%;">Received</th>
-                    <th style="width:6%;">Balance</th>
-                </tr>
-            </thead>
+            ${cnsTableHeadHtml()}
             <tbody>
-                ${rows.map((row) => `
-                    <tr>
-                        <td class="center">${titleText(row.cnNo)}</td>
-                        <td class="center">${titleText(row.date)}</td>
-                        <td class="center">${titleText(row.invoiceNo)}</td>
-                        <td class="center">${titleText(row.vehicleNo)}</td>
-                        <td class="center">${titleText(row.loadingStation)}</td>
-                        <td class="center">${titleText(row.destination)}</td>
-                        <td class="amount">${fmt(row.totalAmount)}</td>
-                        ${billStatusCell(row)}
-                        <td class="amount">${fmt(row.billAmount)}</td>
-                        <td class="amount">${fmt(row.billPaidAmount)}</td>
-                        <td class="amount">${fmt(row.billBalance)}</td>
-                    </tr>
-                `).join('')}
-                ${blankRows(blankRowCount(rows.length, rowCapacity, isLast), CNS_TABLE_COLUMNS)}
+                ${rows.map((row) => cnsDataRowHtml(row)).join('')}
+                ${blankRows(blankCount, CNS_TABLE_COLUMNS)}
                 ${isLast ? `
                     <tr class="total-row">
                         <td class="total-label">TOTAL</td>
@@ -309,7 +325,7 @@ const cnsTable = (
 };
 
 const sectionTable = (payload: PartyLedgerReportPayload, page: SectionPage) =>
-    cnsTable(payload, page.rows, page.isLast, page.rowCapacity, page.isCoverPage);
+    cnsTable(payload, page.rows, page.isLast, page.blankCount);
 
 const summaryTiles = (summary: LedgerSummary) => `
     <div class="summary-grid">
@@ -378,11 +394,18 @@ const pageHtml = (
 `;
 };
 
-const htmlDocument = (payload: PartyLedgerReportPayload, pages: SectionPage[], logoUrl: string) => `<!DOCTYPE html>
-<html>
-<head>
-<title>${titleText(payload.party.code)} Party Ledger</title>
-<style>
+const sectionHeadHtml = (payload: PartyLedgerReportPayload) => {
+    const totalUnbilled = payload.cnsRows.filter((row) => row.billStatus !== 'BILLED').length;
+    const totalBilled = payload.cnsRows.filter((row) => row.billStatus === 'BILLED').length;
+    return `
+        <div class="section-head">
+            <span>A. CNS Ledger Details</span>
+            <span>${payload.cnsRows.length} CNS | ${totalBilled} billed | ${totalUnbilled} unbilled</span>
+        </div>
+    `;
+};
+
+const reportStyles = () => `
 @page { size: A4 landscape; margin: 5mm; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
@@ -392,9 +415,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .page--cover .sheet { grid-template-rows: auto 1fr 12mm; }
 .cover-block { min-height: 0; overflow: visible; }
 .header-band, .detail-grid, .summary-grid { flex-shrink: 0; }
-.section-wrap { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.section-wrap { min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
 .section-wrap .section-head { flex-shrink: 0; }
-.section-wrap .items-table { flex: 0 1 auto; min-height: 0; max-height: 100%; }
+.section-wrap .items-table { width: 100%; }
 .page--continuation .section-head { margin-top: 0; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
@@ -446,12 +469,68 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
 .items-table .count { text-align: center; font-variant-numeric: tabular-nums; }
-.blank-row td { font-weight: 400; background: #fff; }
+.blank-row td { font-weight: 400; background: #fff; height: 20px; min-height: 20px; }
 .total-row td { height: 23px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 10.7px; font-weight: 800; }
 .total-label { color: #1d2f7a !important; }
 .footer-row { border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2.5mm 10px 3.2mm; color: #1d2f7a; font-size: 9.2px; font-weight: 800; line-height: 1.45; text-transform: uppercase; overflow: visible; box-sizing: border-box; }
 .footer-party { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.45; padding-bottom: 1px; }
 .footer-page { flex: 0 0 auto; white-space: nowrap; line-height: 1.45; padding-bottom: 1px; }
+#measure-root { position: absolute; left: -20000px; top: 0; width: 287mm; visibility: hidden; pointer-events: none; }
+`;
+
+const measurementHtml = (
+    payload: PartyLedgerReportPayload,
+    rows: CnsRow[],
+    logoUrl: string,
+) => `<!DOCTYPE html>
+<html>
+<head>
+<style>${reportStyles()}</style>
+</head>
+<body>
+<div id="measure-root">
+    <div class="page page--cover" id="measure-cover-page">
+        <div class="sheet">
+            <div class="cover-block">${reportCoverHtml(payload, logoUrl)}</div>
+            <div class="section-wrap">
+                ${sectionHeadHtml(payload)}
+                <table class="items-table cns-table">${cnsTableHeadHtml()}<tbody></tbody></table>
+            </div>
+            <div class="footer-row"><span>&nbsp;</span><span>&nbsp;</span></div>
+        </div>
+    </div>
+    <div class="page page--continuation" id="measure-cont-page">
+        <div class="sheet">
+            <div class="section-wrap">
+                ${sectionHeadHtml(payload)}
+                <table class="items-table cns-table">${cnsTableHeadHtml()}<tbody></tbody></table>
+            </div>
+            <div class="footer-row"><span>&nbsp;</span><span>&nbsp;</span></div>
+        </div>
+    </div>
+    <table class="items-table cns-table" style="width:287mm">
+        ${cnsTableHeadHtml()}
+        <tbody id="measure-all-rows">
+            ${rows.map((row) => cnsDataRowHtml(row)).join('')}
+            <tr class="blank-row" id="measure-blank-row">${Array.from({ length: CNS_TABLE_COLUMNS }, () => '<td>&nbsp;</td>').join('')}</tr>
+            <tr class="total-row" id="measure-total-row">
+                <td class="total-label">TOTAL</td>
+                <td colspan="5"></td>
+                <td class="amount">0</td>
+                <td colspan="4"></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+</body>
+</html>`;
+
+const htmlDocument = (payload: PartyLedgerReportPayload, pages: SectionPage[], logoUrl: string) => `<!DOCTYPE html>
+<html>
+<head>
+<title>${titleText(payload.party.code)} Party Ledger</title>
+<style>
+${reportStyles()}
 </style>
 </head>
 <body>
@@ -464,8 +543,7 @@ export const downloadPartyLedgerReportPdf = async (
     cnsFilter: LedgerCnsFilter = 'all',
 ): Promise<void> => {
     const pdfPayload = preparePdfPayload(applyLedgerCnsFilter(payload, cnsFilter));
-    const pages = buildSectionPages(pdfPayload);
-    if (pages.length === 0) throw new Error('No ledger rows found for this report');
+    if (pdfPayload.cnsRows.length === 0) throw new Error('No ledger rows found for this report');
 
     const logoUrl = await loadLogo();
     const iframe = document.createElement('iframe');
@@ -480,6 +558,22 @@ export const downloadPartyLedgerReportPdf = async (
     try {
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!doc) throw new Error('Failed to create ledger export document');
+
+        doc.open();
+        doc.write(measurementHtml(pdfPayload, pdfPayload.cnsRows, logoUrl));
+        doc.close();
+
+        await Promise.all(Array.from(doc.images).map((image) => {
+            if (image.complete) return Promise.resolve();
+            return new Promise<void>((resolve) => {
+                image.onload = () => resolve();
+                image.onerror = () => resolve();
+            });
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        const pages = measureLedgerPages(doc, pdfPayload.cnsRows);
+        if (pages.length === 0) throw new Error('No ledger rows found for this report');
 
         doc.open();
         doc.write(htmlDocument(pdfPayload, pages, logoUrl));
