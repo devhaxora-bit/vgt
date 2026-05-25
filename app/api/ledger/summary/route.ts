@@ -43,7 +43,6 @@ type PeriodLedgerMetrics = {
     total_cns_amount: number;
     total_cns_count: number;
     total_billed: number;
-    total_cn_billed: number;
     total_paid: number;
 };
 
@@ -51,7 +50,6 @@ const emptyPeriodMetrics = (): PeriodLedgerMetrics => ({
     total_cns_amount: 0,
     total_cns_count: 0,
     total_billed: 0,
-    total_cn_billed: 0,
     total_paid: 0,
 });
 
@@ -93,7 +91,7 @@ export async function GET(request: Request) {
         // Parties with billing records in range
         let billQuery = supabase
             .from('party_billing_records')
-            .select('party_id, amount, cn_total_amount')
+            .select('party_id, amount')
             .eq('status', 'ACTIVE');
         if (dateFrom) billQuery = billQuery.gte('billing_date', dateFrom);
         if (dateTo) billQuery = billQuery.lte('billing_date', dateTo);
@@ -134,7 +132,6 @@ export async function GET(request: Request) {
         (billRes.data || []).forEach((record) => {
             const metrics = getMetrics(record.party_id);
             metrics.total_billed = roundMoney(metrics.total_billed + toMoney(record.amount));
-            metrics.total_cn_billed = roundMoney(metrics.total_cn_billed + toMoney(record.cn_total_amount));
         });
         (payRes.data || []).forEach((record) => {
             const metrics = getMetrics(record.party_id);
@@ -181,7 +178,8 @@ export async function GET(request: Request) {
             if (!periodMetricsByPartyId) return normalizeLedgerSummaryRow(row);
 
             const metrics = periodMetricsByPartyId.get(row.party_id) || emptyPeriodMetrics();
-            const rawUnbilledAmount = roundMoney(metrics.total_cns_amount - metrics.total_cn_billed);
+            // Use total_billed (invoice amount) as the basis for unbilled — consistent with the view
+            const rawUnbilledAmount = roundMoney(metrics.total_cns_amount - metrics.total_billed);
 
             return normalizeLedgerSummaryRow({
                 ...row,
