@@ -392,7 +392,16 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
 
 const buildBillDetailRows = (record: BillingRecord, consignments: Consignment[]) => {
     const snapshotRows = normalizeSnapshotRows(record.consignment_snapshot);
-    if (snapshotRows.length > 0) return snapshotRows;
+    if (snapshotRows.length > 0) {
+        const cnLookup = new Map(consignments.map((c) => [c.cn_no, c]));
+        return snapshotRows.map((row) => {
+            if (row.freight_rate > 0) return row;
+            const live = cnLookup.get(row.cn_no);
+            const liveRate = roundMoney(parseMoney(live?.freight_rate));
+            if (liveRate > 0) return { ...row, freight_rate: liveRate };
+            return row;
+        });
+    }
     return buildLiveSnapshotRows(record, consignments);
 };
 
