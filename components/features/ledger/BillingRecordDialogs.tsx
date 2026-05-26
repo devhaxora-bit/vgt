@@ -377,7 +377,7 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
             delivery_station: consignment.delivery_point || consignment.dest_branch || null,
             charge_wt: buildChargeWeight(consignment),
             freight_rate: roundMoney(parseMoney(consignment.freight_rate)),
-            is_fixed_rate: isFixedRateBasis(consignment.bkg_basis),
+            is_fixed_rate: isFixedFreight(consignment.freight_rate, consignment.basic_freight),
             freight: breakdown.freight,
             unloading: breakdown.unloading,
             detention: breakdown.detention,
@@ -392,8 +392,9 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
     });
 };
 
-const isFixedRateBasis = (bkgBasis: string | undefined | null) =>
-    String(bkgBasis || '').toUpperCase() === 'FIXED';
+// Fixed-rate freight: no per-unit rate (freight_rate=0) but has a fixed total (basic_freight>0)
+const isFixedFreight = (freightRate: number | undefined | null, basicFreight: number | undefined | null) =>
+    parseMoney(freightRate) === 0 && parseMoney(basicFreight) > 0;
 
 const buildBillDetailRows = (record: BillingRecord, consignments: Consignment[]) => {
     const snapshotRows = normalizeSnapshotRows(record.consignment_snapshot);
@@ -402,8 +403,8 @@ const buildBillDetailRows = (record: BillingRecord, consignments: Consignment[])
         return snapshotRows.map((row) => {
             if (row.freight_rate > 0) return row;
             const live = cnLookup.get(row.cn_no);
-            // Check if this CN has a fixed rate basis
-            if (isFixedRateBasis(live?.bkg_basis)) return { ...row, is_fixed_rate: true };
+            // Fixed-rate CNS: freight_rate is 0 and basic_freight > 0 on the live record
+            if (isFixedFreight(live?.freight_rate, live?.basic_freight)) return { ...row, is_fixed_rate: true };
             const liveRate = roundMoney(parseMoney(live?.freight_rate));
             if (liveRate > 0) return { ...row, freight_rate: liveRate };
             return row;
