@@ -1720,8 +1720,8 @@ function NewConsignmentForm() {
                     onOpenChange={setIsAddPartyDialogOpen}
                     initialName={pendingPartyName}
                     defaultType={pendingPartyType}
+                    branchOptions={branchOptions}
                     onSave={(newParty) => {
-                        // Update the appropriate state based on pendingPartyType
                         if (pendingPartyType === 'consignor') {
                             setConsignor(newParty);
                         } else if (pendingPartyType === 'consignee') {

@@ -137,7 +137,7 @@ export function AddPartyDialog({
                 is_active: true,
                 city: null,
                 state: null,
-                branch_code: branchCode || null,
+                branch_code: branchCode || 'VZM',
             };
 
             const savedParty = editParty
