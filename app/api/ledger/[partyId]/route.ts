@@ -7,7 +7,6 @@ type SummaryConsignment = {
 
 type SummaryBillingRecord = {
     amount: number | string | null;
-    cn_total_amount?: number | string | null;
     status: string;
 };
 
@@ -119,10 +118,10 @@ export async function GET(
 
     const totalCnsAmount = allCns.reduce((sum, c) => sum + (parseFloat(String(c.total_freight || 0)) || 0), 0);
     const totalBilled = allBills.reduce((sum, b) => sum + (parseFloat(String(b.amount || 0)) || 0), 0);
-    const totalCnBilled = allBills.reduce((sum, b) => sum + (parseFloat(String(b.cn_total_amount || 0)) || 0), 0);
     const totalPaid = allPayments.reduce((sum, p) => sum + (parseFloat(String(p.amount || 0)) || 0), 0);
     const openingBalance = parseFloat(account?.opening_balance || '0') || 0;
-    const rawUnbilledAmount = roundMoney(totalCnsAmount - totalCnBilled);
+    // Use total invoice amount (not CN-portion) so that unbilled + billed = total CNS amount
+    const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
     const unbilledAmount = Math.max(rawUnbilledAmount, 0);
     const overbilledAmount = Math.max(-rawUnbilledAmount, 0);
 

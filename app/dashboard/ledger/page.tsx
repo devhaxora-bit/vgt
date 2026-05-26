@@ -16,6 +16,8 @@ import {
     Calendar,
     Download,
     Loader2,
+    CheckCircle2,
+    X,
 } from 'lucide-react';
 import { downloadLedgerSummaryPdf } from '@/lib/ledgerSummaryPdf';
 import { Button } from '@/components/ui/button';
@@ -72,6 +74,7 @@ const hasLedgerActivity = (party: LedgerParty) =>
 
 type BillingFilter = 'all' | 'has_bills' | 'no_bills';
 type PaymentFilter = 'all' | 'has_payments' | 'no_payments';
+type KpiFilter = 'none' | 'cns' | 'billed' | 'unbilled' | 'paid' | 'outstanding';
 
 export default function LedgerPage() {
     const [parties, setParties] = useState<LedgerParty[]>([]);
@@ -84,9 +87,14 @@ export default function LedgerPage() {
     const [billingFilter, setBillingFilter] = useState<BillingFilter>('all');
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
     const [isPdfExporting, setIsPdfExporting] = useState(false);
-    const [sortField, setSortField] = useState<'party_name' | 'outstanding' | 'unbilled_amount' | 'total_cns_amount'>('total_cns_amount');
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+    const [sortField, setSortField] = useState<'party_code' | 'party_name' | 'branch_code' | 'outstanding' | 'unbilled_amount' | 'total_cns_amount' | 'total_billed' | 'total_paid'>('party_code');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
+    const [kpiFilter, setKpiFilter] = useState<KpiFilter>('none');
+
+    const toggleKpiFilter = (next: KpiFilter) => {
+        setKpiFilter(prev => prev === next ? 'none' : next);
+    };
 
     const fetchLedger = useCallback(async () => {
         setIsLoading(true);
@@ -130,24 +138,34 @@ export default function LedgerPage() {
                 p.party_code.toLowerCase().includes(q)
             );
         }
+        // KPI quick-filter
+        if (kpiFilter === 'cns') list = list.filter(p => Number(p.total_cns_amount || 0) > 0);
+        if (kpiFilter === 'billed') list = list.filter(p => Number(p.total_billed || 0) > 0);
+        if (kpiFilter === 'unbilled') list = list.filter(p => Number(p.unbilled_amount || 0) > 0);
+        if (kpiFilter === 'paid') list = list.filter(p => Number(p.total_paid || 0) > 0);
+        if (kpiFilter === 'outstanding') list = list.filter(p => Number(p.outstanding || 0) > 0);
+
         list.sort((a, b) => {
             const va = a[sortField];
             const vb = b[sortField];
-            if (typeof va === 'string' && typeof vb === 'string') {
-                return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+            const sa = va == null ? '' : String(va);
+            const sb = vb == null ? '' : String(vb);
+            if (isNaN(Number(va)) || isNaN(Number(vb)) || sortField === 'party_code' || sortField === 'party_name' || sortField === 'branch_code') {
+                return sortDir === 'asc' ? sa.localeCompare(sb) : sb.localeCompare(sa);
             }
             const na = Number(va);
             const nb = Number(vb);
             return sortDir === 'asc' ? na - nb : nb - na;
         });
         return list;
-    }, [parties, searchTerm, sortField, sortDir]);
+    }, [parties, searchTerm, kpiFilter, sortField, sortDir]);
 
     const totals = useMemo(() => ({
         cns: filtered.reduce((s, p) => s + (p.total_cns_amount || 0), 0),
         billed: filtered.reduce((s, p) => s + (p.total_billed || 0), 0),
         unbilled: filtered.reduce((s, p) => s + (p.unbilled_amount || 0), 0),
         overbilled: filtered.reduce((s, p) => s + (p.overbilled_amount || 0), 0),
+        paid: filtered.reduce((s, p) => s + (p.total_paid || 0), 0),
         outstanding: filtered.reduce((s, p) => s + (p.outstanding || 0), 0),
     }), [filtered]);
 
@@ -156,9 +174,12 @@ export default function LedgerPage() {
         else { setSortField(field); setSortDir('asc'); }
     };
 
-    const SortIcon = ({ field }: { field: typeof sortField }) => (
-        <ArrowUpDown className={`h-3.5 w-3.5 ml-1 inline ${sortField === field ? 'text-primary' : 'text-muted-foreground/40'}`} />
-    );
+    const SortIcon = ({ field }: { field: typeof sortField }) => {
+        if (sortField !== field) return <ArrowUpDown className="h-3.5 w-3.5 ml-1 inline text-muted-foreground/40" />;
+        return sortDir === 'asc'
+            ? <ArrowUpDown className="h-3.5 w-3.5 ml-1 inline text-primary" />
+            : <ArrowUpDown className="h-3.5 w-3.5 ml-1 inline text-primary rotate-180" />;
+    };
 
     const activeFilterCount = [
         branchFilter !== 'all',
@@ -177,6 +198,7 @@ export default function LedgerPage() {
         setDateTo('');
         setBillingFilter('all');
         setPaymentFilter('all');
+        setKpiFilter('none');
     };
 
     const handleExportPdf = async () => {
@@ -279,66 +301,115 @@ export default function LedgerPage() {
                 </div>
             </div>
 
-            {/* KPI Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="border-none shadow-md bg-white">
-                    <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                                <Package className="h-5 w-5 text-primary" />
+            {/* KPI Summary Cards — click to filter, click again to clear */}
+            {kpiFilter !== 'none' && (
+                <div className="flex items-center gap-2 text-xs text-primary font-medium bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                    <Filter className="h-3.5 w-3.5 shrink-0" />
+                    <span>Showing parties filtered by: <strong className="capitalize">{kpiFilter === 'cns' ? 'Total CNS' : kpiFilter === 'billed' ? 'Billed' : kpiFilter === 'unbilled' ? 'Unbilled' : kpiFilter === 'paid' ? 'Paid' : 'Outstanding'}</strong></span>
+                    <button onClick={() => setKpiFilter('none')} className="ml-auto flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors">
+                        <X className="h-3.5 w-3.5" /> Clear
+                    </button>
+                </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                {/* CNS Amount */}
+                <button
+                    onClick={() => toggleKpiFilter('cns')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none ${kpiFilter === 'cns' ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'}`}
+                >
+                    <div className="p-4">
+                        <div className="flex items-start gap-3">
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'cns' ? 'bg-primary' : 'bg-primary/10'}`}>
+                                <Package className={`h-5 w-5 ${kpiFilter === 'cns' ? 'text-white' : 'text-primary'}`} />
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total CNS Amount</p>
                                 <p className="text-lg font-black text-foreground">₹{fmt(totals.cns)}</p>
+                                {kpiFilter === 'cns' && <p className="text-[10px] text-primary font-semibold mt-0.5">● Active Filter</p>}
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </button>
 
-                <Card className="border-none shadow-md bg-white">
-                    <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                                <TrendingUp className="h-5 w-5 text-emerald-600" />
+                {/* Total Billed */}
+                <button
+                    onClick={() => toggleKpiFilter('billed')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none ${kpiFilter === 'billed' ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-transparent'}`}
+                >
+                    <div className="p-4">
+                        <div className="flex items-start gap-3">
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'billed' ? 'bg-emerald-500' : 'bg-emerald-50'}`}>
+                                <TrendingUp className={`h-5 w-5 ${kpiFilter === 'billed' ? 'text-white' : 'text-emerald-600'}`} />
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total Billed</p>
                                 <p className="text-lg font-black text-emerald-700">₹{fmt(totals.billed)}</p>
+                                {kpiFilter === 'billed' && <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">● Active Filter</p>}
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </button>
 
-                <Card className="border-none shadow-md bg-white">
-                    <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
-                                <AlertCircle className="h-5 w-5 text-amber-600" />
+                {/* Unbilled */}
+                <button
+                    onClick={() => toggleKpiFilter('unbilled')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none ${kpiFilter === 'unbilled' ? 'border-amber-500 ring-2 ring-amber-200' : 'border-transparent'}`}
+                >
+                    <div className="p-4">
+                        <div className="flex items-start gap-3">
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'unbilled' ? 'bg-amber-500' : 'bg-amber-50'}`}>
+                                <AlertCircle className={`h-5 w-5 ${kpiFilter === 'unbilled' ? 'text-white' : 'text-amber-600'}`} />
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Unbilled Amount</p>
                                 <p className="text-lg font-black text-amber-700">₹{fmt(totals.unbilled)}</p>
+                                {kpiFilter === 'unbilled' && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">● Active Filter</p>}
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </button>
 
-                <Card className="border-none shadow-md bg-white">
-                    <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                                <DollarSign className="h-5 w-5 text-red-600" />
+                {/* Total Paid */}
+                <button
+                    onClick={() => toggleKpiFilter('paid')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none ${kpiFilter === 'paid' ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-transparent'}`}
+                >
+                    <div className="p-4">
+                        <div className="flex items-start gap-3">
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'paid' ? 'bg-indigo-500' : 'bg-indigo-50'}`}>
+                                <CheckCircle2 className={`h-5 w-5 ${kpiFilter === 'paid' ? 'text-white' : 'text-indigo-600'}`} />
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total Paid</p>
+                                <p className="text-lg font-black text-indigo-700">₹{fmt(totals.paid)}</p>
+                                {kpiFilter === 'paid' && <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">● Active Filter</p>}
+                            </div>
+                        </div>
+                    </div>
+                </button>
+
+                {/* Outstanding */}
+                <button
+                    onClick={() => toggleKpiFilter('outstanding')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none ${kpiFilter === 'outstanding' ? 'border-red-500 ring-2 ring-red-200' : 'border-transparent'}`}
+                >
+                    <div className="p-4">
+                        <div className="flex items-start gap-3">
+                            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'outstanding' ? 'bg-red-500' : 'bg-red-50'}`}>
+                                <DollarSign className={`h-5 w-5 ${kpiFilter === 'outstanding' ? 'text-white' : 'text-red-600'}`} />
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total Outstanding</p>
-                                <p className={`text-lg font-black ${totals.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                                    ₹{fmt(totals.outstanding)}
-                                </p>
+                                <p className={`text-lg font-black ${totals.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}`}>₹{fmt(totals.outstanding)}</p>
+                                {kpiFilter === 'outstanding' && <p className="text-[10px] text-red-600 font-semibold mt-0.5">● Active Filter</p>}
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </button>
             </div>
+            {kpiFilter === 'none' && (
+                <p className="text-[11px] text-muted-foreground/60 -mt-2 px-1">💡 Click any card above to filter the table by that category</p>
+            )}
 
             {/* Filter Bar */}
             <Card className="border shadow-sm bg-card/60 backdrop-blur-xl border-border/40">
@@ -409,22 +480,23 @@ export default function LedgerPage() {
                         <Table>
                             <TableHeader className="bg-muted/40 border-b">
                                 <TableRow>
-                                    <TableHead className="font-bold py-4 w-24">Code</TableHead>
-                                    <TableHead className="font-bold py-4 cursor-pointer" onClick={() => toggleSort('party_name')}>Party <SortIcon field="party_name" /></TableHead>
-                                    <TableHead className="font-bold py-4 text-right cursor-pointer" onClick={() => toggleSort('total_cns_amount')}>CNS Amount <SortIcon field="total_cns_amount" /></TableHead>
-                                    <TableHead className="font-bold py-4 text-right">Billed</TableHead>
-                                    <TableHead className="font-bold py-4 text-right cursor-pointer" onClick={() => toggleSort('unbilled_amount')}>Unbilled <SortIcon field="unbilled_amount" /></TableHead>
-                                    <TableHead className="font-bold py-4 text-right">Paid</TableHead>
-                                    <TableHead className="font-bold py-4 text-right cursor-pointer" onClick={() => toggleSort('outstanding')}>Outstanding <SortIcon field="outstanding" /></TableHead>
+                                    <TableHead className="font-bold py-4 w-24 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('party_code')}>Code <SortIcon field="party_code" /></TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('party_name')}>Party <SortIcon field="party_name" /></TableHead>
+                                    <TableHead className="font-bold py-4 w-28 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('branch_code')}>Branch <SortIcon field="branch_code" /></TableHead>
+                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_cns_amount')}>CNS Amount <SortIcon field="total_cns_amount" /></TableHead>
+                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_billed')}>Billed <SortIcon field="total_billed" /></TableHead>
+                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('unbilled_amount')}>Unbilled <SortIcon field="unbilled_amount" /></TableHead>
+                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_paid')}>Paid <SortIcon field="total_paid" /></TableHead>
+                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('outstanding')}>Outstanding <SortIcon field="outstanding" /></TableHead>
                                     <TableHead className="py-4 text-right"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
-                                    <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">Loading ledger data...</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">Loading ledger data...</TableCell></TableRow>
                                 ) : filtered.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="h-32 text-center">
+                                        <TableCell colSpan={9} className="h-32 text-center">
                                             <div className="flex flex-col items-center gap-2 opacity-40">
                                                 <BookOpen className="h-10 w-10 text-muted-foreground" />
                                                 <p className="text-sm font-medium">No parties found</p>
@@ -442,6 +514,13 @@ export default function LedgerPage() {
                                                 {p.phone && <span className="text-[10px] text-muted-foreground">{p.phone}</span>}
                                                 <span className="text-[10px] text-muted-foreground font-mono">{p.total_cns_count} CNS</span>
                                             </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            {p.branch_code ? (
+                                                <span className="font-mono text-xs font-semibold text-foreground bg-muted px-2 py-0.5 rounded">{p.branch_code}</span>
+                                            ) : (
+                                                <span className="text-muted-foreground/40 text-xs">—</span>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <span className="font-mono font-bold text-sm">₹{fmt(p.total_cns_amount)}</span>
@@ -491,8 +570,9 @@ export default function LedgerPage() {
 
                     {/* Footer totals row */}
                     {filtered.length > 0 && (
-                        <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-8 gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                        <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-9 gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                             <div className="col-span-2">Total ({filtered.length} parties)</div>
+                            <div></div>
                             <div className="text-right font-mono text-foreground">₹{fmt(totals.cns)}</div>
                             <div className="text-right font-mono text-emerald-700">₹{fmt(totals.billed)}</div>
                             <div className="text-right font-mono text-amber-700">₹{fmt(totals.unbilled)}</div>
