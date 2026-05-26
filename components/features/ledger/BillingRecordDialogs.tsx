@@ -88,6 +88,7 @@ interface BillingConsignmentSnapshotRow {
     delivery_station: string | null;
     charge_wt: string | null;
     freight_rate: number;
+    is_fixed_rate?: boolean;
     freight: number;
     unloading: number;
     detention: number;
@@ -376,6 +377,7 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
             delivery_station: consignment.delivery_point || consignment.dest_branch || null,
             charge_wt: buildChargeWeight(consignment),
             freight_rate: roundMoney(parseMoney(consignment.freight_rate)),
+            is_fixed_rate: isFixedRateBasis(consignment.bkg_basis),
             freight: breakdown.freight,
             unloading: breakdown.unloading,
             detention: breakdown.detention,
@@ -390,6 +392,9 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
     });
 };
 
+const isFixedRateBasis = (bkgBasis: string | undefined | null) =>
+    String(bkgBasis || '').toUpperCase() === 'FIXED';
+
 const buildBillDetailRows = (record: BillingRecord, consignments: Consignment[]) => {
     const snapshotRows = normalizeSnapshotRows(record.consignment_snapshot);
     if (snapshotRows.length > 0) {
@@ -397,6 +402,8 @@ const buildBillDetailRows = (record: BillingRecord, consignments: Consignment[])
         return snapshotRows.map((row) => {
             if (row.freight_rate > 0) return row;
             const live = cnLookup.get(row.cn_no);
+            // Check if this CN has a fixed rate basis
+            if (isFixedRateBasis(live?.bkg_basis)) return { ...row, is_fixed_rate: true };
             const liveRate = roundMoney(parseMoney(live?.freight_rate));
             if (liveRate > 0) return { ...row, freight_rate: liveRate };
             return row;
@@ -843,7 +850,7 @@ export function BillingRecordViewDialog({
                 loadingStation: toUpperText(row.loading_station || row.booking_branch) || '—',
                 deliveryStation: toUpperText(row.delivery_station) || '—',
                 chargeWt: row.charge_wt || '—',
-                rate: row.freight_rate > 0 ? fmt(row.freight_rate) : '',
+                rate: row.freight_rate > 0 ? fmt(row.freight_rate) : row.is_fixed_rate ? 'FIXED' : '',
                 freight: formatTableAmount(row.freight),
                 unloading: formatTableAmount(row.unloading),
                 detention: formatTableAmount(row.detention),
@@ -1275,7 +1282,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                                                             <td className="p-2 text-xs">{row.loading_station || row.booking_branch || '—'}</td>
                                                             <td className="p-2 text-xs">{row.delivery_station || '—'}</td>
                                                             <td className="p-2 text-right text-xs font-mono">{row.charge_wt || '—'}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{row.freight_rate > 0 ? fmt(row.freight_rate) : '0.00'}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{row.freight_rate > 0 ? fmt(row.freight_rate) : row.is_fixed_rate ? 'FIXED' : '0.00'}</td>
                                                             <td className="p-2 text-right text-xs font-mono">₹{fmt(row.freight)}</td>
                                                             <td className="p-2 text-right text-xs font-mono">₹{fmt(row.unloading)}</td>
                                                             <td className="p-2 text-right text-xs font-mono">₹{fmt(row.detention)}</td>
