@@ -27,25 +27,28 @@ interface AddPartyDialogProps {
     onSave: (party: Party) => void;
     initialName?: string;
     defaultType?: PartyType;
-    editParty?: Party; // Add this
+    editParty?: Party;
+    branchOptions?: { value: string; label: string }[];
 }
 
-export function AddPartyDialog({ 
-    open, 
-    onOpenChange, 
-    onSave, 
-    initialName = '', 
+export function AddPartyDialog({
+    open,
+    onOpenChange,
+    onSave,
+    initialName = '',
     defaultType = 'both',
-    editParty 
+    editParty,
+    branchOptions = [],
 }: AddPartyDialogProps) {
     const [name, setName] = React.useState(initialName);
     const [type, setType] = React.useState(defaultType);
-    const [code, setCode] = React.useState(''); // Editable for now
+    const [code, setCode] = React.useState('');
     const [gstin, setGstin] = React.useState('');
     const [address, setAddress] = React.useState('');
     const [pincode, setPincode] = React.useState('');
     const [phone, setPhone] = React.useState('');
     const [email, setEmail] = React.useState('');
+    const [branchCode, setBranchCode] = React.useState<string>('');
     const [isSaving, setIsSaving] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [codeError, setCodeError] = React.useState<string | null>(null);
@@ -62,17 +65,18 @@ export function AddPartyDialog({
                 setPincode(editParty.pincode || '');
                 setPhone(editParty.phone || '');
                 setEmail(editParty.email || '');
+                setBranchCode(editParty.branch_code || '');
             } else {
                 setName(initialName);
                 setType(defaultType);
                 setCode('');
                 setGstin('');
-                // Fetch the next sequential code asynchronously
                 getNextPartyCode().then((nextCode) => setCode(nextCode)).catch(() => setCode('000001'));
                 setAddress('');
                 setPincode('');
                 setPhone('');
                 setEmail('');
+                setBranchCode('');
             }
             setError(null);
             setCodeError(null);
@@ -85,7 +89,6 @@ export function AddPartyDialog({
             setCodeError(trimmedCode.length > 0 && trimmedCode.length !== 6 ? 'Code must be exactly 6 digits' : null);
             return;
         }
-        // Skip check if code hasn't changed during edit
         if (editParty && editParty.code === trimmedCode) {
             setCodeError(null);
             return;
@@ -99,7 +102,6 @@ export function AddPartyDialog({
                 setCodeError(null);
             }
         } catch {
-            // If lookup fails, don't block — the server will catch duplicates on save
             setCodeError(null);
         } finally {
             setIsCheckingCode(false);
@@ -126,26 +128,27 @@ export function AddPartyDialog({
             const partyInput: PartyInput = {
                 name,
                 code,
-                type: type,
+                type,
                 gstin: gstin || null,
                 address: address || null,
                 pincode: pincode || null,
                 phone: phone || null,
                 email: email || null,
                 is_active: true,
-                city: null, // Basic fields
+                city: null,
                 state: null,
+                branch_code: branchCode || null,
             };
 
-            const savedParty = editParty 
+            const savedParty = editParty
                 ? await updateParty(editParty.id, partyInput)
                 : await createParty(partyInput);
 
             onSave(savedParty);
             onOpenChange(false);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to save party:', err);
-            setError(err.message || 'Failed to save party');
+            setError((err as Error)?.message || 'Failed to save party');
         } finally {
             setIsSaving(false);
         }
@@ -157,40 +160,31 @@ export function AddPartyDialog({
                 <DialogHeader>
                     <DialogTitle>{editParty ? 'Edit Party' : 'Add New Party'}</DialogTitle>
                     <DialogDescription>
-                        {editParty 
-                            ? `Update the details for ${editParty.name}.` 
+                        {editParty
+                            ? `Update the details for ${editParty.name}.`
                             : 'Enter the details of the party. The party code is pre-generated but can be edited.'}
                     </DialogDescription>
                 </DialogHeader>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                    {/* Party Name */}
                     <div className="space-y-2">
-                        <Label htmlFor="name">Party Name</Label>
+                        <Label htmlFor="name">Party Name <span className="text-destructive">*</span></Label>
                         <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter party name" />
                     </div>
+
+                    {/* Party Code */}
                     <div className="space-y-2">
-                        <Label htmlFor="type">Party Type</Label>
-                        <Select value={type} onValueChange={(v: any) => setType(v)}>
-                            <SelectTrigger id="type">
-                                <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="consignor">Consignor Only</SelectItem>
-                                <SelectItem value="consignee">Consignee Only</SelectItem>
-                                <SelectItem value="both">Both (Consignor &amp; Consignee)</SelectItem>
-                                <SelectItem value="billing">Billing Party</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="code">Party Code (6 Digits)</Label>
+                        <Label htmlFor="code">Party Code <span className="text-destructive">*</span></Label>
                         <div className="relative">
                             <Input
                                 id="code"
                                 value={code}
                                 onChange={(e) => { setCode(e.target.value); setCodeError(null); }}
                                 onBlur={handleCodeBlur}
-                                placeholder="100003"
-                                className={`bg-slate-50 ${codeError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                                placeholder="000001"
+                                maxLength={6}
+                                className={`font-mono bg-slate-50 ${codeError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                             />
                             {isCheckingCode && (
                                 <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
@@ -203,28 +197,83 @@ export function AddPartyDialog({
                             </p>
                         )}
                     </div>
+
+                    {/* Party Type */}
+                    <div className="space-y-2">
+                        <Label htmlFor="type">Party Type</Label>
+                        <Select value={type} onValueChange={(v) => setType(v as PartyType)}>
+                            <SelectTrigger id="type">
+                                <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="consignor">Consignor Only</SelectItem>
+                                <SelectItem value="consignee">Consignee Only</SelectItem>
+                                <SelectItem value="both">Both (Consignor &amp; Consignee)</SelectItem>
+                                <SelectItem value="billing">Billing Party</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Branch */}
+                    <div className="space-y-2">
+                        <Label htmlFor="branch">Branch</Label>
+                        <Select value={branchCode || '__none__'} onValueChange={(v) => setBranchCode(v === '__none__' ? '' : v)}>
+                            <SelectTrigger id="branch">
+                                <SelectValue placeholder="Select branch" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__none__">No Branch</SelectItem>
+                                {branchOptions.map(b => (
+                                    <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* GSTIN */}
                     <div className="space-y-2">
                         <Label htmlFor="gstin">GST Number</Label>
-                        <Input id="gstin" value={gstin} onChange={(e) => setGstin(e.target.value)} placeholder="27XXXXX0000X0Z0" className="font-mono uppercase" />
+                        <Input
+                            id="gstin"
+                            value={gstin}
+                            onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                            placeholder="27XXXXX0000X0Z0"
+                            className="font-mono uppercase"
+                            maxLength={15}
+                        />
                     </div>
+
+                    {/* Phone */}
+                    <div className="space-y-2">
+                        <Label htmlFor="phone">Phone / Mobile</Label>
+                        <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" maxLength={10} />
+                    </div>
+
+                    {/* Address */}
                     <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="address">Full Address</Label>
                         <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address line 1, Area, Landmark" />
                     </div>
+
+                    {/* Pincode */}
                     <div className="space-y-2">
                         <Label htmlFor="pincode">Pincode</Label>
                         <Input id="pincode" value={pincode} onChange={(e) => setPincode(e.target.value)} placeholder="6-digit PIN" maxLength={6} />
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="phone">Phone / Mobile</Label>
-                        <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" />
-                    </div>
+
+                    {/* Email */}
                     <div className="space-y-2">
                         <Label htmlFor="email">Email Address</Label>
                         <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
                     </div>
                 </div>
-                {error && <p className="text-xs text-destructive px-1">{error}</p>}
+
+                {error && (
+                    <p className="text-xs text-destructive px-1 flex items-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {error}
+                    </p>
+                )}
+
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
                     <Button onClick={handleSave} disabled={isSaving || isCheckingCode || !!codeError}>

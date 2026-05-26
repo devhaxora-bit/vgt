@@ -352,26 +352,40 @@ const isWithinDateRange = (value: string | undefined | null, from: string, to: s
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({
-    label, value, icon: Icon, iconBg, valueClass, sub,
+    label, value, icon: Icon, iconBg, iconActiveBg, valueClass, sub, onClick, active, activeSub, activeRingClass,
 }: {
     label: string; value: string; icon: React.ComponentType<{ className?: string }>; iconBg: string;
-    valueClass?: string; sub?: string;
+    iconActiveBg?: string; valueClass?: string; sub?: string; onClick?: () => void;
+    active?: boolean; activeSub?: string; activeRingClass?: string;
 }) {
+    const isClickable = !!onClick;
+    const ringClass = activeRingClass || 'ring-primary/20 border-primary';
     return (
-        <Card className="border-none shadow-md bg-white">
-            <CardContent className="p-4">
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={!isClickable}
+            className={[
+                'text-left w-full rounded-xl bg-white shadow-md transition-all duration-150 border-2 focus:outline-none',
+                isClickable ? 'cursor-pointer hover:shadow-lg hover:-translate-y-0.5' : 'cursor-default',
+                active ? `${ringClass} ring-2` : 'border-transparent',
+            ].join(' ')}
+        >
+            <div className="p-4">
                 <div className="flex items-start gap-3">
-                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
-                        <Icon className="h-5 w-5" />
+                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${active && iconActiveBg ? iconActiveBg : iconBg}`}>
+                        <Icon className={`h-5 w-5 ${active && iconActiveBg ? 'text-white' : ''}`} />
                     </div>
                     <div className="min-w-0">
                         <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wide leading-tight">{label}</p>
                         <p className={`text-xl font-black mt-0.5 leading-tight ${valueClass || 'text-foreground'}`}>{value}</p>
-                        {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
+                        {active && activeSub
+                            ? <p className="text-[10px] font-semibold mt-0.5 text-primary">● {activeSub}</p>
+                            : sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
                     </div>
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </button>
     );
 }
 
@@ -1187,6 +1201,30 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const [billingDateTo, setBillingDateTo] = useState('');
     const [isDownloadingReport, setIsDownloadingReport] = useState(false);
     const [showLedgerDownloadDialog, setShowLedgerDownloadDialog] = useState(false);
+    const [activeTab, setActiveTab] = useState<'cns' | 'billing' | 'payments' | 'monthly'>('cns');
+    const [cnsBillFilter, setCnsBillFilter] = useState<'all' | 'billed' | 'unbilled'>('all');
+
+    const handleKpiClick = (kpi: 'cns' | 'billed' | 'unbilled' | 'paid' | 'outstanding') => {
+        switch (kpi) {
+            case 'cns':
+                if (activeTab === 'cns' && cnsBillFilter === 'all') { setCnsBillFilter('all'); }
+                else { setActiveTab('cns'); setCnsBillFilter('all'); }
+                break;
+            case 'billed':
+                setActiveTab('billing');
+                break;
+            case 'unbilled':
+                if (activeTab === 'cns' && cnsBillFilter === 'unbilled') { setCnsBillFilter('all'); setActiveTab('cns'); }
+                else { setActiveTab('cns'); setCnsBillFilter('unbilled'); }
+                break;
+            case 'paid':
+                setActiveTab('payments');
+                break;
+            case 'outstanding':
+                setActiveTab('billing');
+                break;
+        }
+    };
 
     // Dialogs
     const [showBillingDialog, setShowBillingDialog] = useState(false);
@@ -1348,9 +1386,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         const activePayments = reportPaymentReceipts.filter((record) => record.status === 'ACTIVE');
         const totalCnsAmount = roundMoney(reportConsignments.reduce((sum, record) => sum + parseMoney(record.total_freight), 0));
         const totalBilled = roundMoney(activeBills.reduce((sum, record) => sum + parseMoney(record.amount), 0));
-        const totalCnBilled = roundMoney(activeBills.reduce((sum, record) => sum + parseMoney(record.cn_total_amount), 0));
         const totalPaid = roundMoney(activePayments.reduce((sum, record) => sum + parseMoney(record.amount), 0));
-        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalCnBilled);
+        // Use total invoice amount so that unbilled + billed = total CNS amount
+        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
         const openingBalance = roundMoney(parseMoney(data.account?.opening_balance));
         const billingLookup = new Map(data.all_billing_records.map((record) => [record.id, record]));
         const settledBillAmountMap = buildSettledBillAmountMap(data.all_payment_receipts);
@@ -1446,7 +1484,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 totalCnsAmount,
                 totalCnsCount: reportConsignments.length,
                 billedCnsCount,
-                billedCnsAmount: totalCnBilled,
+                billedCnsAmount: totalBilled,
                 unbilledCnsCount: cnsRows.length - billedCnsCount,
                 unbilledCnsAmount: Math.max(rawUnbilledAmount, 0),
                 totalBilledAmount: totalBilled,
@@ -1492,12 +1530,25 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
     const filteredConsignments = useMemo(() => {
         const query = cnsSearch.trim().toLowerCase();
-        if (!query) return data.consignments;
-        return data.consignments.filter((c) =>
+        let list = data.consignments;
+
+        if (cnsBillFilter !== 'all') {
+            const billedCns = new Set<string>();
+            data.all_billing_records.forEach(r => {
+                if (r.status === 'ACTIVE') {
+                    (r.covered_cn_nos || []).forEach(cn => billedCns.add(cn.trim()));
+                }
+            });
+            if (cnsBillFilter === 'billed') list = list.filter(c => billedCns.has(c.cn_no));
+            if (cnsBillFilter === 'unbilled') list = list.filter(c => !billedCns.has(c.cn_no));
+        }
+
+        if (!query) return list;
+        return list.filter((c) =>
             String(c.cn_no || '').toLowerCase().includes(query) ||
             String(c.goods_desc || '').toLowerCase().includes(query)
         );
-    }, [cnsSearch, data.consignments]);
+    }, [cnsSearch, cnsBillFilter, data.consignments, data.all_billing_records]);
 
     const consignmentBillingMap = useMemo(() => {
         const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();
@@ -1639,7 +1690,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
             <div className="flex-1 p-6 max-w-[1920px] mx-auto w-full space-y-6">
 
-                {/* KPI Summary */}
+                {/* KPI Summary — click to navigate/filter */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <KpiCard
                         label="Total CNS Amount"
@@ -1647,14 +1698,24 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                         sub={`${summary.total_cns_count} consignments`}
                         icon={Package}
                         iconBg="bg-primary/10"
+                        iconActiveBg="bg-primary"
+                        activeRingClass="ring-primary/20 border-primary"
                         valueClass="text-primary"
+                        active={activeTab === 'cns' && cnsBillFilter === 'all'}
+                        activeSub="Showing all CNS"
+                        onClick={() => handleKpiClick('cns')}
                     />
                     <KpiCard
                         label="Total Billed"
                         value={`₹${fmt(summary.total_billed)}`}
                         icon={TrendingUp}
                         iconBg="bg-emerald-50"
+                        iconActiveBg="bg-emerald-500"
+                        activeRingClass="ring-emerald-200 border-emerald-500"
                         valueClass="text-emerald-700"
+                        active={activeTab === 'billing'}
+                        activeSub="Viewing billing"
+                        onClick={() => handleKpiClick('billed')}
                     />
                     <KpiCard
                         label="Unbilled Amount"
@@ -1662,24 +1723,39 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                         sub={summary.overbilled_amount && summary.overbilled_amount > 0 ? `Overbilled ₹${fmt(summary.overbilled_amount)}` : undefined}
                         icon={AlertCircle}
                         iconBg="bg-amber-50"
+                        iconActiveBg="bg-amber-500"
+                        activeRingClass="ring-amber-200 border-amber-500"
                         valueClass="text-amber-700"
+                        active={activeTab === 'cns' && cnsBillFilter === 'unbilled'}
+                        activeSub="Filtered: unbilled CNS"
+                        onClick={() => handleKpiClick('unbilled')}
                     />
                     <KpiCard
                         label="Total Paid"
                         value={`₹${fmt(summary.total_paid)}`}
                         icon={CheckCircle2}
                         iconBg="bg-indigo-50"
+                        iconActiveBg="bg-indigo-500"
+                        activeRingClass="ring-indigo-200 border-indigo-500"
                         valueClass="text-indigo-700"
+                        active={activeTab === 'payments'}
+                        activeSub="Viewing payments"
+                        onClick={() => handleKpiClick('paid')}
                     />
                     <KpiCard
                         label="Outstanding"
                         value={`₹${fmt(summary.outstanding)}`}
                         icon={DollarSign}
                         iconBg={summary.outstanding > 0 ? 'bg-red-50' : 'bg-emerald-50'}
+                        iconActiveBg={summary.outstanding > 0 ? 'bg-red-500' : 'bg-emerald-500'}
+                        activeRingClass={summary.outstanding > 0 ? 'ring-red-200 border-red-500' : 'ring-emerald-200 border-emerald-500'}
                         valueClass={summary.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}
                         sub={summary.outstanding > 0 ? 'Amount Due' : 'Cleared'}
+                        active={activeTab === 'billing' && false}
+                        onClick={() => handleKpiClick('outstanding')}
                     />
                 </div>
+                <p className="text-[11px] text-muted-foreground/60 -mt-2 px-1">💡 Click any card above to jump to that section</p>
 
                 {/* Date Filter Bar */}
                 <Card className="border shadow-sm bg-card/60 backdrop-blur-xl border-border/40">
@@ -1811,21 +1887,30 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 </Card>
 
                 {/* Tabs */}
-                <Tabs defaultValue="cns" className="space-y-4">
-                    <TabsList className="bg-white border shadow-sm h-10">
-                        <TabsTrigger value="cns" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
-                            <Truck className="h-3.5 w-3.5" /> CNS Entries ({data.consignments.length})
-                        </TabsTrigger>
-                        <TabsTrigger value="billing" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
-                            <FileText className="h-3.5 w-3.5" /> Billing Records ({data.billing_records.length})
-                        </TabsTrigger>
-                        <TabsTrigger value="payments" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
-                            <CreditCard className="h-3.5 w-3.5" /> Payments ({data.payment_receipts.length})
-                        </TabsTrigger>
-                        <TabsTrigger value="monthly" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
-                            <Building2 className="h-3.5 w-3.5" /> Monthly Summary
-                        </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <TabsList className="bg-white border shadow-sm h-10">
+                            <TabsTrigger value="cns" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
+                                <Truck className="h-3.5 w-3.5" /> CNS Entries ({filteredConsignments.length}{cnsBillFilter !== 'all' ? ` of ${data.consignments.length}` : ''})
+                            </TabsTrigger>
+                            <TabsTrigger value="billing" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
+                                <FileText className="h-3.5 w-3.5" /> Billing Records ({data.billing_records.length})
+                            </TabsTrigger>
+                            <TabsTrigger value="payments" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
+                                <CreditCard className="h-3.5 w-3.5" /> Payments ({data.payment_receipts.length})
+                            </TabsTrigger>
+                            <TabsTrigger value="monthly" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
+                                <Building2 className="h-3.5 w-3.5" /> Monthly Summary
+                            </TabsTrigger>
+                        </TabsList>
+                        {activeTab === 'cns' && cnsBillFilter !== 'all' && (
+                            <div className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg font-medium">
+                                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                                Showing {cnsBillFilter} CNS only
+                                <button onClick={() => setCnsBillFilter('all')} className="ml-1 hover:text-amber-900 underline underline-offset-2">Clear</button>
+                            </div>
+                        )}
+                    </div>
 
                     {/* ── Tab 1: CNS Entries ── */}
                     <TabsContent value="cns" className="mt-0">
