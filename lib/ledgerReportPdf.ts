@@ -175,15 +175,17 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
 
     const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
     const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
-    const totalCnsAmount = sumCnsAmount(cnsRows);
 
-    // IMPORTANT: bill-level totals (billed/paid/outstanding) must come from the
-    // invoice-level summary, NOT from summing per-CN billAmount. Each CN row holds
-    // the full amount of the bill that covers it, so a single bill spanning multiple
-    // CNs would be counted once per CN and inflate the total. Reuse payload.summary
-    // which already aggregates distinct ACTIVE bills (matches the on-screen cards).
+    // IMPORTANT: All summary tile amounts must come from payload.summary (same source
+    // as the on-screen KPI cards) so that the PDF tiles always match what the user
+    // sees on screen. Do NOT recompute from per-row sums — bill-level amounts would
+    // be inflated (each CN row carries the full bill amount) and CNS-level amounts
+    // can diverge when the billed/unbilled split is determined by ALL billing records
+    // rather than the date-filtered subset.
+    const totalCnsAmount = payload.summary.totalCnsAmount;
     const totalBilledAmount = payload.summary.totalBilledAmount;
     const totalPaid = payload.summary.totalPaid;
+    const unbilledCnsAmount = payload.summary.unbilledCnsAmount;
 
     return {
         ...payload,
@@ -194,9 +196,9 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
             totalCnsCount: cnsRows.length,
             totalCnsAmount,
             billedCnsCount: billedRows.length,
-            billedCnsAmount: sumCnsAmount(billedRows),
+            billedCnsAmount: totalBilledAmount,
             unbilledCnsCount: unbilledRows.length,
-            unbilledCnsAmount: sumCnsAmount(unbilledRows),
+            unbilledCnsAmount,
             totalBilledAmount,
             totalPaid,
             outstanding: roundMoney(payload.summary.openingBalance + totalBilledAmount - totalPaid),
@@ -283,8 +285,8 @@ const cnsDataRowHtml = (row: CnsRow, billMeta: BillCellMeta) => `
         <td class="amount">${fmt(row.totalAmount)}</td>
         ${billMeta.showMergedCells ? billStatusCell(row).replace('<td ', `<td rowspan="${billMeta.rowSpan}" `) : ''}
         ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billAmount)}</td>` : ''}
-        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billPaidAmount)}</td>` : ''}
-        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billBalance)}</td>` : ''}
+        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount" style="color:#11653d;">${fmt(row.billPaidAmount)}</td>` : ''}
+        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount" style="color:#a32727;">${fmt(row.billBalance)}</td>` : ''}
     </tr>
 `;
 
@@ -365,7 +367,8 @@ const cnsTable = (
 ) => {
     const allRows = payload.cnsRows;
     const billMeta = computeBillCellMeta(rows);
-    const totalCnsAmount = roundMoney(allRows.reduce((s, r) => s + Number(r.totalAmount || 0), 0));
+    // Use summary values directly so the TOTAL row always matches the summary tiles above.
+    const totalCnsAmount = roundMoney(payload.summary.totalCnsAmount);
     // Bill Amt / Received / Balance must use distinct bill-level totals, NOT the sum
     // of per-CN billAmount. Each CN row carries the full amount of the bill that
     // covers it, so summing across CNs would multiply a multi-CN bill by its CN count.
@@ -387,8 +390,8 @@ const cnsTable = (
                         <td class="amount">${fmt(totalCnsAmount)}</td>
                         <td></td>
                         <td class="amount">${fmt(totalBillAmt)}</td>
-                        <td class="amount">${fmt(totalReceived)}</td>
-                        <td class="amount">${fmt(totalBalance)}</td>
+                        <td class="amount" style="color:#11653d;">${fmt(totalReceived)}</td>
+                        <td class="amount" style="color:#a32727;">${fmt(totalBalance)}</td>
                     </tr>
                 ` : ''}
             </tbody>
@@ -509,8 +512,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .party-branch-line { color: #1d2f7a; font-weight: 800; }
 .meta-row { display: grid; grid-template-columns: 27% 73%; border-bottom: 1.2px solid #1d2f7a; min-height: 21px; }
 .meta-row:last-child { border-bottom: none; }
-.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 3px 6px; color: #1d2f7a; font-size: 10.5px; font-weight: 800; }
-.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 3px 6px; font-size: 11.2px; font-weight: 800; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 2px 6px 4px; color: #1d2f7a; font-size: 10.5px; font-weight: 800; }
+.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 2px 6px 4px; font-size: 11.2px; font-weight: 800; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; padding: 8px; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
 .summary-tile { min-width: 0; min-height: 42px; border: 1px solid rgba(29, 47, 122, 0.55); background: rgba(29, 47, 122, 0.08); padding: 5px 6px 4px; overflow: visible; display: flex; flex-direction: column; justify-content: flex-start; gap: 1px; }
 .summary-tile span, .summary-tile small { display: block; line-height: 1.35; overflow: visible; white-space: nowrap; }
@@ -541,7 +544,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .amount { text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
 .items-table .count { text-align: center; font-variant-numeric: tabular-nums; }
 .blank-row td { font-weight: 400; background: #fff; height: 20px; min-height: 20px; }
-.total-row td { height: 25px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 10.7px; font-weight: 900; padding-top: 5px; padding-bottom: 6px; border-bottom: 2px solid #1d2f7a; }
+.total-row td { height: 25px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 12.2px; font-weight: 900; padding-top: 5px; padding-bottom: 6px; border-bottom: 2px solid #1d2f7a; }
 .total-label { color: #1d2f7a !important; font-size: 11px; }
 .footer-row { border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2.5mm 10px 3.2mm; color: #1d2f7a; font-size: 9.2px; font-weight: 800; line-height: 1.45; text-transform: uppercase; overflow: visible; box-sizing: border-box; }
 .footer-party { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.45; padding-bottom: 1px; }

@@ -215,8 +215,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .right-block { display: grid; grid-template-rows: 1fr 1fr; }
 .meta-row { display: grid; grid-template-columns: 28% 72%; min-height: 29px; border-bottom: 1.2px solid #1d2f7a; }
 .meta-row:last-child { border-bottom: none; }
-.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 4px 6px; color: #1d2f7a; font-size: 11px; font-weight: 800; }
-.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 4px 6px; font-size: 12px; font-weight: 800; text-align: center; overflow-wrap: anywhere; }
+.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 3px 6px 5px; color: #1d2f7a; font-size: 11px; font-weight: 800; }
+.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 3px 6px 5px; font-size: 12px; font-weight: 800; text-align: center; overflow-wrap: anywhere; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 5px 6px; vertical-align: middle; overflow: hidden; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
