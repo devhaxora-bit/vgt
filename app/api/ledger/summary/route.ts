@@ -84,7 +84,8 @@ export async function GET(request: Request) {
         let cnsQuery = supabase
             .from('consignments')
             .select('billing_party_id, total_freight')
-            .eq('cancel_cn', false);
+            .eq('cancel_cn', false)
+            .limit(10000);
         if (dateFrom) cnsQuery = cnsQuery.gte('bkg_date', dateFrom);
         if (dateTo) cnsQuery = cnsQuery.lte('bkg_date', dateTo);
 
@@ -92,7 +93,8 @@ export async function GET(request: Request) {
         let billQuery = supabase
             .from('party_billing_records')
             .select('party_id, amount')
-            .eq('status', 'ACTIVE');
+            .eq('status', 'ACTIVE')
+            .limit(10000);
         if (dateFrom) billQuery = billQuery.gte('billing_date', dateFrom);
         if (dateTo) billQuery = billQuery.lte('billing_date', dateTo);
 
@@ -100,7 +102,8 @@ export async function GET(request: Request) {
         let payQuery = supabase
             .from('party_payment_receipts')
             .select('party_id, amount')
-            .eq('status', 'ACTIVE');
+            .eq('status', 'ACTIVE')
+            .limit(10000);
         if (dateFrom) payQuery = payQuery.gte('receipt_date', dateFrom);
         if (dateTo) payQuery = payQuery.lte('receipt_date', dateTo);
 

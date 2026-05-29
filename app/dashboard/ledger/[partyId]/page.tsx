@@ -1375,23 +1375,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const reportPayload = useMemo(() => {
         if (!data.party) return null;
 
-        const reportConsignments = data.all_consignments.filter((record) => (
-            isWithinDateRange(record.bkg_date, dateFrom, dateTo)
-        ));
-        const reportBillingRecords = data.all_billing_records.filter((record) => (
-            isWithinDateRange(record.billing_date, dateFrom, dateTo)
-        ));
-        const reportPaymentReceipts = data.all_payment_receipts.filter((record) => (
-            isWithinDateRange(record.receipt_date, dateFrom, dateTo)
-        ));
+        // Use API-filtered CNS (by bkg_date). Bill/payment rows in the PDF table
+        // also use the date-filtered arrays, but the SUMMARY TOTALS are based on
+        // bills that actually cover the period's CNS (regardless of billing_date).
+        const reportConsignments = data.consignments;
+        const reportBillingRecords = data.billing_records;
+        const reportPaymentReceipts = data.payment_receipts;
 
-        const activeBills = reportBillingRecords.filter((record) => record.status === 'ACTIVE');
-        const activePayments = reportPaymentReceipts.filter((record) => record.status === 'ACTIVE');
         const totalCnsAmount = roundMoney(reportConsignments.reduce((sum, record) => sum + parseMoney(record.total_freight), 0));
-        const totalBilled = roundMoney(activeBills.reduce((sum, record) => sum + parseMoney(record.amount), 0));
-        const totalPaid = roundMoney(activePayments.reduce((sum, record) => sum + parseMoney(record.amount), 0));
-        // Use total invoice amount so that unbilled + billed = total CNS amount
-        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
         const openingBalance = roundMoney(parseMoney(data.account?.opening_balance));
         const billingLookup = new Map(data.all_billing_records.map((record) => [record.id, record]));
         const settledBillAmountMap = buildSettledBillAmountMap(data.all_payment_receipts);
@@ -1410,6 +1401,26 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 }
             });
         });
+
+        // Collect distinct ACTIVE bills that cover any CNS in the period.
+        // This is the correct basis for TOTAL BILLED: if a CNS was booked in the
+        // date range but its bill was created outside that range, the bill still
+        // belongs to this period's ledger and must appear in the totals.
+        const activeBillsForPeriod = new Map<string, BillingRecord>();
+        reportConsignments.forEach((cns) => {
+            const bill = activeBillByCn.get(cns.cn_no);
+            if (bill) activeBillsForPeriod.set(bill.id, bill);
+        });
+
+        const totalBilled = roundMoney(
+            [...activeBillsForPeriod.values()].reduce((s, b) => s + parseMoney(b.amount), 0),
+        );
+        // Total paid = amount settled specifically against those bills
+        const totalPaid = roundMoney(
+            [...activeBillsForPeriod.keys()].reduce((s, id) => s + (settledBillAmountMap.get(id) || 0), 0),
+        );
+
+        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
 
         const cnsRows = reportConsignments.map((record) => {
             const activeBill = activeBillByCn.get(record.cn_no);
@@ -1499,7 +1510,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             billRows,
             paymentRows,
         };
-    }, [data.account?.opening_balance, data.all_billing_records, data.all_consignments, data.all_payment_receipts, data.party, dateFrom, dateTo, reportPeriodLabel]);
+    }, [data.account?.opening_balance, data.all_billing_records, data.all_payment_receipts, data.billing_records, data.consignments, data.party, data.payment_receipts, reportPeriodLabel]);
 
     const filteredBillingRecords = useMemo(() => {
         const query = billingSearch.trim().toLowerCase();
@@ -1693,8 +1704,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <KpiCard
                         label="Total CNS Amount"
-                        value={`₹${fmt(summary.total_cns_amount)}`}
-                        sub={`${summary.total_cns_count} consignments`}
+                        value={`₹${fmt(reportPayload?.summary.totalCnsAmount ?? summary.total_cns_amount)}`}
+                        sub={`${reportPayload?.summary.totalCnsCount ?? summary.total_cns_count} consignments`}
                         icon={Package}
                         iconBg="bg-primary/10"
                         iconActiveBg="bg-primary"
@@ -1706,7 +1717,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Total Billed"
-                        value={`₹${fmt(summary.total_billed)}`}
+                        value={`₹${fmt(reportPayload?.summary.totalBilledAmount ?? summary.total_billed)}`}
                         icon={TrendingUp}
                         iconBg="bg-emerald-50"
                         iconActiveBg="bg-emerald-500"
@@ -1718,8 +1729,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Unbilled Amount"
-                        value={`₹${fmt(summary.unbilled_amount)}`}
-                        sub={summary.overbilled_amount && summary.overbilled_amount > 0 ? `Overbilled ₹${fmt(summary.overbilled_amount)}` : undefined}
+                        value={`₹${fmt(reportPayload?.summary.unbilledCnsAmount ?? summary.unbilled_amount)}`}
+                        sub={(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount) > 0 ? `Overbilled ₹${fmt(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount)}` : undefined}
                         icon={AlertCircle}
                         iconBg="bg-amber-50"
                         iconActiveBg="bg-amber-500"
@@ -1731,7 +1742,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Total Paid"
-                        value={`₹${fmt(summary.total_paid)}`}
+                        value={`₹${fmt(reportPayload?.summary.totalPaid ?? summary.total_paid)}`}
                         icon={CheckCircle2}
                         iconBg="bg-indigo-50"
                         iconActiveBg="bg-indigo-500"
@@ -1743,13 +1754,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Outstanding"
-                        value={`₹${fmt(summary.outstanding)}`}
+                        value={`₹${fmt(reportPayload?.summary.outstanding ?? summary.outstanding)}`}
                         icon={DollarSign}
-                        iconBg={summary.outstanding > 0 ? 'bg-red-50' : 'bg-emerald-50'}
-                        iconActiveBg={summary.outstanding > 0 ? 'bg-red-500' : 'bg-emerald-500'}
-                        activeRingClass={summary.outstanding > 0 ? 'ring-red-200 border-red-500' : 'ring-emerald-200 border-emerald-500'}
-                        valueClass={summary.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}
-                        sub={summary.outstanding > 0 ? 'Amount Due' : 'Cleared'}
+                        iconBg={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'bg-red-50' : 'bg-emerald-50'}
+                        iconActiveBg={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'bg-red-500' : 'bg-emerald-500'}
+                        activeRingClass={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'ring-red-200 border-red-500' : 'ring-emerald-200 border-emerald-500'}
+                        valueClass={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'text-red-700' : 'text-emerald-700'}
+                        sub={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'Amount Due' : 'Cleared'}
                         active={activeTab === 'billing' && false}
                         onClick={() => handleKpiClick('outstanding')}
                     />
