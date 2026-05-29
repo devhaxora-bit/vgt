@@ -1288,7 +1288,10 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         }
 
         if (dateFrom || dateTo) {
-            return `${dateFrom || 'Start'} to ${dateTo || 'End'}`;
+            const fmtPeriodDate = (d: string) => { const [y, m, dd] = d.split('-'); return `${dd}-${m}-${y}`; };
+            const from = dateFrom ? fmtPeriodDate(dateFrom) : 'Start';
+            const to = dateTo ? fmtPeriodDate(dateTo) : 'End';
+            return `${from} to ${to}`;
         }
 
         return 'All Dates';
@@ -1589,7 +1592,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             party: {
                 name: party.name,
                 code: party.code,
-                type: party.type,
                 gstin: party.gstin,
                 address: party.address,
                 branch_code: party.branch_code,
@@ -1665,9 +1667,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                             <div className="flex items-center gap-2">
                                 <h1 className="text-lg font-bold">{party.name}</h1>
                                 <Badge variant="outline" className="font-mono text-xs">{party.code}</Badge>
-                                <Badge className="text-[10px] capitalize bg-primary/10 text-primary border-none">
-                                    {party.type}
-                                </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 {party.phone && <span>{party.phone} · </span>}

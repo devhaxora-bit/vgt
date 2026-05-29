@@ -44,7 +44,6 @@ interface LedgerParty {
     party_id: string;
     party_name: string;
     party_code: string;
-    party_type: string;
     phone: string | null;
     branch_code: string | null;
     ledger_account_id: string;
@@ -240,7 +239,6 @@ export default function LedgerPage() {
                 rows: filtered.map(p => ({
                     party_code: p.party_code,
                     party_name: p.party_name,
-                    party_type: p.party_type,
                     branch_code: p.branch_code,
                     branch_name: p.branch_code ? branchNameByCode.get(p.branch_code) ?? null : null,
                     total_cns_count: p.total_cns_count,
@@ -510,7 +508,6 @@ export default function LedgerPage() {
                                         <TableCell>
                                             <div className="font-semibold text-sm">{p.party_name}</div>
                                             <div className="flex items-center gap-2 mt-0.5">
-                                                <Badge variant="outline" className="text-[9px] px-1.5 py-0 capitalize h-4">{p.party_type}</Badge>
                                                 {p.phone && <span className="text-[10px] text-muted-foreground">{p.phone}</span>}
                                                 <span className="text-[10px] text-muted-foreground font-mono">{p.total_cns_count} CNS</span>
                                             </div>

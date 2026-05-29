@@ -3,7 +3,6 @@ import { formatBranchLabel } from '@/lib/formatBranchLabel';
 export type LedgerSummaryPartyRow = {
     party_code: string;
     party_name: string;
-    party_type: string;
     branch_code: string | null;
     branch_name?: string | null;
     total_cns_count: number;
