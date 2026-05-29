@@ -17,8 +17,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Party, PartyType, PartyInput } from '@/lib/types/party.types';
-import { createParty, updateParty, getPartyByCode, getNextPartyCode } from '@/lib/services/party.service';
+import { Party, PartyInput } from '@/lib/types/party.types';
+import { createParty, updateParty, getPartyByCode, getNextPartyCode, getPartyByGstin } from '@/lib/services/party.service';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface AddPartyDialogProps {
@@ -26,7 +26,6 @@ interface AddPartyDialogProps {
     onOpenChange: (open: boolean) => void;
     onSave: (party: Party) => void;
     initialName?: string;
-    defaultType?: PartyType;
     editParty?: Party;
     branchOptions?: { value: string; label: string }[];
 }
@@ -36,12 +35,10 @@ export function AddPartyDialog({
     onOpenChange,
     onSave,
     initialName = '',
-    defaultType = 'both',
     editParty,
     branchOptions = [],
 }: AddPartyDialogProps) {
     const [name, setName] = React.useState(initialName);
-    const [type, setType] = React.useState(defaultType);
     const [code, setCode] = React.useState('');
     const [gstin, setGstin] = React.useState('');
     const [address, setAddress] = React.useState('');
@@ -52,13 +49,14 @@ export function AddPartyDialog({
     const [isSaving, setIsSaving] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [codeError, setCodeError] = React.useState<string | null>(null);
+    const [gstinError, setGstinError] = React.useState<string | null>(null);
     const [isCheckingCode, setIsCheckingCode] = React.useState(false);
+    const [isCheckingGstin, setIsCheckingGstin] = React.useState(false);
 
     React.useEffect(() => {
         if (open) {
             if (editParty) {
                 setName(editParty.name || '');
-                setType(editParty.type || 'both');
                 setCode(editParty.code || '');
                 setGstin(editParty.gstin || '');
                 setAddress(editParty.address || '');
@@ -68,7 +66,6 @@ export function AddPartyDialog({
                 setBranchCode(editParty.branch_code || '');
             } else {
                 setName(initialName);
-                setType(defaultType);
                 setCode('');
                 setGstin('');
                 getNextPartyCode().then((nextCode) => setCode(nextCode)).catch(() => setCode('000001'));
@@ -80,8 +77,9 @@ export function AddPartyDialog({
             }
             setError(null);
             setCodeError(null);
+            setGstinError(null);
         }
-    }, [open, initialName, defaultType, editParty]);
+    }, [open, initialName, editParty]);
 
     const handleCodeBlur = async () => {
         const trimmedCode = code.trim();
@@ -108,6 +106,36 @@ export function AddPartyDialog({
         }
     };
 
+    const handleGstinBlur = async () => {
+        const trimmedGstin = gstin.trim().toUpperCase();
+        if (!trimmedGstin) {
+            setGstinError(null);
+            return;
+        }
+        const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+        if (!gstinRegex.test(trimmedGstin)) {
+            setGstinError('Invalid GSTIN format');
+            return;
+        }
+        if (editParty && editParty.gstin?.toUpperCase() === trimmedGstin) {
+            setGstinError(null);
+            return;
+        }
+        setIsCheckingGstin(true);
+        try {
+            const existing = await getPartyByGstin(trimmedGstin, editParty?.id);
+            if (existing) {
+                setGstinError(`GSTIN "${trimmedGstin}" is already used by "${existing.name}" (${existing.code})`);
+            } else {
+                setGstinError(null);
+            }
+        } catch {
+            setGstinError(null);
+        } finally {
+            setIsCheckingGstin(false);
+        }
+    };
+
     const handleSave = async () => {
         if (!name) {
             setError('Name is required');
@@ -121,6 +149,10 @@ export function AddPartyDialog({
             setError('Please fix the party code issue before saving.');
             return;
         }
+        if (gstinError) {
+            setError('Please fix the GSTIN issue before saving.');
+            return;
+        }
 
         setIsSaving(true);
         setError(null);
@@ -128,7 +160,6 @@ export function AddPartyDialog({
             const partyInput: PartyInput = {
                 name,
                 code,
-                type,
                 gstin: gstin || null,
                 address: address || null,
                 pincode: pincode || null,
@@ -198,22 +229,6 @@ export function AddPartyDialog({
                         )}
                     </div>
 
-                    {/* Party Type */}
-                    <div className="space-y-2">
-                        <Label htmlFor="type">Party Type</Label>
-                        <Select value={type} onValueChange={(v) => setType(v as PartyType)}>
-                            <SelectTrigger id="type">
-                                <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="consignor">Consignor Only</SelectItem>
-                                <SelectItem value="consignee">Consignee Only</SelectItem>
-                                <SelectItem value="both">Both (Consignor &amp; Consignee)</SelectItem>
-                                <SelectItem value="billing">Billing Party</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
                     {/* Branch */}
                     <div className="space-y-2">
                         <Label htmlFor="branch">Branch</Label>
@@ -233,14 +248,26 @@ export function AddPartyDialog({
                     {/* GSTIN */}
                     <div className="space-y-2">
                         <Label htmlFor="gstin">GST Number</Label>
-                        <Input
-                            id="gstin"
-                            value={gstin}
-                            onChange={(e) => setGstin(e.target.value.toUpperCase())}
-                            placeholder="27XXXXX0000X0Z0"
-                            className="font-mono uppercase"
-                            maxLength={15}
-                        />
+                        <div className="relative">
+                            <Input
+                                id="gstin"
+                                value={gstin}
+                                onChange={(e) => { setGstin(e.target.value.toUpperCase()); setGstinError(null); }}
+                                onBlur={handleGstinBlur}
+                                placeholder="27XXXXX0000X0Z0"
+                                className={`font-mono uppercase ${gstinError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                                maxLength={15}
+                            />
+                            {isCheckingGstin && (
+                                <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
+                            )}
+                        </div>
+                        {gstinError && (
+                            <p className="text-xs text-destructive flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3 shrink-0" />
+                                {gstinError}
+                            </p>
+                        )}
                     </div>
 
                     {/* Phone */}
@@ -276,7 +303,7 @@ export function AddPartyDialog({
 
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
-                    <Button onClick={handleSave} disabled={isSaving || isCheckingCode || !!codeError}>
+                    <Button onClick={handleSave} disabled={isSaving || isCheckingCode || isCheckingGstin || !!codeError || !!gstinError}>
                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         {isSaving ? 'Saving...' : (editParty ? 'Update Party' : 'Save Party')}
                     </Button>

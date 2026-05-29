@@ -44,7 +44,7 @@ import { toast } from 'sonner';
 import { DatePicker } from "@/components/ui/date-picker";
 import { PartyAutocomplete } from "@/components/PartyAutocomplete";
 import { AddPartyDialog } from "@/components/AddPartyDialog";
-import { Party, PartyType } from "@/lib/types/party.types";
+import { Party } from "@/lib/types/party.types";
 import { createClient as createSupabaseClient } from "@/utils/supabase/client";
 
 interface PackageItem {
@@ -105,7 +105,7 @@ function NewConsignmentForm() {
     // Add Party Dialog State
     const [isAddPartyDialogOpen, setIsAddPartyDialogOpen] = useState(false);
     const [pendingPartyName, setPendingPartyName] = useState("");
-    const [pendingPartyType, setPendingPartyType] = useState<PartyType>('consignor');
+    const [pendingPartyField, setPendingPartyField] = useState<'consignor' | 'consignee' | 'billing'>('consignor');
 
     // Package State
     const [isLoose, setIsLoose] = useState(false);
@@ -249,7 +249,7 @@ function NewConsignmentForm() {
     };
 
     const buildPartyFromConsignment = (
-        type: PartyType,
+        role: string,
         details: {
             name?: string | null;
             code?: string | null;
@@ -263,10 +263,9 @@ function NewConsignmentForm() {
         if (!details.name && !details.address && !details.gstin) return null;
 
         return {
-            id: `${type}-${details.code || details.name || 'manual'}`,
+            id: `${role}-${details.code || details.name || 'manual'}`,
             name: details.name || '',
             code: details.code || '',
-            type,
             gstin: details.gstin || '',
             address: details.address || '',
             city: '',
@@ -977,11 +976,10 @@ function NewConsignmentForm() {
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignor Name</Label>
                                         <PartyAutocomplete
-                                            type="consignor"
                                             onSelect={(p) => {
                                                 if (p?.id === 'new') {
                                                     setPendingPartyName(p.name);
-                                                    setPendingPartyType('consignor');
+                                                    setPendingPartyField('consignor');
                                                     setIsAddPartyDialogOpen(true);
                                                 } else {
                                                     setConsignor(p);
@@ -1052,11 +1050,10 @@ function NewConsignmentForm() {
                                     <div className="space-y-1">
                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Consignee Name</Label>
                                         <PartyAutocomplete
-                                            type="consignee"
                                             onSelect={(p) => {
                                                 if (p?.id === 'new') {
                                                     setPendingPartyName(p.name);
-                                                    setPendingPartyType('consignee');
+                                                    setPendingPartyField('consignee');
                                                     setIsAddPartyDialogOpen(true);
                                                 } else {
                                                     setConsignee(p);
@@ -1369,11 +1366,10 @@ function NewConsignmentForm() {
                                                     </Label>
                                                     {billingMode === 'party' ? (
                                                         <PartyAutocomplete
-                                                            type="billing"
                                                             onSelect={(p) => {
                                                                 if (p?.id === 'new') {
                                                                     setPendingPartyName(p.name);
-                                                                    setPendingPartyType('billing');
+                                                                    setPendingPartyField('billing');
                                                                     setIsAddPartyDialogOpen(true);
                                                                 } else {
                                                                     setBillingParty(p);
@@ -1719,14 +1715,13 @@ function NewConsignmentForm() {
                     open={isAddPartyDialogOpen}
                     onOpenChange={setIsAddPartyDialogOpen}
                     initialName={pendingPartyName}
-                    defaultType={pendingPartyType}
                     branchOptions={branchOptions}
                     onSave={(newParty) => {
-                        if (pendingPartyType === 'consignor') {
+                        if (pendingPartyField === 'consignor') {
                             setConsignor(newParty);
-                        } else if (pendingPartyType === 'consignee') {
+                        } else if (pendingPartyField === 'consignee') {
                             setConsignee(newParty);
-                        } else if (pendingPartyType === 'billing') {
+                        } else if (pendingPartyField === 'billing') {
                             setBillingParty(newParty);
                         }
                     }}

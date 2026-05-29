@@ -32,24 +32,16 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Party } from '@/lib/types/party.types';
 import { getParties, deleteParty } from '@/lib/services/party.service';
 import { toast } from 'sonner';
 
-type SortField = 'code' | 'name' | 'type' | 'branch_code' | 'city' | 'gstin';
+type SortField = 'code' | 'name' | 'branch_code' | 'city' | 'gstin';
 type SortDir = 'asc' | 'desc';
 
 export default function PartiesPage() {
     const [searchTerm, setSearchTerm] = useState('');
-    const [typeFilter, setTypeFilter] = useState<string>('all');
+    
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [editingParty, setEditingParty] = useState<Party | undefined>();
@@ -135,10 +127,6 @@ export default function PartiesPage() {
             );
         }
 
-        if (typeFilter !== 'all') {
-            list = list.filter(p => p.type === typeFilter);
-        }
-
         list.sort((a, b) => {
             let va: string = '';
             let vb: string = '';
@@ -146,7 +134,6 @@ export default function PartiesPage() {
             switch (sortField) {
                 case 'code':     va = a.code || ''; vb = b.code || ''; break;
                 case 'name':     va = a.name || ''; vb = b.name || ''; break;
-                case 'type':     va = a.type || ''; vb = b.type || ''; break;
                 case 'branch_code': va = a.branch_code || ''; vb = b.branch_code || ''; break;
                 case 'city':     va = a.city || ''; vb = b.city || ''; break;
                 case 'gstin':    va = a.gstin || ''; vb = b.gstin || ''; break;
@@ -157,7 +144,7 @@ export default function PartiesPage() {
         });
 
         return list;
-    }, [parties, searchTerm, typeFilter, sortField, sortDir]);
+    }, [parties, searchTerm, sortField, sortDir]);
 
     const SortableHead = ({ field, children, className }: { field: SortField; children: React.ReactNode; className?: string }) => (
         <TableHead
@@ -174,7 +161,7 @@ export default function PartiesPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Party Management</h1>
-                    <p className="text-muted-foreground">Manage your consignors, consignees, and billing parties.</p>
+                    <p className="text-muted-foreground">Manage all your parties.</p>
                 </div>
                 <Button onClick={handleAddNew}>
                     <Plus className="mr-2 h-4 w-4" />
@@ -212,18 +199,6 @@ export default function PartiesPage() {
                                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                                 Refresh
                             </Button>
-                            <Select value={typeFilter} onValueChange={setTypeFilter}>
-                                <SelectTrigger className="h-9 w-40">
-                                    <SelectValue placeholder="Filter by type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Types</SelectItem>
-                                    <SelectItem value="consignor">Consignor</SelectItem>
-                                    <SelectItem value="consignee">Consignee</SelectItem>
-                                    <SelectItem value="both">Both</SelectItem>
-                                    <SelectItem value="billing">Billing</SelectItem>
-                                </SelectContent>
-                            </Select>
                             <div className="relative flex-1 min-w-[200px]">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -244,7 +219,6 @@ export default function PartiesPage() {
                                     <TableRow>
                                         <SortableHead field="code" className="w-[110px]">Code</SortableHead>
                                         <SortableHead field="name">Party Name</SortableHead>
-                                        <SortableHead field="type" className="w-[130px]">Type</SortableHead>
                                         <SortableHead field="branch_code" className="w-[130px]">Branch</SortableHead>
                                         <SortableHead field="gstin" className="w-[180px]">GSTIN</SortableHead>
                                         <SortableHead field="city" className="w-[150px]">Location</SortableHead>
@@ -256,7 +230,7 @@ export default function PartiesPage() {
                                 <TableBody>
                                     {isLoading ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="h-24 text-center">
+                                            <TableCell colSpan={6} className="h-24 text-center">
                                                 <div className="flex items-center justify-center gap-2 text-muted-foreground">
                                                     <Loader2 className="h-4 w-4 animate-spin" /> Fetching parties...
                                                 </div>
@@ -264,7 +238,7 @@ export default function PartiesPage() {
                                         </TableRow>
                                     ) : filteredParties.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                                            <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                                                 No parties found.
                                             </TableCell>
                                         </TableRow>
@@ -279,11 +253,6 @@ export default function PartiesPage() {
                                                             <Phone className="h-3 w-3" /> {party.phone}
                                                         </div>
                                                     )}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline" className="capitalize">
-                                                        {party.type}
-                                                    </Badge>
                                                 </TableCell>
                                                 <TableCell>
                                                     {party.branch_code ? (

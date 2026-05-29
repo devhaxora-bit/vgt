@@ -3,7 +3,6 @@ import { formatBranchLabel as formatBranch } from '@/lib/formatBranchLabel';
 export type LedgerParty = {
     name: string;
     code: string;
-    type: string;
     gstin?: string | null;
     address?: string | null;
     branch_code?: string | null;
@@ -172,7 +171,11 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
         };
     });
 
-    const billedCnsCount = cnsRows.filter((row) => row.billStatus === 'BILLED').length;
+    const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
+    const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
+    const totalCnsAmount = sumCnsAmount(cnsRows);
+    const totalBilledAmount = roundMoney(billedRows.reduce((s, r) => s + Number(r.billAmount || 0), 0));
+    const totalPaid = roundMoney(billedRows.reduce((s, r) => s + Number(r.billPaidAmount || 0), 0));
 
     return {
         ...payload,
@@ -180,7 +183,15 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
         billRows: payload.billRows.filter((row) => row.status !== 'CANCELLED'),
         summary: {
             ...payload.summary,
-            unbilledCnsCount: cnsRows.length - billedCnsCount,
+            totalCnsCount: cnsRows.length,
+            totalCnsAmount,
+            billedCnsCount: billedRows.length,
+            billedCnsAmount: sumCnsAmount(billedRows),
+            unbilledCnsCount: unbilledRows.length,
+            unbilledCnsAmount: sumCnsAmount(unbilledRows),
+            totalBilledAmount,
+            totalPaid,
+            outstanding: roundMoney(payload.summary.openingBalance + totalBilledAmount - totalPaid),
         },
     };
 };
@@ -302,7 +313,11 @@ const cnsTable = (
     isLast: boolean,
     blankCount: number,
 ) => {
-    const cnsTotal = payload.cnsRows.reduce((sum, row) => sum + Number(row.totalAmount || 0), 0);
+    const allRows = payload.cnsRows;
+    const totalCnsAmount = roundMoney(allRows.reduce((s, r) => s + Number(r.totalAmount || 0), 0));
+    const totalBillAmt = roundMoney(allRows.reduce((s, r) => s + Number(r.billAmount || 0), 0));
+    const totalReceived = roundMoney(allRows.reduce((s, r) => s + Number(r.billPaidAmount || 0), 0));
+    const totalBalance = roundMoney(allRows.reduce((s, r) => s + Number(r.billBalance || 0), 0));
 
     return `
         ${sectionHeadHtml(payload)}
@@ -315,8 +330,11 @@ const cnsTable = (
                     <tr class="total-row">
                         <td class="total-label">TOTAL</td>
                         <td colspan="5"></td>
-                        <td class="amount">${fmt(cnsTotal)}</td>
-                        <td colspan="4"></td>
+                        <td class="amount">${fmt(totalCnsAmount)}</td>
+                        <td></td>
+                        <td class="amount">${fmt(totalBillAmt)}</td>
+                        <td class="amount">${fmt(totalReceived)}</td>
+                        <td class="amount">${fmt(totalBalance)}</td>
                     </tr>
                 ` : ''}
             </tbody>
@@ -355,7 +373,6 @@ const reportCoverHtml = (payload: PartyLedgerReportPayload, logoUrl: string) => 
             <div class="party-line">${titleText(payload.party.address)}</div>
             <div class="party-line">
                 <span>Code:</span> ${titleText(payload.party.code)}
-                <span>Type:</span> ${titleText(payload.party.type)}
                 <span>GSTIN:</span> ${titleText(payload.party.gstin)}
             </div>
             <div class="party-line party-branch-line">
@@ -470,8 +487,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .amount { text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
 .items-table .count { text-align: center; font-variant-numeric: tabular-nums; }
 .blank-row td { font-weight: 400; background: #fff; height: 20px; min-height: 20px; }
-.total-row td { height: 23px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 10.7px; font-weight: 800; }
-.total-label { color: #1d2f7a !important; }
+.total-row td { height: 25px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 10.7px; font-weight: 900; padding-top: 5px; padding-bottom: 6px; border-bottom: 2px solid #1d2f7a; }
+.total-label { color: #1d2f7a !important; font-size: 11px; }
 .footer-row { border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2.5mm 10px 3.2mm; color: #1d2f7a; font-size: 9.2px; font-weight: 800; line-height: 1.45; text-transform: uppercase; overflow: visible; box-sizing: border-box; }
 .footer-party { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.45; padding-bottom: 1px; }
 .footer-page { flex: 0 0 auto; white-space: nowrap; line-height: 1.45; padding-bottom: 1px; }
@@ -517,7 +534,10 @@ const measurementHtml = (
                 <td class="total-label">TOTAL</td>
                 <td colspan="5"></td>
                 <td class="amount">0</td>
-                <td colspan="4"></td>
+                <td></td>
+                <td class="amount">0</td>
+                <td class="amount">0</td>
+                <td class="amount">0</td>
             </tr>
         </tbody>
     </table>

@@ -1,12 +1,9 @@
 import { z } from 'zod';
 
-export const PARTY_TYPES = ['consignor', 'consignee', 'both', 'billing'] as const;
-export type PartyType = typeof PARTY_TYPES[number];
-
 export interface Party {
     id: string;
     name: string;
-    code: string; // 6 digit code
+    code: string;
     address: string | null;
     city: string | null;
     pincode: string | null;
@@ -14,8 +11,7 @@ export interface Party {
     phone: string | null;
     email: string | null;
     gstin: string | null;
-    type: PartyType;
-    branch_code?: string | null; // For billing parties linked to a branch
+    branch_code?: string | null;
     is_active: boolean;
     created_at: string;
     updated_at: string;
@@ -31,7 +27,6 @@ export const PartySchema = z.object({
     phone: z.string().regex(/^\d{10}$/, 'Phone must be 10 digits').optional().nullable(),
     email: z.string().email('Invalid email').optional().nullable(),
     gstin: z.string().regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Invalid GSTIN').optional().nullable(),
-    type: z.enum(PARTY_TYPES),
     branch_code: z.string().optional().nullable(),
     is_active: z.boolean().default(true),
 });

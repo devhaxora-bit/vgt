@@ -10,11 +10,10 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
-import { Party, PartyType } from "@/lib/types/party.types"
+import { Party } from "@/lib/types/party.types"
 import { getParties } from "@/lib/services/party.service"
 
 interface PartyAutocompleteProps {
-    type: PartyType
     onSelect: (party: Party | null) => void
     onValueChange?: (value: string) => void
     value?: string
@@ -22,7 +21,6 @@ interface PartyAutocompleteProps {
 }
 
 export function PartyAutocomplete({
-    type,
     onSelect,
     onValueChange,
     value = "",
@@ -40,14 +38,14 @@ export function PartyAutocomplete({
     const fetchParties = React.useCallback(async (search: string) => {
         setLoading(true)
         try {
-            const data = await getParties(type, search)
+            const data = await getParties(search)
             setParties(data)
         } catch (error) {
             console.error("Failed to fetch parties", error)
         } finally {
             setLoading(false)
         }
-    }, [type])
+    }, [])
 
     React.useEffect(() => {
         if (open) {
@@ -79,7 +77,6 @@ export function PartyAutocomplete({
             id: 'new',
             name: inputValue,
             code: '',
-            type: type,
             gstin: '',
             address: '',
             city: '',
@@ -112,7 +109,7 @@ export function PartyAutocomplete({
                     {/* Search Input */}
                     <div className="p-2 border-b">
                         <Input
-                            placeholder={`Search ${type}...`}
+                            placeholder="Search party..."
                             value={inputValue}
                             onChange={handleInputChange}
                             className="h-8"
@@ -150,7 +147,7 @@ export function PartyAutocomplete({
                                 <div className="flex flex-col">
                                     <span className="font-medium">{party.name}</span>
                                     <span className="text-xs text-muted-foreground">
-                                        {party.code} - {party.city}
+                                        {party.code} {party.gstin ? `· ${party.gstin}` : party.city ? `· ${party.city}` : ''}
                                     </span>
                                 </div>
                                 {inputValue === party.name && (
