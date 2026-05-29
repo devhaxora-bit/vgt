@@ -18,7 +18,7 @@ BEGIN
   -- Check for duplicates
   SELECT COUNT(*) INTO _dup_count
   FROM (
-    SELECT gstin
+    SELECT UPPER(TRIM(gstin)) AS normalized_gstin
     FROM parties
     WHERE gstin IS NOT NULL
       AND TRIM(gstin) <> ''
