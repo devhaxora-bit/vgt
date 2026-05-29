@@ -159,7 +159,7 @@ const loadLogo = async (): Promise<string> => {
 
 /** PDF omits cancelled bills — those CNS rows appear as unbilled with no bill amounts. */
 const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReportPayload => {
-    const cnsRows = payload.cnsRows.map((row) => {
+    const normalizedRows = payload.cnsRows.map((row) => {
         if (row.billStatus !== 'CANCELLED') return row;
         return {
             ...row,
@@ -171,11 +171,19 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
         };
     });
 
+    const cnsRows = normalizedRows;
+
     const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
     const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
     const totalCnsAmount = sumCnsAmount(cnsRows);
-    const totalBilledAmount = roundMoney(billedRows.reduce((s, r) => s + Number(r.billAmount || 0), 0));
-    const totalPaid = roundMoney(billedRows.reduce((s, r) => s + Number(r.billPaidAmount || 0), 0));
+
+    // IMPORTANT: bill-level totals (billed/paid/outstanding) must come from the
+    // invoice-level summary, NOT from summing per-CN billAmount. Each CN row holds
+    // the full amount of the bill that covers it, so a single bill spanning multiple
+    // CNs would be counted once per CN and inflate the total. Reuse payload.summary
+    // which already aggregates distinct ACTIVE bills (matches the on-screen cards).
+    const totalBilledAmount = payload.summary.totalBilledAmount;
+    const totalPaid = payload.summary.totalPaid;
 
     return {
         ...payload,
@@ -222,7 +230,49 @@ const cnsTableHeadHtml = () => `
     </thead>
 `;
 
-const cnsDataRowHtml = (row: CnsRow) => `
+type BillCellMeta = {
+    showMergedCells: boolean;
+    rowSpan: number;
+};
+
+const computeBillCellMeta = (rows: CnsRow[]): BillCellMeta[] => {
+    const meta: BillCellMeta[] = rows.map(() => ({ showMergedCells: true, rowSpan: 1 }));
+    let index = 0;
+
+    while (index < rows.length) {
+        const current = rows[index];
+        const billNo = String(current.billedOnBill ?? '').trim();
+        const isBilled = current.billStatus === 'BILLED' && billNo.length > 0;
+
+        if (!isBilled) {
+            index += 1;
+            continue;
+        }
+
+        let end = index + 1;
+        while (end < rows.length) {
+            const next = rows[end];
+            const nextBillNo = String(next.billedOnBill ?? '').trim();
+            if (next.billStatus === 'BILLED' && nextBillNo === billNo) {
+                end += 1;
+                continue;
+            }
+            break;
+        }
+
+        const span = end - index;
+        meta[index] = { showMergedCells: true, rowSpan: span };
+        for (let follow = index + 1; follow < end; follow += 1) {
+            meta[follow] = { showMergedCells: false, rowSpan: 0 };
+        }
+
+        index = end;
+    }
+
+    return meta;
+};
+
+const cnsDataRowHtml = (row: CnsRow, billMeta: BillCellMeta) => `
     <tr class="cns-data-row">
         <td class="center">${titleText(row.cnNo)}</td>
         <td class="center">${titleText(row.date)}</td>
@@ -231,10 +281,10 @@ const cnsDataRowHtml = (row: CnsRow) => `
         <td class="center">${titleText(row.loadingStation)}</td>
         <td class="center">${titleText(row.destination)}</td>
         <td class="amount">${fmt(row.totalAmount)}</td>
-        ${billStatusCell(row)}
-        <td class="amount">${fmt(row.billAmount)}</td>
-        <td class="amount">${fmt(row.billPaidAmount)}</td>
-        <td class="amount">${fmt(row.billBalance)}</td>
+        ${billMeta.showMergedCells ? billStatusCell(row).replace('<td ', `<td rowspan="${billMeta.rowSpan}" `) : ''}
+        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billAmount)}</td>` : ''}
+        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billPaidAmount)}</td>` : ''}
+        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billBalance)}</td>` : ''}
     </tr>
 `;
 
@@ -314,17 +364,21 @@ const cnsTable = (
     blankCount: number,
 ) => {
     const allRows = payload.cnsRows;
+    const billMeta = computeBillCellMeta(rows);
     const totalCnsAmount = roundMoney(allRows.reduce((s, r) => s + Number(r.totalAmount || 0), 0));
-    const totalBillAmt = roundMoney(allRows.reduce((s, r) => s + Number(r.billAmount || 0), 0));
-    const totalReceived = roundMoney(allRows.reduce((s, r) => s + Number(r.billPaidAmount || 0), 0));
-    const totalBalance = roundMoney(allRows.reduce((s, r) => s + Number(r.billBalance || 0), 0));
+    // Bill Amt / Received / Balance must use distinct bill-level totals, NOT the sum
+    // of per-CN billAmount. Each CN row carries the full amount of the bill that
+    // covers it, so summing across CNs would multiply a multi-CN bill by its CN count.
+    const totalBillAmt = roundMoney(payload.summary.totalBilledAmount);
+    const totalReceived = roundMoney(payload.summary.totalPaid);
+    const totalBalance = roundMoney(Math.max(totalBillAmt - totalReceived, 0));
 
     return `
         ${sectionHeadHtml(payload)}
         <table class="items-table cns-table">
             ${cnsTableHeadHtml()}
             <tbody>
-                ${rows.map((row) => cnsDataRowHtml(row)).join('')}
+                ${rows.map((row, index) => cnsDataRowHtml(row, billMeta[index])).join('')}
                 ${blankRows(blankCount, CNS_TABLE_COLUMNS)}
                 ${isLast ? `
                     <tr class="total-row">
@@ -499,7 +553,9 @@ const measurementHtml = (
     payload: PartyLedgerReportPayload,
     rows: CnsRow[],
     logoUrl: string,
-) => `<!DOCTYPE html>
+) => {
+    const billMeta = computeBillCellMeta(rows);
+    return `<!DOCTYPE html>
 <html>
 <head>
 <style>${reportStyles()}</style>
@@ -528,7 +584,7 @@ const measurementHtml = (
     <table class="items-table cns-table" style="width:287mm">
         ${cnsTableHeadHtml()}
         <tbody id="measure-all-rows">
-            ${rows.map((row) => cnsDataRowHtml(row)).join('')}
+            ${rows.map((row, index) => cnsDataRowHtml(row, billMeta[index])).join('')}
             <tr class="blank-row" id="measure-blank-row">${Array.from({ length: CNS_TABLE_COLUMNS }, () => '<td>&nbsp;</td>').join('')}</tr>
             <tr class="total-row" id="measure-total-row">
                 <td class="total-label">TOTAL</td>
@@ -544,6 +600,7 @@ const measurementHtml = (
 </div>
 </body>
 </html>`;
+};
 
 const htmlDocument = (payload: PartyLedgerReportPayload, pages: SectionPage[], logoUrl: string) => `<!DOCTYPE html>
 <html>
