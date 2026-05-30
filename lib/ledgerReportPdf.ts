@@ -88,6 +88,48 @@ const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100)
 const sumCnsAmount = (rows: CnsRow[]) =>
     roundMoney(rows.reduce((sum, row) => sum + Number(row.totalAmount || 0), 0));
 
+type DistinctBillTotals = {
+    billed: number;
+    paid: number;
+    balance: number;
+    billCount: number;
+};
+
+/** Dedup bills from cnsRows by bill_ref_no so a bill spanning multiple CNs is counted once.
+ *  Rows without a bill_ref fall back to a per-row key so their amounts are still counted
+ *  (this avoids silently dropping a real bill amount when ref_no is missing in legacy data). */
+const sumDistinctBillTotalsFromCnsRows = (rows: CnsRow[]): DistinctBillTotals => {
+    const bills = new Map<string, { billed: number; paid: number; balance: number }>();
+
+    rows.forEach((row, index) => {
+        if (row.billStatus !== 'BILLED') return;
+        const refKey = String(row.billedOnBill ?? '').trim();
+        const dedupKey = refKey || `__row_${index}`;
+        if (bills.has(dedupKey)) return;
+        bills.set(dedupKey, {
+            billed: Number(row.billAmount || 0),
+            paid: Number(row.billPaidAmount || 0),
+            balance: Number(row.billBalance || 0),
+        });
+    });
+
+    let billed = 0;
+    let paid = 0;
+    let balance = 0;
+    bills.forEach((entry) => {
+        billed += entry.billed;
+        paid += entry.paid;
+        balance += entry.balance;
+    });
+
+    return {
+        billed: roundMoney(billed),
+        paid: roundMoney(paid),
+        balance: roundMoney(balance),
+        billCount: bills.size,
+    };
+};
+
 /** Restrict PDF CNS rows and summary counts to billed, unbilled, or all. */
 export const applyLedgerCnsFilter = (
     payload: PartyLedgerReportPayload,
@@ -102,6 +144,7 @@ export const applyLedgerCnsFilter = (
     const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
     const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
     const filterSuffix = filter === 'billed' ? ' · Billed CNS' : ' · Unbilled CNS';
+    const distinctTotals = sumDistinctBillTotalsFromCnsRows(cnsRows);
 
     return {
         ...payload,
@@ -115,6 +158,9 @@ export const applyLedgerCnsFilter = (
             billedCnsAmount: sumCnsAmount(billedRows),
             unbilledCnsCount: unbilledRows.length,
             unbilledCnsAmount: sumCnsAmount(unbilledRows),
+            totalBilledAmount: distinctTotals.billed,
+            totalPaid: distinctTotals.paid,
+            outstanding: roundMoney(payload.summary.openingBalance + distinctTotals.billed - distinctTotals.paid),
         },
     };
 };
@@ -176,16 +222,18 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
     const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
     const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
 
-    // IMPORTANT: All summary tile amounts must come from payload.summary (same source
-    // as the on-screen KPI cards) so that the PDF tiles always match what the user
-    // sees on screen. Do NOT recompute from per-row sums — bill-level amounts would
-    // be inflated (each CN row carries the full bill amount) and CNS-level amounts
-    // can diverge when the billed/unbilled split is determined by ALL billing records
-    // rather than the date-filtered subset.
-    const totalCnsAmount = payload.summary.totalCnsAmount;
-    const totalBilledAmount = payload.summary.totalBilledAmount;
-    const totalPaid = payload.summary.totalPaid;
-    const unbilledCnsAmount = payload.summary.unbilledCnsAmount;
+    // Derive every summary number from cnsRows so that the cover-page tiles, the
+    // TOTAL row at the bottom of the CNS table, and the per-row cells above them
+    // are guaranteed to add up. This collapses edge cases like:
+    //   - a bill covering multiple CNs (dedup by bill_ref_no so it's counted once)
+    //   - a bill that lives outside the date range but still covers in-range CNs
+    //   - cancelled bills (normalized to UNBILLED above with zero amounts)
+    //   - bills shown in the table but missing from the upstream summary cache
+    const totalCnsAmount = sumCnsAmount(cnsRows);
+    const billedCnsAmount = sumCnsAmount(billedRows);
+    const unbilledCnsAmount = sumCnsAmount(unbilledRows);
+    const distinctTotals = sumDistinctBillTotalsFromCnsRows(cnsRows);
+    const openingBalance = Number(payload.summary.openingBalance || 0);
 
     return {
         ...payload,
@@ -193,15 +241,16 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
         billRows: payload.billRows.filter((row) => row.status !== 'CANCELLED'),
         summary: {
             ...payload.summary,
+            openingBalance,
             totalCnsCount: cnsRows.length,
             totalCnsAmount,
             billedCnsCount: billedRows.length,
-            billedCnsAmount: totalBilledAmount,
+            billedCnsAmount,
             unbilledCnsCount: unbilledRows.length,
             unbilledCnsAmount,
-            totalBilledAmount,
-            totalPaid,
-            outstanding: roundMoney(payload.summary.openingBalance + totalBilledAmount - totalPaid),
+            totalBilledAmount: distinctTotals.billed,
+            totalPaid: distinctTotals.paid,
+            outstanding: roundMoney(openingBalance + distinctTotals.billed - distinctTotals.paid),
         },
     };
 };
@@ -367,13 +416,13 @@ const cnsTable = (
 ) => {
     const allRows = payload.cnsRows;
     const billMeta = computeBillCellMeta(rows);
-    // Use summary values directly so the TOTAL row always matches the summary tiles above.
-    const totalCnsAmount = roundMoney(payload.summary.totalCnsAmount);
-    // Bill Amt / Received / Balance must use distinct bill-level totals, NOT the sum
-    // of per-CN billAmount. Each CN row carries the full amount of the bill that
-    // covers it, so summing across CNs would multiply a multi-CN bill by its CN count.
-    const totalBillAmt = roundMoney(payload.summary.totalBilledAmount);
-    const totalReceived = roundMoney(payload.summary.totalPaid);
+    // Derive totals from cnsRows so the TOTAL row is always the literal sum of the
+    // CNS Amount / Bill Amt cells above. Each bill is counted once (dedup by
+    // bill_ref_no) because the cell is rendered once via rowspan for multi-CN bills.
+    const totalCnsAmount = sumCnsAmount(allRows);
+    const distinctTotals = sumDistinctBillTotalsFromCnsRows(allRows);
+    const totalBillAmt = distinctTotals.billed;
+    const totalReceived = distinctTotals.paid;
     const totalBalance = roundMoney(Math.max(totalBillAmt - totalReceived, 0));
 
     return `
