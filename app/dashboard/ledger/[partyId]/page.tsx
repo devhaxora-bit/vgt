@@ -60,6 +60,7 @@ interface Summary {
     overbilled_amount?: number;
     outstanding: number;
     opening_balance: number;
+    total_bills_count?: number;
 }
 
 interface Consignment {
@@ -1180,7 +1181,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         all_payment_receipts: PaymentReceipt[];
     }>({
         party: null, account: null,
-        summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0 },
+        summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0, total_bills_count: 0 },
         consignments: [], all_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
     });
     const [isLoading, setIsLoading] = useState(true);
@@ -1722,8 +1723,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <KpiCard
                         label="Total CNS Amount"
-                        value={`₹${fmt(reportPayload?.summary.totalCnsAmount ?? summary.total_cns_amount)}`}
-                        sub={`${reportPayload?.summary.totalCnsCount ?? summary.total_cns_count} consignments`}
+                        value={`₹${fmt(summary.total_cns_amount)}`}
+                        sub={`${summary.total_cns_count} consignments`}
                         icon={Package}
                         iconBg="bg-primary/10"
                         iconActiveBg="bg-primary"
@@ -1735,7 +1736,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Total Billed"
-                        value={`₹${fmt(reportPayload?.summary.totalBilledAmount ?? summary.total_billed)}`}
+                        value={`₹${fmt(summary.total_billed)}`}
+                        sub={`${summary.total_bills_count ?? 0} bills`}
                         icon={TrendingUp}
                         iconBg="bg-emerald-50"
                         iconActiveBg="bg-emerald-500"
@@ -1747,8 +1749,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Unbilled Amount"
-                        value={`₹${fmt(reportPayload?.summary.unbilledCnsAmount ?? summary.unbilled_amount)}`}
-                        sub={(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount ?? 0) > 0 ? `Overbilled ₹${fmt(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount ?? 0)}` : undefined}
+                        value={`₹${fmt(summary.unbilled_amount)}`}
+                        sub={(summary.overbilled_amount ?? 0) > 0 ? `Overbilled ₹${fmt(summary.overbilled_amount ?? 0)}` : undefined}
                         icon={AlertCircle}
                         iconBg="bg-amber-50"
                         iconActiveBg="bg-amber-500"
@@ -1760,7 +1762,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Total Paid"
-                        value={`₹${fmt(reportPayload?.summary.totalPaid ?? summary.total_paid)}`}
+                        value={`₹${fmt(summary.total_paid)}`}
                         icon={CheckCircle2}
                         iconBg="bg-indigo-50"
                         iconActiveBg="bg-indigo-500"
@@ -1772,13 +1774,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     />
                     <KpiCard
                         label="Outstanding"
-                        value={`₹${fmt(reportPayload?.summary.outstanding ?? summary.outstanding)}`}
+                        value={`₹${fmt(summary.outstanding)}`}
                         icon={DollarSign}
-                        iconBg={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'bg-red-50' : 'bg-emerald-50'}
-                        iconActiveBg={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'bg-red-500' : 'bg-emerald-500'}
-                        activeRingClass={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'ring-red-200 border-red-500' : 'ring-emerald-200 border-emerald-500'}
-                        valueClass={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'text-red-700' : 'text-emerald-700'}
-                        sub={(reportPayload?.summary.outstanding ?? summary.outstanding) > 0 ? 'Amount Due' : 'Cleared'}
+                        iconBg={summary.outstanding > 0 ? 'bg-red-50' : 'bg-emerald-50'}
+                        iconActiveBg={summary.outstanding > 0 ? 'bg-red-500' : 'bg-emerald-500'}
+                        activeRingClass={summary.outstanding > 0 ? 'ring-red-200 border-red-500' : 'ring-emerald-200 border-emerald-500'}
+                        valueClass={summary.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}
+                        sub={summary.outstanding > 0 ? 'Amount Due' : 'Cleared'}
                         active={activeTab === 'billing' && false}
                         onClick={() => handleKpiClick('outstanding')}
                     />

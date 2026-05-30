@@ -111,8 +111,34 @@ export async function GET(
         return true;
     });
 
-    // 6. Compute summary from raw data
-    const allCns = (consignments || []) as SummaryConsignment[];
+    // 6. When date filters are applied, expand the consignment set to include
+    // CNs covered by active billing records in the date range.
+    // This ensures Total CNS Amount − Total Billed = Unbilled Amount always holds.
+    let summaryConsignments = consignments || [];
+    if (dateFrom || dateTo) {
+        const billedCnNos = new Set<string>();
+        (billingRecords || []).forEach((b) => {
+            if (b.status !== 'ACTIVE') return;
+            const rawCnNos = b.covered_cn_nos;
+            const cnNos: string[] = Array.isArray(rawCnNos)
+                ? rawCnNos.map((cn: unknown) => String(cn).trim()).filter(Boolean)
+                : [];
+            cnNos.forEach((cn) => billedCnNos.add(cn));
+        });
+
+        if (billedCnNos.size > 0) {
+            const existingCnNos = new Set(summaryConsignments.map((c) => c.cn_no));
+            const additionalCns = (allConsignments || []).filter((c) =>
+                billedCnNos.has(c.cn_no) && !existingCnNos.has(c.cn_no)
+            );
+            if (additionalCns.length > 0) {
+                summaryConsignments = [...summaryConsignments, ...additionalCns];
+            }
+        }
+    }
+
+    // 7. Compute summary from raw data
+    const allCns = summaryConsignments as SummaryConsignment[];
     const allBills = ((billingRecords || []) as SummaryBillingRecord[]).filter((b) => b.status === 'ACTIVE');
     const allPayments = ((paymentReceipts || []) as SummaryPaymentReceipt[]).filter((p) => p.status === 'ACTIVE');
 
@@ -134,13 +160,14 @@ export async function GET(
         overbilled_amount: overbilledAmount,
         outstanding: openingBalance + totalBilled - totalPaid,
         opening_balance: openingBalance,
+        total_bills_count: allBills.length,
     };
 
     return NextResponse.json({
         party: partyWithBranch,
         account: account || null,
         summary,
-        consignments: consignments || [],
+        consignments: summaryConsignments || [],
         all_consignments: allConsignments || [],
         billing_records: billingRecords || [],
         payment_receipts: paymentReceipts || [],

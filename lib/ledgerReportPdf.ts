@@ -21,6 +21,7 @@ export type LedgerSummary = {
     totalPaid: number;
     outstanding: number;
     overbilledAmount: number;
+    totalBilledCount?: number;
 };
 
 export type CnsRow = {
@@ -161,6 +162,7 @@ export const applyLedgerCnsFilter = (
             totalBilledAmount: distinctTotals.billed,
             totalPaid: distinctTotals.paid,
             outstanding: roundMoney(payload.summary.openingBalance + distinctTotals.billed - distinctTotals.paid),
+            totalBilledCount: distinctTotals.billCount,
         },
     };
 };
@@ -251,6 +253,7 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
             totalBilledAmount: distinctTotals.billed,
             totalPaid: distinctTotals.paid,
             outstanding: roundMoney(openingBalance + distinctTotals.billed - distinctTotals.paid),
+            totalBilledCount: distinctTotals.billCount,
         },
     };
 };
@@ -437,7 +440,7 @@ const cnsTable = (
                         <td class="total-label">TOTAL</td>
                         <td colspan="5"></td>
                         <td class="amount">${fmt(totalCnsAmount)}</td>
-                        <td></td>
+                        <td class="center" style="font-size:9.5px; font-weight:800; color:#1d2f7a;">${distinctTotals.billCount} bills</td>
                         <td class="amount">${fmt(totalBillAmt)}</td>
                         <td class="amount" style="color:#11653d;">${fmt(totalReceived)}</td>
                         <td class="amount" style="color:#a32727;">${fmt(totalBalance)}</td>
@@ -455,7 +458,7 @@ const summaryTiles = (summary: LedgerSummary) => `
     <div class="summary-grid">
         <div class="summary-tile"><span>Total CNS Amount</span><strong>${fmt(summary.totalCnsAmount)}</strong><small>${summary.totalCnsCount} consignments</small></div>
         <div class="summary-tile warning"><span>Unbilled</span><strong>${fmt(summary.unbilledCnsAmount)}</strong><small>${summary.unbilledCnsCount} pending</small></div>
-        <div class="summary-tile"><span>Total Billed</span><strong>${fmt(summary.totalBilledAmount)}</strong><small>Active bills</small></div>
+        <div class="summary-tile"><span>Total Billed</span><strong>${fmt(summary.totalBilledAmount)}</strong><small>${summary.totalBilledCount ?? 0} bills</small></div>
         <div class="summary-tile"><span>Total Paid</span><strong>${fmt(summary.totalPaid)}</strong><small>Receipts</small></div>
         <div class="summary-tile danger"><span>Outstanding</span><strong>${fmt(summary.outstanding)}</strong><small>Opening ${fmt(summary.openingBalance)}</small></div>
     </div>
