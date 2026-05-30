@@ -179,7 +179,7 @@ type SectionPage = {
 };
 
 const CNS_TABLE_COLUMNS = 11;
-const PAGE_LAYOUT_BUFFER_PX = 6;
+const PAGE_LAYOUT_BUFFER_PX = 22;
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -604,8 +604,8 @@ const reportStyles = () => `
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
 .page { width: 287mm; height: 200mm; max-height: 200mm; margin: 0 auto; padding: 0 0 1.5mm; background: #fff; page-break-after: always; overflow: hidden; box-sizing: border-box; }
 .page:last-child { page-break-after: auto; }
-.sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: grid; grid-template-rows: 1fr 12mm; overflow: hidden; box-sizing: border-box; }
-.page--cover .sheet { grid-template-rows: auto 1fr 12mm; }
+.sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: grid; grid-template-rows: 1fr 12mm; row-gap: 2.5mm; overflow: hidden; box-sizing: border-box; }
+.page--cover .sheet { grid-template-rows: auto 1fr 12mm; row-gap: 2.5mm; }
 .cover-block { min-height: 0; overflow: visible; }
 .header-band, .detail-grid, .summary-grid { flex-shrink: 0; }
 .section-wrap { min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
@@ -663,8 +663,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .amount { text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
 .items-table .count { text-align: center; font-variant-numeric: tabular-nums; }
 .blank-row td { font-weight: 400; background: #fff; height: 20px; min-height: 20px; }
-.total-row td { height: 25px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 12.2px; font-weight: 900; padding-top: 5px; padding-bottom: 6px; border-bottom: 2px solid #1d2f7a; }
-.total-label { color: #1d2f7a !important; font-size: 11px; }
+.total-row td { height: 25px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 14.2px; font-weight: 900; padding-top: 5px; padding-bottom: 6px; border-bottom: 2px solid #1d2f7a; }
+.total-label { color: #1d2f7a !important; font-size: 13px; }
 .footer-row { border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2.5mm 10px 3.2mm; color: #1d2f7a; font-size: 9.2px; font-weight: 800; line-height: 1.45; text-transform: uppercase; overflow: visible; box-sizing: border-box; }
 .footer-party { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.45; padding-bottom: 1px; }
 .footer-page { flex: 0 0 auto; white-space: nowrap; line-height: 1.45; padding-bottom: 1px; }
