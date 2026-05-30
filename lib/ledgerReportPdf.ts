@@ -21,11 +21,16 @@ export type LedgerSummary = {
     totalPaid: number;
     outstanding: number;
     overbilledAmount: number;
+    totalBilledCount?: number;
 };
 
 export type CnsRow = {
     cnNo: string;
+    /** Formatted dd/MM/yyyy for display. */
     date: string;
+    /** Raw ISO date (YYYY-MM-DD) used for chronological sorting in the PDF. Optional
+     *  for backwards-compat: payloads without it fall back to parsing `date`. */
+    bkgDateIso?: string;
     invoiceNo: string;
     vehicleNo: string;
     route: string;
@@ -161,6 +166,7 @@ export const applyLedgerCnsFilter = (
             totalBilledAmount: distinctTotals.billed,
             totalPaid: distinctTotals.paid,
             outstanding: roundMoney(payload.summary.openingBalance + distinctTotals.billed - distinctTotals.paid),
+            totalBilledCount: distinctTotals.billCount,
         },
     };
 };
@@ -203,6 +209,66 @@ const loadLogo = async (): Promise<string> => {
     }
 };
 
+/** Parse a row's date for chronological sorting. Prefers the ISO `bkgDateIso`
+ *  field; falls back to parsing the dd/MM/yyyy `date` string for older payloads.
+ *  Rows without a usable date sort to the end (Number.MAX_SAFE_INTEGER). */
+const cnsRowSortKey = (row: CnsRow): number => {
+    const iso = (row.bkgDateIso ?? '').trim();
+    if (iso) {
+        const t = new Date(iso).getTime();
+        if (!Number.isNaN(t)) return t;
+    }
+    const display = (row.date ?? '').trim();
+    const match = display.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match) {
+        const [, dd, mm, yyyy] = match;
+        const t = new Date(`${yyyy}-${mm}-${dd}`).getTime();
+        if (!Number.isNaN(t)) return t;
+    }
+    return Number.MAX_SAFE_INTEGER;
+};
+
+/** Sort rows by booking date ascending so the PDF reads chronologically
+ *  (start of period → end of period), the way a ledger report should flow. */
+const sortRowsByDateAsc = (rows: CnsRow[]): CnsRow[] => {
+    return [...rows]
+        .map((row, originalIndex) => ({ row, originalIndex, key: cnsRowSortKey(row) }))
+        .sort((a, b) => (a.key - b.key) || (a.originalIndex - b.originalIndex))
+        .map((entry) => entry.row);
+};
+
+/** Reorder rows so every CN sharing a bill_ref_no is adjacent.
+ *  The PDF merges bill cells with rowspan, but rowspan can only span CONSECUTIVE rows;
+ *  if a bill covers two CNs separated by another bill's row (e.g. CN5355 on 26/05 and
+ *  CN5356 on 29/05 both billed under VZM/26-27/1875, but a different bill's CN sits
+ *  between them by date), the bill amount cell would render twice and the column
+ *  would double-count. Grouping keeps the relative date order across distinct bills:
+ *    1. Walk rows in the incoming order (date-asc, so oldest → newest).
+ *    2. Each unique bill_ref_no becomes a group at its first sighting.
+ *    3. Subsequent CNs sharing that ref are appended to the same group rather than
+ *       getting a new slot — they "pull down" into the existing group.
+ *    4. Unbilled / ref-less rows are emitted individually in their original slot. */
+const groupRowsBySharedBill = (rows: CnsRow[]): CnsRow[] => {
+    const groups = new Map<string, CnsRow[]>();
+    const order: string[] = [];
+
+    rows.forEach((row, index) => {
+        const refKey = String(row.billedOnBill ?? '').trim();
+        const isBilledWithRef = row.billStatus === 'BILLED' && refKey.length > 0;
+        const key = isBilledWithRef ? `bill:${refKey}` : `solo:${index}`;
+
+        const existing = groups.get(key);
+        if (existing) {
+            existing.push(row);
+            return;
+        }
+        groups.set(key, [row]);
+        order.push(key);
+    });
+
+    return order.flatMap((key) => groups.get(key) ?? []);
+};
+
 /** PDF omits cancelled bills — those CNS rows appear as unbilled with no bill amounts. */
 const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReportPayload => {
     const normalizedRows = payload.cnsRows.map((row) => {
@@ -217,7 +283,10 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
         };
     });
 
-    const cnsRows = normalizedRows;
+    // Sort chronologically (oldest → newest) first so the ledger reads from the
+    // start date to the end date when a period filter is applied, then group same-bill
+    // CNs together so rowspan merging works.
+    const cnsRows = groupRowsBySharedBill(sortRowsByDateAsc(normalizedRows));
 
     const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
     const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
@@ -251,6 +320,7 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
             totalBilledAmount: distinctTotals.billed,
             totalPaid: distinctTotals.paid,
             outstanding: roundMoney(openingBalance + distinctTotals.billed - distinctTotals.paid),
+            totalBilledCount: distinctTotals.billCount,
         },
     };
 };
@@ -437,7 +507,7 @@ const cnsTable = (
                         <td class="total-label">TOTAL</td>
                         <td colspan="5"></td>
                         <td class="amount">${fmt(totalCnsAmount)}</td>
-                        <td></td>
+                        <td class="center" style="font-size:9.5px; font-weight:800; color:#1d2f7a;">${distinctTotals.billCount} bills</td>
                         <td class="amount">${fmt(totalBillAmt)}</td>
                         <td class="amount" style="color:#11653d;">${fmt(totalReceived)}</td>
                         <td class="amount" style="color:#a32727;">${fmt(totalBalance)}</td>
@@ -455,7 +525,7 @@ const summaryTiles = (summary: LedgerSummary) => `
     <div class="summary-grid">
         <div class="summary-tile"><span>Total CNS Amount</span><strong>${fmt(summary.totalCnsAmount)}</strong><small>${summary.totalCnsCount} consignments</small></div>
         <div class="summary-tile warning"><span>Unbilled</span><strong>${fmt(summary.unbilledCnsAmount)}</strong><small>${summary.unbilledCnsCount} pending</small></div>
-        <div class="summary-tile"><span>Total Billed</span><strong>${fmt(summary.totalBilledAmount)}</strong><small>Active bills</small></div>
+        <div class="summary-tile"><span>Total Billed</span><strong>${fmt(summary.totalBilledAmount)}</strong><small>${summary.totalBilledCount ?? 0} bills</small></div>
         <div class="summary-tile"><span>Total Paid</span><strong>${fmt(summary.totalPaid)}</strong><small>Receipts</small></div>
         <div class="summary-tile danger"><span>Outstanding</span><strong>${fmt(summary.outstanding)}</strong><small>Opening ${fmt(summary.openingBalance)}</small></div>
     </div>
