@@ -1414,6 +1414,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             return {
                 cnNo: record.cn_no,
                 date: fmtDate(record.bkg_date),
+                bkgDateIso: (record.bkg_date || '').slice(0, 10),
                 invoiceNo: record.invoice_no || record.cn_no,
                 vehicleNo: record.vehicle_no || '—',
                 route: `${record.loading_point || record.booking_branch || '—'} -> ${record.delivery_point || record.dest_branch || '—'}`,
