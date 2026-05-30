@@ -1402,26 +1402,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             });
         });
 
-        // Collect distinct ACTIVE bills that cover any CNS in the period.
-        // This is the correct basis for TOTAL BILLED: if a CNS was booked in the
-        // date range but its bill was created outside that range, the bill still
-        // belongs to this period's ledger and must appear in the totals.
-        const activeBillsForPeriod = new Map<string, BillingRecord>();
-        reportConsignments.forEach((cns) => {
-            const bill = activeBillByCn.get(cns.cn_no);
-            if (bill) activeBillsForPeriod.set(bill.id, bill);
-        });
-
-        const totalBilled = roundMoney(
-            [...activeBillsForPeriod.values()].reduce((s, b) => s + parseMoney(b.amount), 0),
-        );
-        // Total paid = amount settled specifically against those bills
-        const totalPaid = roundMoney(
-            [...activeBillsForPeriod.keys()].reduce((s, id) => s + (settledBillAmountMap.get(id) || 0), 0),
-        );
-
-        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
-
         const cnsRows = reportConsignments.map((record) => {
             const activeBill = activeBillByCn.get(record.cn_no);
             const cancelledBill = cancelledBillByCn.get(record.cn_no);
@@ -1457,6 +1437,41 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             };
         });
 
+        // Total Billed / Paid are computed from cnsRows by deduplicating bills the
+        // same way the PDF table renders them (each bill cell appears once via
+        // rowspan). This guarantees the on-screen KPI tiles, the PDF tiles, and the
+        // TOTAL row at the bottom of the CNS table always add up to the same number
+        // as the visible Bill Amt / Received columns above them.
+        const distinctBillTotals = (() => {
+            const bills = new Map<string, { billed: number; paid: number }>();
+            cnsRows.forEach((row, index) => {
+                if (row.billStatus !== 'BILLED') return;
+                const refKey = String(row.billedOnBill ?? '').trim();
+                const dedupKey = refKey || `__row_${index}`;
+                if (bills.has(dedupKey)) return;
+                bills.set(dedupKey, {
+                    billed: row.billAmount,
+                    paid: row.billPaidAmount,
+                });
+            });
+
+            let billed = 0;
+            let paid = 0;
+            bills.forEach((entry) => {
+                billed += entry.billed;
+                paid += entry.paid;
+            });
+
+            return {
+                billed: roundMoney(billed),
+                paid: roundMoney(paid),
+            };
+        })();
+
+        const totalBilled = distinctBillTotals.billed;
+        const totalPaid = distinctBillTotals.paid;
+        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
+
         const billRows = reportBillingRecords.map((record) => {
             const billedAmount = roundMoney(parseMoney(record.amount));
             const paidAmount = roundMoney(settledBillAmountMap.get(record.id) || 0);
@@ -1488,7 +1503,10 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             amount: roundMoney(parseMoney(record.actual_received_amount ?? record.amount)),
             status: record.status,
         }));
-        const billedCnsCount = cnsRows.filter((record) => record.billStatus === 'BILLED').length;
+        const billedRows = cnsRows.filter((record) => record.billStatus === 'BILLED');
+        const unbilledRows = cnsRows.filter((record) => record.billStatus !== 'BILLED');
+        const billedCnsAmount = roundMoney(billedRows.reduce((sum, row) => sum + row.totalAmount, 0));
+        const unbilledCnsAmount = roundMoney(unbilledRows.reduce((sum, row) => sum + row.totalAmount, 0));
 
         return {
             party: data.party,
@@ -1497,10 +1515,10 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 openingBalance,
                 totalCnsAmount,
                 totalCnsCount: reportConsignments.length,
-                billedCnsCount,
-                billedCnsAmount: totalBilled,
-                unbilledCnsCount: cnsRows.length - billedCnsCount,
-                unbilledCnsAmount: Math.max(rawUnbilledAmount, 0),
+                billedCnsCount: billedRows.length,
+                billedCnsAmount,
+                unbilledCnsCount: unbilledRows.length,
+                unbilledCnsAmount,
                 totalBilledAmount: totalBilled,
                 totalPaid,
                 outstanding: roundMoney(openingBalance + totalBilled - totalPaid),
@@ -1730,7 +1748,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     <KpiCard
                         label="Unbilled Amount"
                         value={`₹${fmt(reportPayload?.summary.unbilledCnsAmount ?? summary.unbilled_amount)}`}
-                        sub={(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount) > 0 ? `Overbilled ₹${fmt(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount)}` : undefined}
+                        sub={(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount ?? 0) > 0 ? `Overbilled ₹${fmt(reportPayload?.summary.overbilledAmount ?? summary.overbilled_amount ?? 0)}` : undefined}
                         icon={AlertCircle}
                         iconBg="bg-amber-50"
                         iconActiveBg="bg-amber-500"
