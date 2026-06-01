@@ -155,7 +155,7 @@ function NewConsignmentForm() {
 
     // Search parent CN for include feature
     React.useEffect(() => {
-        if (!freightIncluded || parentCnSearch.length < 1) {
+        if (!freightIncluded) {
             setParentCnOptions([]);
             return;
         }
@@ -164,7 +164,7 @@ function NewConsignmentForm() {
             setIsSearchingParentCn(true);
             try {
                 const params = new URLSearchParams({
-                    search: parentCnSearch,
+                    search: parentCnSearch || '',
                     exclude_children: 'true',
                 });
                 if (editId) params.set('exclude_id', editId);
@@ -178,7 +178,7 @@ function NewConsignmentForm() {
         }, 300);
 
         return () => clearTimeout(timer);
-    }, [parentCnSearch, freightIncluded, editId]);
+    }, [parentCnSearch, freightIncluded, editId, isParentCnPopoverOpen]);
 
     // General fields state
     React.useEffect(() => {
@@ -1785,7 +1785,7 @@ function NewConsignmentForm() {
                                                                             <div className="p-3 text-center text-xs text-muted-foreground">Searching...</div>
                                                                         ) : parentCnOptions.length === 0 ? (
                                                                             <div className="p-3 text-center text-xs text-muted-foreground">
-                                                                                {parentCnSearch.length < 1 ? 'Type to search...' : 'No CNs found'}
+                                                                                No CNs found
                                                                             </div>
                                                                         ) : (
                                                                             parentCnOptions.map((cn) => (
