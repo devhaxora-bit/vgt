@@ -947,8 +947,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
-.total-row td { height: 26px; font-size: 12px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
-.total-label { text-align: center; color: #1d2f7a; }
+.total-row td { height: 32px; font-size: 17px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
+.total-label { text-align: center; color: #1d2f7a; font-size: 14px; }
 .words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
 .notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
 .remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }

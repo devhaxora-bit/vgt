@@ -229,8 +229,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .unbilled:not(:empty) { background: rgba(255, 221, 120, 0.28); }
 .items-table .outstanding:not(:empty) { background: rgba(255, 162, 162, 0.22); }
 .blank-row td { font-weight: 400; background: #fff; }
-.total-row td { height: 25px; font-size: 12px; font-weight: 800; background: rgba(29, 47, 122, 0.12); color: #111; }
-.total-label { color: #1d2f7a !important; }
+.total-row td { height: 40px; font-size: 17px; font-weight: 800; background: rgba(29, 47, 122, 0.12); color: #111; }
+.total-label { color: #1d2f7a !important; font-size: 17px; }
 .footer-row { margin-top: auto; border-top: 1.2px solid #1d2f7a; display: flex; justify-content: space-between; padding: 6px 9px; color: #1d2f7a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
 </style>
 </head>

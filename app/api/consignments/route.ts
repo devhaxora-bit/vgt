@@ -281,6 +281,10 @@ export async function POST(request: Request) {
         vehicle_no: body.vehicle_no,
         amount_in_words: body.amount_in_words,
 
+        // Parent-child freight include
+        parent_cn_id: body.parent_cn_id || null,
+        freight_included: body.freight_included ?? false,
+
         created_by: user.id,
     };
 

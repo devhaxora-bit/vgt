@@ -60,7 +60,19 @@ export async function GET(
             return NextResponse.json({ error: error.message }, { status: 404 });
         }
 
-        return NextResponse.json(data);
+        // Check if this CN has child CNs
+        const { count, error: countError } = await supabase
+            .from("consignments")
+            .select("*", { count: "exact", head: true })
+            .eq("parent_cn_id", id);
+
+        const responseData = {
+            ...data,
+            has_children: count ? count > 0 : false,
+            child_count: count || 0
+        };
+
+        return NextResponse.json(responseData);
     } catch (error) {
         console.error("Failed to fetch consignment:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -166,6 +178,10 @@ export async function PATCH(
             vehicle_no: body.vehicle_no,
             remarks: body.remarks,
             amount_in_words: body.amount_in_words,
+
+            // Parent-child freight include
+            parent_cn_id: body.parent_cn_id || null,
+            freight_included: body.freight_included ?? false,
         };
 
         const { billingPartyId, error: billingPartyError } = await resolveBillingPartyId(supabase, body);

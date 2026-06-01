@@ -1562,28 +1562,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         });
     }, [billingSearch, billingStatusFilter, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
 
-    const filteredConsignments = useMemo(() => {
-        const query = cnsSearch.trim().toLowerCase();
-        let list = data.consignments;
-
-        if (cnsBillFilter !== 'all') {
-            const billedCns = new Set<string>();
-            data.all_billing_records.forEach(r => {
-                if (r.status === 'ACTIVE') {
-                    (r.covered_cn_nos || []).forEach(cn => billedCns.add(cn.trim()));
-                }
-            });
-            if (cnsBillFilter === 'billed') list = list.filter(c => billedCns.has(c.cn_no));
-            if (cnsBillFilter === 'unbilled') list = list.filter(c => !billedCns.has(c.cn_no));
-        }
-
-        if (!query) return list;
-        return list.filter((c) =>
-            String(c.cn_no || '').toLowerCase().includes(query) ||
-            String(c.goods_desc || '').toLowerCase().includes(query)
-        );
-    }, [cnsSearch, cnsBillFilter, data.consignments, data.all_billing_records]);
-
     const consignmentBillingMap = useMemo(() => {
         const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();
 
@@ -1603,6 +1581,104 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
         return recordsByCn;
     }, [data.all_billing_records]);
+
+    const filteredConsignments = useMemo(() => {
+        const query = cnsSearch.trim().toLowerCase();
+        let list = data.consignments;
+
+        if (cnsBillFilter !== 'all') {
+            const billedCns = new Set<string>();
+            data.all_billing_records.forEach(r => {
+                if (r.status === 'ACTIVE') {
+                    (r.covered_cn_nos || []).forEach(cn => billedCns.add(cn.trim()));
+                }
+            });
+            if (cnsBillFilter === 'billed') list = list.filter(c => billedCns.has(c.cn_no));
+            if (cnsBillFilter === 'unbilled') list = list.filter(c => !billedCns.has(c.cn_no));
+        }
+
+        if (query) {
+            list = list.filter((c) =>
+                String(c.cn_no || '').toLowerCase().includes(query) ||
+                String(c.goods_desc || '').toLowerCase().includes(query)
+            );
+        }
+
+        // Base stable chronological sort (booking date descending, then CN no descending)
+        const sortedBase = [...list].sort((a, b) => {
+            const dateA = a.bkg_date || '';
+            const dateB = b.bkg_date || '';
+            if (dateA !== dateB) return dateB.localeCompare(dateA);
+            return String(b.cn_no).localeCompare(String(a.cn_no));
+        });
+
+        // Group consecutive rows sharing the same active bill number
+        const processed = new Set<string>();
+        const groupedList: typeof list = [];
+
+        sortedBase.forEach((c) => {
+            if (processed.has(c.cn_no)) return;
+
+            groupedList.push(c);
+            processed.add(c.cn_no);
+
+            const billing = consignmentBillingMap.get(c.cn_no);
+            const isBilled = billing?.status === 'BILLED' && billing.billRef;
+
+            if (isBilled) {
+                const billRef = billing.billRef;
+                sortedBase.forEach((item) => {
+                    if (!processed.has(item.cn_no)) {
+                        const itemBilling = consignmentBillingMap.get(item.cn_no);
+                        if (itemBilling?.status === 'BILLED' && itemBilling.billRef === billRef) {
+                            groupedList.push(item);
+                            processed.add(item.cn_no);
+                        }
+                    }
+                });
+            }
+        });
+
+        return groupedList;
+    }, [cnsSearch, cnsBillFilter, data.consignments, data.all_billing_records, consignmentBillingMap]);
+
+    const billCellMeta = useMemo(() => {
+        const meta = filteredConsignments.map(() => ({ showMerged: true, rowSpan: 1 }));
+        let index = 0;
+
+        while (index < filteredConsignments.length) {
+            const current = filteredConsignments[index];
+            const billing = consignmentBillingMap.get(current.cn_no);
+            const isBilled = billing?.status === 'BILLED' && billing.billRef;
+
+            if (!isBilled) {
+                index += 1;
+                continue;
+            }
+
+            const billRef = billing.billRef;
+            let end = index + 1;
+            while (end < filteredConsignments.length) {
+                const next = filteredConsignments[end];
+                const nextBilling = consignmentBillingMap.get(next.cn_no);
+                if (nextBilling?.status === 'BILLED' && nextBilling.billRef === billRef) {
+                    end += 1;
+                } else {
+                    break;
+                }
+            }
+
+            const span = end - index;
+            meta[index] = { showMerged: true, rowSpan: span };
+            for (let follow = index + 1; follow < end; follow++) {
+                meta[follow] = { showMerged: false, rowSpan: 0 };
+            }
+
+            index = end;
+        }
+
+        return meta;
+    }, [filteredConsignments, consignmentBillingMap]);
 
     const billingSettledAmountMap = useMemo(
         () => buildSettledBillAmountMap(data.all_payment_receipts),
@@ -1980,8 +2056,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            filteredConsignments.map(c => {
+                                            filteredConsignments.map((c, idx) => {
                                                 const billing = consignmentBillingMap.get(c.cn_no);
+                                                const meta = billCellMeta[idx];
 
                                                 return (
                                                 <TableRow key={c.id} className="hover:bg-primary/5 transition-colors border-b last:border-0">
@@ -2015,21 +2092,25 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                             {c.bkg_basis}
                                                         </Badge>
                                                     </TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline"
-                                                            className={`text-[9px] px-1.5 py-0 h-4 ${
-                                                                billing?.status === 'BILLED'
-                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                    : billing?.status === 'CANCELLED'
-                                                                        ? 'bg-red-50 text-red-700 border-red-200'
-                                                                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                                                            }`}>
-                                                            {billing?.status || 'UNBILLED'}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell className="text-xs font-mono text-muted-foreground">
-                                                        {billing?.billRef || '—'}
-                                                    </TableCell>
+                                                    {meta.showMerged && (
+                                                        <TableCell rowSpan={meta.rowSpan} className="align-middle border-l bg-slate-50/30">
+                                                            <Badge variant="outline"
+                                                                className={`text-[9px] px-1.5 py-0 h-4 ${
+                                                                    billing?.status === 'BILLED'
+                                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                        : billing?.status === 'CANCELLED'
+                                                                            ? 'bg-red-50 text-red-700 border-red-200'
+                                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                }`}>
+                                                                {billing?.status || 'UNBILLED'}
+                                                            </Badge>
+                                                        </TableCell>
+                                                    )}
+                                                    {meta.showMerged && (
+                                                        <TableCell rowSpan={meta.rowSpan} className="text-xs font-mono text-muted-foreground align-middle border-l bg-slate-50/30">
+                                                            {billing?.billRef || '—'}
+                                                        </TableCell>
+                                                    )}
                                                 </TableRow>
                                                 );
                                             })

@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
-const CN_SELECT_FIELDS = 'id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point, booking_branch';
+const CN_SELECT_FIELDS = 'id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point, booking_branch, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, total_freight, advance_amount, balance_amount, parent_cn_id, freight_included, freight_pending';
 
 export async function GET(request: Request) {
     const supabase = await createClient();
@@ -19,12 +19,25 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { data, error } = await supabase
+        let query = supabase
             .from('consignments')
             .select(CN_SELECT_FIELDS)
             .ilike('cn_no', `%${search}%`)
             .order('cn_no', { ascending: false })
             .limit(20);
+
+        // Exclude CNs that are already children (have a parent)
+        if (searchParams.get('exclude_children') === 'true') {
+            query = query.is('parent_cn_id', null);
+        }
+
+        // Exclude a specific CN (e.g., the one being edited)
+        const excludeId = searchParams.get('exclude_id');
+        if (excludeId) {
+            query = query.neq('id', excludeId);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
             console.error('[by-cn search error]', error);

@@ -17,9 +17,11 @@ import {
     Truck,
     Hash,
     Printer,
-    Pencil
+    Pencil,
+    Link2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { createClient as createSupabaseClient } from "@/utils/supabase/client";
 import { Input } from "@/components/ui/input";
 import {
     Table,
@@ -67,6 +69,7 @@ const getFullBranchName = (code?: string, options: {value: string; label: string
 
 export default function ConsignmentsPage() {
     const [consignments, setConsignments] = useState<any[]>([]);
+    const [billingRecords, setBillingRecords] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -79,6 +82,22 @@ export default function ConsignmentsPage() {
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(25);
+
+    // Fetch active billing records on mount
+    const fetchBillingRecords = async () => {
+        try {
+            const supabase = createSupabaseClient();
+            const { data, error: err } = await supabase
+                .from('party_billing_records')
+                .select('id, bill_ref_no, covered_cn_nos, status')
+                .eq('status', 'ACTIVE');
+            if (!err && data) {
+                setBillingRecords(data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch billing records:', err);
+        }
+    };
 
     // Fetch consignments on mount
     const fetchConsignments = async () => {
@@ -99,6 +118,7 @@ export default function ConsignmentsPage() {
 
     React.useEffect(() => {
         fetchConsignments();
+        fetchBillingRecords();
     }, []);
 
     React.useEffect(() => {
@@ -156,9 +176,43 @@ export default function ConsignmentsPage() {
         dateTo: new Date('2026-12-31')    // Broader range
     });
 
-    // Filtering logic
+    const consignmentBillingMap = useMemo(() => {
+        const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();
+
+        (billingRecords || []).forEach((record) => {
+            (record.covered_cn_nos || []).forEach((cnNo: string) => {
+                const normalizedCnNo = cnNo.trim();
+                if (!normalizedCnNo) return;
+
+                const billRef = record.bill_ref_no || record.id.slice(0, 8).toUpperCase();
+                if (record.status === 'ACTIVE') {
+                    recordsByCn.set(normalizedCnNo, { status: 'BILLED', billRef });
+                } else if (!recordsByCn.has(normalizedCnNo)) {
+                    recordsByCn.set(normalizedCnNo, { status: 'CANCELLED', billRef });
+                }
+            });
+        });
+
+        return recordsByCn;
+    }, [billingRecords]);
+
+    const parentMap = useMemo(() => {
+        const map = new Map<string, string[]>();
+        (consignments || []).forEach((item) => {
+            if (item.parent_cn_id) {
+                const parentId = item.parent_cn_id;
+                if (!map.has(parentId)) {
+                    map.set(parentId, []);
+                }
+                map.get(parentId)?.push(item.cn_no);
+            }
+        });
+        return map;
+    }, [consignments]);
+
+    // Filtering & Grouping logic
     const filteredData = useMemo(() => {
-        return (consignments || []).filter((item: any) => {
+        const sortedBase = (consignments || []).filter((item: any) => {
             // Table Search (Live)
             const matchesSearch =
                 item.cn_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -189,7 +243,36 @@ export default function ConsignmentsPage() {
             const cnB = b.cn_no || "";
             return cnB.localeCompare(cnA);
         });
-    }, [searchTerm, appliedFilters, consignments]);
+
+        // Group consecutive rows sharing the same active bill number
+        const processed = new Set<string>();
+        const groupedList: any[] = [];
+
+        sortedBase.forEach((c) => {
+            if (processed.has(c.cn_no)) return;
+
+            groupedList.push(c);
+            processed.add(c.cn_no);
+
+            const billing = consignmentBillingMap.get(c.cn_no);
+            const isBilled = billing?.status === 'BILLED' && billing.billRef;
+
+            if (isBilled) {
+                const billRef = billing.billRef;
+                sortedBase.forEach((item) => {
+                    if (!processed.has(item.cn_no)) {
+                        const itemBilling = consignmentBillingMap.get(item.cn_no);
+                        if (itemBilling?.status === 'BILLED' && itemBilling.billRef === billRef) {
+                            groupedList.push(item);
+                            processed.add(item.cn_no);
+                        }
+                    }
+                });
+            }
+        });
+
+        return groupedList;
+    }, [searchTerm, appliedFilters, consignments, consignmentBillingMap]);
 
     // Reset to page 1 whenever filters or rows-per-page change
     useEffect(() => {
@@ -502,15 +585,52 @@ export default function ConsignmentsPage() {
                                         <TableRow key={item.id || item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
                                             <TableCell className="text-[12px] font-medium text-muted-foreground">{getFullBranchName(item.booking_branch, branchOptions)}</TableCell>
                                             <TableCell>
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedConsignment(item);
-                                                        setIsDetailsOpen(true);
-                                                    }}
-                                                    className="font-bold text-primary hover:underline underline-offset-4 decoration-primary/30 flex items-center gap-2"
-                                                >
-                                                    {item.cn_no}
-                                                </button>
+                                                <div className="flex flex-col gap-1 items-start">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedConsignment(item);
+                                                            setIsDetailsOpen(true);
+                                                        }}
+                                                        className="font-bold text-primary hover:underline underline-offset-4 decoration-primary/30 flex items-center gap-2"
+                                                    >
+                                                        {item.cn_no}
+                                                    </button>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {item.freight_included && (
+                                                            (() => {
+                                                                const parentCnNo = item.parent_cn_id ? (consignments || []).find(c => c.id === item.parent_cn_id)?.cn_no : null;
+                                                                return (
+                                                                    <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-200 px-1.5 py-0 font-bold" title={parentCnNo ? `Included in CN ${parentCnNo}` : 'Included in parent CN'}>
+                                                                        <Link2 className="h-2.5 w-2.5 mr-0.5 inline-block shrink-0" />
+                                                                        ↳ Incl. {parentCnNo ? `(${parentCnNo})` : ''}
+                                                                    </Badge>
+                                                                );
+                                                            })()
+                                                        )}
+                                                        {(() => {
+                                                            const children = parentMap.get(item.id) || [];
+                                                            if (children.length > 0) {
+                                                                return (
+                                                                    <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 px-1.5 py-0 font-bold" title={`Linked child CNs: ${children.join(', ')}`}>
+                                                                        Parent ({children.length})
+                                                                    </Badge>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                        {(() => {
+                                                            const billing = consignmentBillingMap.get(item.cn_no);
+                                                            if (billing?.status === 'BILLED') {
+                                                                return (
+                                                                    <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-800 border-amber-200 px-1.5 py-0 font-bold" title={`Billed in bill number: ${billing.billRef}`}>
+                                                                        Bill: {billing.billRef}
+                                                                    </Badge>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
+                                                </div>
                                             </TableCell>
                                             <TableCell className="text-xs font-medium text-foreground/80">{item.bkg_date}</TableCell>
                                             <TableCell className="text-xs font-bold text-foreground/90">{item.dest_branch ? getFullBranchName(item.dest_branch, branchOptions) : (item.delivery_point ? item.delivery_point.toUpperCase() : '---')}</TableCell>
