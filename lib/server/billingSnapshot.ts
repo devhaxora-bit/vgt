@@ -1,4 +1,9 @@
 import type { createClient } from '@/utils/supabase/server';
+import {
+    normalizeVehicleCancelItems,
+    sumVehicleCancelCharges,
+    type BillingVehicleCancelItem,
+} from '@/lib/billingVehicleCancel';
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
@@ -55,6 +60,8 @@ export interface PreparedBillingSnapshot {
     consignmentSnapshot: BillingConsignmentSnapshotRow[];
     cnTotalAmount: number;
     addedOtherChargesAmount: number;
+    vehicleCancelItems: BillingVehicleCancelItem[];
+    vehicleCancelChargesTotal: number;
     finalBillAmount: number;
 }
 
@@ -262,25 +269,31 @@ export async function prepareBillingSnapshot(
         partyId,
         coveredCnNos,
         addedOtherChargesAmount,
+        vehicleCancelItems,
         excludeBillingRecordId,
     }: {
         partyId: string;
         coveredCnNos: unknown;
         addedOtherChargesAmount: unknown;
+        vehicleCancelItems?: unknown;
         excludeBillingRecordId?: string;
     }
 ): Promise<{ data: PreparedBillingSnapshot | null; error: string | null }> {
     const normalizedCoveredCnNos = normalizeCoveredCnNos(coveredCnNos);
     const normalizedAddedOtherChargesAmount = roundMoney(parseMoney(addedOtherChargesAmount));
+    const normalizedVehicleCancelItems = normalizeVehicleCancelItems(vehicleCancelItems);
+    const vehicleCancelChargesTotal = sumVehicleCancelCharges(normalizedVehicleCancelItems);
 
     if (normalizedCoveredCnNos.length === 0) {
-        const finalBillAmount = normalizedAddedOtherChargesAmount;
+        const finalBillAmount = roundMoney(normalizedAddedOtherChargesAmount + vehicleCancelChargesTotal);
         return {
             data: {
                 normalizedCoveredCnNos: null,
                 consignmentSnapshot: [],
                 cnTotalAmount: 0,
                 addedOtherChargesAmount: normalizedAddedOtherChargesAmount,
+                vehicleCancelItems: normalizedVehicleCancelItems,
+                vehicleCancelChargesTotal,
                 finalBillAmount,
             },
             error: null,
@@ -358,7 +371,9 @@ export async function prepareBillingSnapshot(
             consignmentSnapshot: rows,
             cnTotalAmount,
             addedOtherChargesAmount: normalizedAddedOtherChargesAmount,
-            finalBillAmount: roundMoney(cnTotalAmount + normalizedAddedOtherChargesAmount),
+            vehicleCancelItems: normalizedVehicleCancelItems,
+            vehicleCancelChargesTotal,
+            finalBillAmount: roundMoney(cnTotalAmount + normalizedAddedOtherChargesAmount + vehicleCancelChargesTotal),
         },
         error: null,
     };

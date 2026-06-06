@@ -35,7 +35,16 @@ import { toast } from 'sonner';
 import { BillingRecordViewDialog, EditBillingDialog } from '@/components/features/ledger/BillingRecordDialogs';
 import { BillingConsignmentPicker } from '@/components/features/ledger/BillingConsignmentPicker';
 import { BillingExtraChargesEditor, type BillingExtraChargeDraftItem } from '@/components/features/ledger/BillingExtraChargesEditor';
+import { BillingVehicleCancelEditor } from '@/components/features/ledger/BillingVehicleCancelEditor';
 import { BillingRecordPicker } from '@/components/features/ledger/BillingRecordPicker';
+import {
+    normalizeVehicleCancelItems,
+    sumVehicleCancelCharges,
+    validateVehicleCancelDrafts,
+    vehicleCancelDraftToItems,
+    type BillingVehicleCancelDraftItem,
+    type BillingVehicleCancelItem,
+} from '@/lib/billingVehicleCancel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +97,8 @@ interface BillingRecord {
     narration: string; covered_cn_nos?: string[]; status: string;
     cn_total_amount?: number;
     added_other_charges_amount?: number;
+    vehicle_cancel_items?: BillingVehicleCancelItem[];
+    vehicle_cancel_charges_total?: number;
     consignment_snapshot?: Array<Record<string, unknown>>;
     extra_charge_items?: BillingExtraChargeItem[];
     settled_amount?: number;
@@ -399,6 +410,7 @@ function AddBillingDialog({
         billing_date: new Date().toISOString().split('T')[0],
         amount: '', bill_ref_no: '', narration: '',
         covered_cn_nos: [] as string[],
+        vehicle_cancel_items: [] as BillingVehicleCancelDraftItem[],
     });
     const [saving, setSaving] = useState(false);
 
@@ -412,14 +424,21 @@ function AddBillingDialog({
     );
 
     const enteredOtherChargeAmount = roundMoney(parseMoney(form.amount));
+    const vehicleCancelTotal = sumVehicleCancelCharges(vehicleCancelDraftToItems(form.vehicle_cancel_items));
     const suggestedBillTotal = consignmentBreakup.cnChargeTotal;
     const displayedExtraChargeTotal = roundMoney(consignmentBreakup.otherChargeTotal + enteredOtherChargeAmount);
-    const finalBillAmount = roundMoney(consignmentBreakup.cnChargeTotal + enteredOtherChargeAmount);
+    const finalBillAmount = roundMoney(consignmentBreakup.cnChargeTotal + enteredOtherChargeAmount + vehicleCancelTotal);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.bill_ref_no.trim()) {
             toast.error('Bill No is required');
+            return;
+        }
+
+        const vehicleCancelValidationError = validateVehicleCancelDrafts(form.vehicle_cancel_items);
+        if (vehicleCancelValidationError) {
+            toast.error(vehicleCancelValidationError);
             return;
         }
 
@@ -437,6 +456,7 @@ function AddBillingDialog({
                     bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no),
                     narration: form.narration,
                     added_other_charges_amount: enteredOtherChargeAmount,
+                    vehicle_cancel_items: vehicleCancelDraftToItems(form.vehicle_cancel_items),
                     covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
                 }),
             });
@@ -447,7 +467,14 @@ function AddBillingDialog({
             toast.success('Billing record created successfully');
             onSuccess();
             onClose();
-            setForm({ billing_date: new Date().toISOString().split('T')[0], amount: '', bill_ref_no: '', narration: '', covered_cn_nos: [] });
+            setForm({
+                billing_date: new Date().toISOString().split('T')[0],
+                amount: '',
+                bill_ref_no: '',
+                narration: '',
+                covered_cn_nos: [],
+                vehicle_cancel_items: [],
+            });
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to create billing record');
         } finally {
@@ -509,6 +536,11 @@ function AddBillingDialog({
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
                                 <Input placeholder="Optional description" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
                             </div>
+
+                            <BillingVehicleCancelEditor
+                                items={form.vehicle_cancel_items}
+                                onChange={(vehicle_cancel_items) => setForm((current) => ({ ...current, vehicle_cancel_items }))}
+                            />
                         </div>
                         <div className="space-y-4">
                             <div className="space-y-1.5">
@@ -565,6 +597,10 @@ function AddBillingDialog({
                                     <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Added Other Charges</span>
                                         <span className="font-mono font-semibold">₹{fmt(enteredOtherChargeAmount)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Vehicle Cancellation Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(vehicleCancelTotal)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Bill Other Charges Column</span>
@@ -1202,7 +1238,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const [billingDateTo, setBillingDateTo] = useState('');
     const [isDownloadingReport, setIsDownloadingReport] = useState(false);
     const [showLedgerDownloadDialog, setShowLedgerDownloadDialog] = useState(false);
-    const [activeTab, setActiveTab] = useState<'cns' | 'billing' | 'payments' | 'monthly'>('cns');
+    const [activeTab, setActiveTab] = useState<'cns' | 'billing' | 'payments' | 'monthly' | 'vehicle-cancellations'>('cns');
     const [cnsBillFilter, setCnsBillFilter] = useState<'all' | 'billed' | 'unbilled'>('all');
 
     const handleKpiClick = (kpi: 'cns' | 'billed' | 'unbilled' | 'paid' | 'outstanding') => {
@@ -1372,6 +1408,23 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
         return Object.values(map).sort((a, b) => b.month.localeCompare(a.month));
     }, [data]);
+
+    const vehicleCancellationRows = useMemo(() => (
+        data.billing_records.flatMap((record) => {
+            const items = normalizeVehicleCancelItems(record.vehicle_cancel_items);
+            return items.map((item, index) => ({
+                id: `${record.id}-${index}`,
+                billRef: record.bill_ref_no || '—',
+                billDate: record.billing_date,
+                billStatus: record.status,
+                vehicleNo: item.vehicle_no,
+                fromStation: item.from_station || '—',
+                toStation: item.to_station || '—',
+                cancellationDate: item.cancellation_date,
+                charges: item.charges,
+            }));
+        })
+    ), [data.billing_records]);
 
     const reportPayload = useMemo(() => {
         if (!data.party) return null;
@@ -2009,6 +2062,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                             <TabsTrigger value="monthly" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
                                 <Building2 className="h-3.5 w-3.5" /> Monthly Summary
                             </TabsTrigger>
+                            <TabsTrigger value="vehicle-cancellations" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-white gap-1.5">
+                                <XCircle className="h-3.5 w-3.5" /> Vehicle Cancellations ({vehicleCancellationRows.length})
+                            </TabsTrigger>
                         </TabsList>
                         {activeTab === 'cns' && cnsBillFilter !== 'all' && (
                             <div className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg font-medium">
@@ -2500,6 +2556,70 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         )}
                                     </TableBody>
                                 </Table>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* ── Tab 5: Vehicle Cancellations ── */}
+                    <TabsContent value="vehicle-cancellations" className="mt-0">
+                        <Card className="border-none shadow-md bg-white">
+                            <CardHeader className="py-3 px-6 border-b">
+                                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                                    <XCircle className="h-4 w-4 text-primary" /> Vehicle Cancellation List
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <Table>
+                                    <TableHeader className="bg-muted/30">
+                                        <TableRow>
+                                            <TableHead className="font-bold text-xs py-3">Cancellation Date</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Vehicle No</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">From</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">To</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 text-right">Charges</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Bill Ref</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Bill Date</TableHead>
+                                            <TableHead className="font-bold text-xs py-3">Status</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {vehicleCancellationRows.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground text-sm">
+                                                    No vehicle cancellation charges recorded yet
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            vehicleCancellationRows.map((row) => (
+                                                <TableRow key={row.id} className="hover:bg-primary/5 transition-colors border-b last:border-0">
+                                                    <TableCell className="text-xs">{fmtDate(row.cancellationDate)}</TableCell>
+                                                    <TableCell className="font-mono text-xs font-bold text-primary">{row.vehicleNo}</TableCell>
+                                                    <TableCell className="text-xs">{row.fromStation}</TableCell>
+                                                    <TableCell className="text-xs">{row.toStation}</TableCell>
+                                                    <TableCell className="text-right font-mono font-bold text-amber-700">₹{fmt(row.charges)}</TableCell>
+                                                    <TableCell className="font-mono text-xs text-muted-foreground">{row.billRef}</TableCell>
+                                                    <TableCell className="text-xs">{fmtDate(row.billDate)}</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant={row.billStatus === 'ACTIVE' ? 'default' : 'outline'}
+                                                            className={`text-[9px] px-1.5 py-0 h-4 ${row.billStatus === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                                            {row.billStatus}
+                                                        </Badge>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                                {vehicleCancellationRows.length > 0 && (
+                                    <div className="px-6 py-3 border-t bg-muted/10 flex justify-between items-center">
+                                        <span className="text-xs text-muted-foreground">
+                                            {vehicleCancellationRows.length} vehicle cancellation {vehicleCancellationRows.length === 1 ? 'entry' : 'entries'}
+                                        </span>
+                                        <span className="text-sm font-black text-amber-700 font-mono">
+                                            Total: ₹{fmt(vehicleCancellationRows.reduce((sum, row) => sum + row.charges, 0))}
+                                        </span>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>

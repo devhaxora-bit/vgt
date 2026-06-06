@@ -13,6 +13,16 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { BillingConsignmentPicker, type BillingConsignmentOption } from '@/components/features/ledger/BillingConsignmentPicker';
+import { BillingVehicleCancelEditor } from '@/components/features/ledger/BillingVehicleCancelEditor';
+import {
+    normalizeVehicleCancelItems,
+    sumVehicleCancelCharges,
+    validateVehicleCancelDrafts,
+    vehicleCancelDraftToItems,
+    vehicleCancelItemsToDrafts,
+    type BillingVehicleCancelDraftItem,
+    type BillingVehicleCancelItem,
+} from '@/lib/billingVehicleCancel';
 
 interface PartyInfo {
     id: string;
@@ -33,6 +43,8 @@ interface BillingRecord {
     amount: number;
     cn_total_amount?: number;
     added_other_charges_amount?: number;
+    vehicle_cancel_items?: BillingVehicleCancelItem[];
+    vehicle_cancel_charges_total?: number;
     bill_ref_no?: string;
     narration: string;
     covered_cn_nos?: string[];
@@ -543,6 +555,7 @@ export function EditBillingDialog({
         bill_ref_no: '',
         narration: '',
         covered_cn_nos: [] as string[],
+        vehicle_cancel_items: [] as BillingVehicleCancelDraftItem[],
     });
     const [saving, setSaving] = useState(false);
 
@@ -556,6 +569,7 @@ export function EditBillingDialog({
             bill_ref_no: splitBillRefSuffix(record.bill_ref_no, record.billing_date),
             narration: record.narration || '',
             covered_cn_nos: record.covered_cn_nos || [],
+            vehicle_cancel_items: vehicleCancelItemsToDrafts(record.vehicle_cancel_items || []),
         });
     }, [record, consignments]);
 
@@ -574,13 +588,21 @@ export function EditBillingDialog({
     );
 
     const enteredOtherChargeAmount = roundMoney(parseMoney(form.amount));
+    const vehicleCancelTotal = sumVehicleCancelCharges(vehicleCancelDraftToItems(form.vehicle_cancel_items));
     const suggestedBillTotal = consignmentBreakup.cnChargeTotal;
     const displayedOtherChargeTotal = roundMoney(consignmentBreakup.otherChargeTotal + enteredOtherChargeAmount);
-    const finalBillAmount = roundMoney(consignmentBreakup.cnChargeTotal + enteredOtherChargeAmount);
+    const finalBillAmount = roundMoney(consignmentBreakup.cnChargeTotal + enteredOtherChargeAmount + vehicleCancelTotal);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!record) return;
+
+        const vehicleCancelValidationError = validateVehicleCancelDrafts(form.vehicle_cancel_items);
+        if (vehicleCancelValidationError) {
+            toast.error(vehicleCancelValidationError);
+            return;
+        }
+
         if (finalBillAmount <= 0) {
             toast.error('Bill amount must be greater than zero');
             return;
@@ -593,6 +615,7 @@ export function EditBillingDialog({
                 body: JSON.stringify({
                     billing_date: form.billing_date,
                     added_other_charges_amount: enteredOtherChargeAmount,
+                    vehicle_cancel_items: vehicleCancelDraftToItems(form.vehicle_cancel_items),
                     bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no) || null,
                     narration: form.narration.trim(),
                     covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
@@ -674,6 +697,11 @@ export function EditBillingDialog({
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
                                 <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
                             </div>
+
+                            <BillingVehicleCancelEditor
+                                items={form.vehicle_cancel_items}
+                                onChange={(vehicle_cancel_items) => setForm((current) => ({ ...current, vehicle_cancel_items }))}
+                            />
                         </div>
                         <div className="space-y-4">
                             <div className="space-y-1.5">
@@ -732,6 +760,10 @@ export function EditBillingDialog({
                                         <span className="font-mono font-semibold">₹{fmt(enteredOtherChargeAmount)}</span>
                                     </div>
                                     <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Vehicle Cancellation Charges</span>
+                                        <span className="font-mono font-semibold">₹{fmt(vehicleCancelTotal)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Bill Other Charges Column</span>
                                         <span className="font-mono font-semibold">₹{fmt(displayedOtherChargeTotal)}</span>
                                     </div>
@@ -763,6 +795,20 @@ export function EditBillingDialog({
         </Dialog>
     );
 }
+
+const buildVehicleCancelPdfRows = (items: BillingVehicleCancelItem[]) =>
+    normalizeVehicleCancelItems(items).map((item) => `
+                <tr class="item-row vehicle-cancel-row">
+                    <td class="center">&nbsp;</td>
+                    <td class="center">${fmtDotDate(item.cancellation_date)}</td>
+                    <td class="center">&nbsp;</td>
+                    <td class="center name-cell">${toUpperText(item.vehicle_no) || '—'}</td>
+                    <td class="center name-cell">${toUpperText(item.from_station) || '—'}</td>
+                    <td class="center name-cell">${toUpperText(item.to_station) || '—'}</td>
+                    <td colspan="8" class="center" style="font-weight: 800; color: #1d2f7a; letter-spacing: 0.2px;">VEHICLE CANCELLATION CHARGES</td>
+                    <td class="amount">${fmt(item.charges)}</td>
+                </tr>
+            `).join('');
 
 export function BillingRecordViewDialog({
     open,
@@ -809,6 +855,14 @@ export function BillingRecordViewDialog({
     }, [record, consignments]);
 
     const billAmount = roundMoney(parseMoney(record?.amount));
+    const vehicleCancelItems = useMemo(
+        () => normalizeVehicleCancelItems(record?.vehicle_cancel_items),
+        [record]
+    );
+    const vehicleCancelTotal = useMemo(
+        () => sumVehicleCancelCharges(vehicleCancelItems),
+        [vehicleCancelItems]
+    );
     const addedOtherChargesAmount = useMemo(
         () => getSavedAddedOtherChargesAmount(record),
         [record]
@@ -879,7 +933,8 @@ export function BillingRecordViewDialog({
                 otherCharges: '',
                 totalAmount: fmt(displayTotal),
             }];
-        const minimumDetailRows = Math.max(12, detailRows.length);
+        const vehicleCancelRows = buildVehicleCancelPdfRows(vehicleCancelItems);
+        const minimumDetailRows = Math.max(12, detailRows.length + vehicleCancelItems.length);
         const coveredRows = detailRows.map((row) => `
                 <tr class="item-row">
                     <td class="center">${row.cnNo}</td>
@@ -899,7 +954,7 @@ export function BillingRecordViewDialog({
                     <td class="amount">${row.totalAmount}</td>
                 </tr>
             `).join('');
-        const blankRows = Array.from({ length: Math.max(0, minimumDetailRows - detailRows.length) }, () => `
+        const blankRows = Array.from({ length: Math.max(0, minimumDetailRows - detailRows.length - vehicleCancelItems.length) }, () => `
                 <tr class="item-row blank-row">
                     <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
                     <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
@@ -1033,6 +1088,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             </thead>
             <tbody>
                 ${coveredRows}
+                ${vehicleCancelRows}
                 ${blankRows}
                 <tr class="total-row">
                     <td colspan="13"></td>
@@ -1219,6 +1275,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                             <div className="text-sm">Traffic Challan Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.trafficChallanTotal)}</span></div>
                             <div className="text-sm">CN Other Charges: <span className="font-black text-slate-700 font-mono">₹{fmt(consignmentBreakup.otherChargeTotal)}</span></div>
                             <div className="text-sm">Added Other Charges: <span className="font-black text-slate-900 font-mono">₹{fmt(consignmentBreakup.addedOtherChargesAmount)}</span></div>
+                            <div className="text-sm">Vehicle Cancellation Charges: <span className="font-black text-amber-700 font-mono">₹{fmt(vehicleCancelTotal)}</span></div>
                             <div className="text-sm">Bill Other Charges Column: <span className="font-black text-slate-900 font-mono">₹{fmt(consignmentBreakup.billOtherChargeTotal)}</span></div>
                             <div className="text-sm">CN Total: <span className="font-black text-foreground font-mono">₹{fmt(consignmentBreakup.cnChargeTotal)}</span></div>
                         </CardContent></Card>
@@ -1300,7 +1357,38 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                                                         </tr>
                                                     );
                                                 })}
+                                                {vehicleCancelItems.map((item, index) => (
+                                                    <tr key={`vehicle-cancel-${index}`} className="border-b last:border-0 bg-amber-50/40">
+                                                        <td className="p-2 text-xs">{billDetailRows.length + index + 1}</td>
+                                                        <td className="p-2 text-xs text-muted-foreground">—</td>
+                                                        <td className="p-2 text-xs">{fmtDate(item.cancellation_date)}</td>
+                                                        <td className="p-2 text-xs">—</td>
+                                                        <td className="p-2 font-mono text-xs font-bold text-primary">{item.vehicle_no}</td>
+                                                        <td className="p-2 text-xs">{item.from_station || '—'}</td>
+                                                        <td className="p-2 text-xs">{item.to_station || '—'}</td>
+                                                        <td colSpan={10} className="p-2 text-xs font-bold uppercase text-amber-800">
+                                                            Vehicle Cancellation Charges
+                                                        </td>
+                                                        <td className="p-2 text-right text-xs font-mono font-bold text-amber-700">₹{fmt(item.charges)}</td>
+                                                    </tr>
+                                                ))}
                                             </>
+                                        ) : vehicleCancelItems.length > 0 ? (
+                                            vehicleCancelItems.map((item, index) => (
+                                                <tr key={`vehicle-cancel-only-${index}`} className="border-b last:border-0 bg-amber-50/40">
+                                                    <td className="p-2 text-xs">{index + 1}</td>
+                                                    <td className="p-2 text-xs text-muted-foreground">—</td>
+                                                    <td className="p-2 text-xs">{fmtDate(item.cancellation_date)}</td>
+                                                    <td className="p-2 text-xs">—</td>
+                                                    <td className="p-2 font-mono text-xs font-bold text-primary">{item.vehicle_no}</td>
+                                                    <td className="p-2 text-xs">{item.from_station || '—'}</td>
+                                                    <td className="p-2 text-xs">{item.to_station || '—'}</td>
+                                                    <td colSpan={10} className="p-2 text-xs font-bold uppercase text-amber-800">
+                                                        Vehicle Cancellation Charges
+                                                    </td>
+                                                    <td className="p-2 text-right text-xs font-mono font-bold text-amber-700">₹{fmt(item.charges)}</td>
+                                                </tr>
+                                            ))
                                         ) : (
                                             <tr>
                                                 <td colSpan={18} className="p-3 text-center text-xs text-muted-foreground">

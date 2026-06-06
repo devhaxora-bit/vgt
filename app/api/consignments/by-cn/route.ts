@@ -10,14 +10,18 @@ const MISSING_COLUMN_CODE = '42703';
 
 type ConsignmentSearchRow = Record<string, unknown>;
 
+const getConsignmentsClient = (supabase: SupabaseClient) =>
+    supabase as SupabaseClient<Record<string, unknown>>;
+
 async function runCnSearch(
     supabase: SupabaseClient,
     search: string,
     options: { excludeChildren: boolean; excludeId: string | null; useParentFields: boolean }
 ): Promise<{ data: ConsignmentSearchRow[] | null; error: { code?: string; message: string } | null }> {
     const fields = options.useParentFields ? CN_SELECT_FIELDS : CN_SEARCH_FIELDS;
+    const client = getConsignmentsClient(supabase);
 
-    let query = supabase
+    let query = client
         .from('consignments')
         .select(fields)
         .ilike('cn_no', `%${search}%`)
@@ -32,7 +36,8 @@ async function runCnSearch(
         query = query.neq('id', options.excludeId);
     }
 
-    return query;
+    const { data, error } = await query;
+    return { data: data as ConsignmentSearchRow[] | null, error };
 }
 
 export async function GET(request: Request) {
@@ -82,12 +87,13 @@ export async function GET(request: Request) {
     if (cns) {
         const cnArray = cns.split(',').map(c => c.trim()).filter(Boolean);
         if (cnArray.length === 0) return NextResponse.json([]);
-        let { data, error } = await supabase
+        const client = getConsignmentsClient(supabase);
+        let { data, error } = await client
             .from('consignments')
             .select(CN_SELECT_FIELDS)
             .in('cn_no', cnArray);
         if (error?.code === MISSING_COLUMN_CODE) {
-            ({ data, error } = await supabase
+            ({ data, error } = await client
                 .from('consignments')
                 .select(CN_SEARCH_FIELDS)
                 .in('cn_no', cnArray));
@@ -101,14 +107,15 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'CN number is required' }, { status: 400 });
     }
 
-    let { data, error } = await supabase
+    const client = getConsignmentsClient(supabase);
+    let { data, error } = await client
         .from('consignments')
         .select(CN_SELECT_FIELDS)
         .ilike('cn_no', cnNo)
         .single();
 
     if (error?.code === MISSING_COLUMN_CODE) {
-        ({ data, error } = await supabase
+        ({ data, error } = await client
             .from('consignments')
             .select(CN_SEARCH_FIELDS)
             .ilike('cn_no', cnNo)

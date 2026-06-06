@@ -7,12 +7,19 @@ const parseOptionalInteger = (value: unknown, fallback: number) => {
     return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+const LOW_CN_THRESHOLD = 5;
+
 const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
     if (!error) return false;
     if (error.code === '42P01' || error.code === '42883') return true;
 
     const message = String(error.message || '').toLowerCase();
-    return message.includes('branch_cn_ranges') || message.includes('branch_cn_reserved_ranges');
+    return message.includes('branch_cn_ranges');
+};
+
+const countRemaining = (nextNo: number, rangeEnd: number) => {
+    if (nextNo > rangeEnd) return 0;
+    return rangeEnd - nextNo + 1;
 };
 
 export async function GET(request: Request) {
@@ -43,21 +50,14 @@ export async function GET(request: Request) {
 
     const branchIds = data.map((branch) => branch.id);
 
-    const [{ data: cnRanges, error: cnRangesError }, { data: reservedRanges, error: reservedRangesError }] = await Promise.all([
-        supabase
-            .from('branch_cn_ranges')
-            .select('*')
-            .in('branch_id', branchIds)
-            .order('created_at', { ascending: false }),
-        supabase
-            .from('branch_cn_reserved_ranges')
-            .select('*')
-            .in('branch_id', branchIds)
-            .order('created_at', { ascending: false }),
-    ]);
+    const { data: cnRanges, error: cnRangesError } = await supabase
+        .from('branch_cn_ranges')
+        .select('*')
+        .in('branch_id', branchIds)
+        .order('created_at', { ascending: false });
 
-    if (cnRangesError || reservedRangesError) {
-        if (isMissingCnManagementSchema(cnRangesError) || isMissingCnManagementSchema(reservedRangesError)) {
+    if (cnRangesError) {
+        if (isMissingCnManagementSchema(cnRangesError)) {
             return NextResponse.json(data.map((branch) => ({
                 ...branch,
                 cn_mode: 'legacy',
@@ -65,15 +65,15 @@ export async function GET(request: Request) {
                 active_cn_range: null,
                 latest_cn_range: null,
                 cn_ranges: [],
-                cn_reserved_ranges: [],
+                remaining_count: null,
+                is_low_cn: false,
             })));
         }
 
-        return NextResponse.json({ error: cnRangesError?.message || reservedRangesError?.message }, { status: 500 });
+        return NextResponse.json({ error: cnRangesError.message }, { status: 500 });
     }
 
     const cnRangesByBranch = new Map<string, typeof cnRanges>();
-    const reservedRangesByBranch = new Map<string, typeof reservedRanges>();
 
     (cnRanges || []).forEach((range) => {
         const entries = cnRangesByBranch.get(range.branch_id) || [];
@@ -81,15 +81,8 @@ export async function GET(request: Request) {
         cnRangesByBranch.set(range.branch_id, entries);
     });
 
-    (reservedRanges || []).forEach((range) => {
-        const entries = reservedRangesByBranch.get(range.branch_id) || [];
-        entries.push(range);
-        reservedRangesByBranch.set(range.branch_id, entries);
-    });
-
     const enrichedBranches = data.map((branch) => {
         const branchCnRanges = cnRangesByBranch.get(branch.id) || [];
-        const branchReservedRanges = reservedRangesByBranch.get(branch.id) || [];
         const activeCnRange = branchCnRanges.find((range) => range.status === 'active') || null;
         const latestCnRange = branchCnRanges[0] || null;
         const hasManagedRanges = branchCnRanges.length > 0;
@@ -104,6 +97,14 @@ export async function GET(request: Request) {
                 ? 'needs_update'
                 : 'legacy';
 
+        let remainingCount: number | null = null;
+        if (activeCnRange) {
+            remainingCount = countRemaining(
+                Number(activeCnRange.next_cn_no),
+                Number(activeCnRange.range_end)
+            );
+        }
+
         return {
             ...branch,
             cn_mode: cnMode,
@@ -111,7 +112,8 @@ export async function GET(request: Request) {
             active_cn_range: activeCnRange,
             latest_cn_range: latestCnRange,
             cn_ranges: branchCnRanges,
-            cn_reserved_ranges: branchReservedRanges,
+            remaining_count: remainingCount,
+            is_low_cn: remainingCount !== null && remainingCount > 0 && remainingCount <= LOW_CN_THRESHOLD,
         };
     });
 

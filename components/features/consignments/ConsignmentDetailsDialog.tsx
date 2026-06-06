@@ -31,6 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatLoadWeightDisplay, normalizeLoadUnit, resolveLoadWeight } from '@/lib/loadWeightDisplay';
 
 interface ConsignmentDetailsDialogProps {
     isOpen: boolean;
@@ -180,8 +181,9 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const ewayValidUpto = formatDate(c.eway_to_date || c.invoice_details?.eway_to_date);
         const cnDate = formatDate(c.bkg_date);
         const invoiceAmountValue = Number(c.invoice_amount || c.invoice_details?.invoices?.[0]?.amount || 0);
-        const actualWeight = c.actual_weight || c.goods_details?.actual_weight || '---';
-        const chargedWeight = c.charged_weight || c.goods_details?.charged_weight || '---';
+        const loadUnitDisplay = normalizeLoadUnit(c.load_unit || c.goods_details?.load_unit);
+        const actualWeight = resolveLoadWeight(c.actual_weight, c.goods_details?.actual_weight);
+        const chargedWeight = resolveLoadWeight(c.charged_weight, c.goods_details?.charged_weight);
 
         const packageText = c.is_loose ? 'LOOSE' : (c.no_of_pkg || c.package_details?.total_pkg || '---');
         let packageDetailsStr = '';
@@ -198,16 +200,6 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
             }).join('<br/>');
         }
         const packagesList = packageDetailsStr || packageText;
-        const loadUnitDisplay = (c.load_unit || 'KG').toUpperCase();
-        const formatWeightDisplay = (value: unknown) => {
-            const normalizedValue = String(value ?? '').trim();
-            if (!normalizedValue || normalizedValue === '0' || normalizedValue === '---') {
-                return loadUnitDisplay === 'FTL' ? 'FTL' : '---';
-            }
-            return loadUnitDisplay === 'FTL'
-                ? `${toUpperValue(normalizedValue)} ${loadUnitDisplay}`
-                : `${toUpperValue(normalizedValue)}${loadUnitDisplay}`;
-        };
 
         const goodsDescription = c.hsn_desc || c.goods_details?.hsn_desc || '---';
         const invoiceDescription = c.goods_desc || c.goods_details?.goods_desc || '';
@@ -456,8 +448,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
                     ${remarks ? `<div style="margin-top:8px; font-size:16px;">Remarks . <span class="strong ink">${toUpperValue(remarks)}</span></div>` : ''}
                 </td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${formatWeightDisplay(actualWeight)}</td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${formatWeightDisplay(chargedWeight)}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(actualWeight, loadUnitDisplay, 'cn')}</td>
+                <td class="strong ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(chargedWeight, loadUnitDisplay, 'cn')}</td>
                 <td class="charges-list">
                     <span style="font-size:16px;">${rateLabel}</span><br/>
                     <span style="font-size:16px; display:block; margin-bottom:8px;">${rateValue}</span>

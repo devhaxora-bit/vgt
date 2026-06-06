@@ -190,7 +190,7 @@ export default function DashboardNav() {
                 {
                     title: 'Support',
                     items: [
-                        { title: 'Documentation', href: '#' },
+                        { title: 'Documentation', href: '/dashboard/documentation' },
                         { title: 'Help Center', href: '#' },
                     ]
                 }

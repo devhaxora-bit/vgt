@@ -18,7 +18,8 @@ import {
     Link2,
     Search,
     Check,
-    X
+    X,
+    AlertTriangle,
 } from 'lucide-react';
 import {
     Popover,
@@ -69,12 +70,23 @@ interface BranchCnSequenceState {
     rangeStart?: number | null;
     rangeEnd?: number | null;
     remainingCount?: number | null;
-    reservedCount?: number | null;
     message?: string;
 }
 
 const idleCnSequenceState: BranchCnSequenceState = {
     status: 'idle',
+};
+
+const LOW_CN_THRESHOLD = 5;
+
+const getLowCnWarningMessage = (remaining: number, branchCode: string) => {
+    if (remaining <= 0) {
+        return `No CNs left in the active range for branch ${branchCode}. Contact admin to issue a new range.`;
+    }
+    if (remaining === 1) {
+        return `This is the LAST CN available for branch ${branchCode}. After saving, the range will be exhausted — contact admin immediately.`;
+    }
+    return `Only ${remaining} CN${remaining !== 1 ? 's' : ''} left for branch ${branchCode}. Contact admin to issue a new CN range before numbers run out.`;
 };
 
 // We fetch branch options dynamically now, so just a helper if we ever need it static
@@ -344,7 +356,6 @@ function NewConsignmentForm() {
                             rangeStart: data.rangeStart ?? null,
                             rangeEnd: data.rangeEnd ?? null,
                             remainingCount: data.remainingCount ?? null,
-                            reservedCount: data.reservedCount ?? null,
                             message: data.message,
                         });
                         return;
@@ -663,6 +674,16 @@ function NewConsignmentForm() {
                 toast.error(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
                 return;
             }
+
+            if (
+                isRangeManaged
+                && cnSequenceState.status === 'ready'
+                && typeof cnSequenceState.remainingCount === 'number'
+                && cnSequenceState.remainingCount > 0
+                && cnSequenceState.remainingCount <= LOW_CN_THRESHOLD
+            ) {
+                toast.warning(getLowCnWarningMessage(cnSequenceState.remainingCount, bookingBranchCode.toUpperCase()));
+            }
         }
         setIsSaving(true);
         try {
@@ -875,7 +896,58 @@ function NewConsignmentForm() {
                 </div>
             </div>
 
-            <div className="flex-1 p-6 max-w-[1920px] mx-auto w-full">
+            <div className="flex-1 p-6 max-w-[1920px] mx-auto w-full space-y-4">
+                {!isEditMode && bookingBranchCode && cnSequenceState.status === 'range_exhausted' && (
+                    <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 flex items-start gap-3 text-sm text-red-800">
+                        <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
+                        <div>
+                            <div className="font-semibold">CN range exhausted — cannot create consignment</div>
+                            <p className="text-xs mt-1 text-red-700">
+                                {cnSequenceState.message || `Branch ${bookingBranchCode.toUpperCase()} has no available CN numbers. Ask admin to issue a new range via Documentation → CN Assigning.`}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {!isEditMode && bookingBranchCode && cnSequenceState.status === 'configuration_required' && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3 text-sm text-amber-800">
+                        <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+                        <div>
+                            <div className="font-semibold">No active CN range — cannot create consignment</div>
+                            <p className="text-xs mt-1 text-amber-700">
+                                {cnSequenceState.message || `Branch ${bookingBranchCode.toUpperCase()} needs a CN range assigned. Ask admin via Documentation → CN Assigning.`}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {!isEditMode
+                    && bookingBranchCode
+                    && cnSequenceState.status === 'ready'
+                    && cnSequenceState.mode === 'range'
+                    && typeof cnSequenceState.remainingCount === 'number'
+                    && cnSequenceState.remainingCount > 0
+                    && cnSequenceState.remainingCount <= LOW_CN_THRESHOLD && (
+                    <div className="rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 flex items-start gap-3 text-sm text-amber-900 shadow-sm">
+                        <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 animate-pulse" />
+                        <div>
+                            <div className="font-semibold">
+                                {cnSequenceState.remainingCount === 1
+                                    ? 'Last CN in range'
+                                    : `Only ${cnSequenceState.remainingCount} CNs left`}
+                            </div>
+                            <p className="text-xs mt-1 text-amber-800">
+                                {getLowCnWarningMessage(cnSequenceState.remainingCount, bookingBranchCode.toUpperCase())}
+                            </p>
+                            {typeof cnSequenceState.rangeEnd === 'number' && (
+                                <p className="text-xs mt-1 text-amber-700 font-mono">
+                                    Range {cnSequenceState.rangeStart}–{cnSequenceState.rangeEnd} · Next CN: {cnNo || cnSequenceState.nextNo}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     {/* Main Form Area */}
@@ -956,7 +1028,17 @@ function NewConsignmentForm() {
                                             <DatePicker className="w-40 h-9" value={cnDate} onChange={(val) => setCnDate(val)} />
                                         </div>
                                         {!isEditMode && bookingBranchCode && (
-                                            <div className="mt-2 space-y-1">
+                                            <div className="mt-2 space-y-2">
+                                                {cnSequenceState.status === 'ready'
+                                                    && cnSequenceState.mode === 'range'
+                                                    && typeof cnSequenceState.remainingCount === 'number'
+                                                    && cnSequenceState.remainingCount > 0
+                                                    && cnSequenceState.remainingCount <= LOW_CN_THRESHOLD && (
+                                                    <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 flex items-start gap-2">
+                                                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                                        <span>{getLowCnWarningMessage(cnSequenceState.remainingCount, bookingBranchCode.toUpperCase())}</span>
+                                                    </div>
+                                                )}
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     {cnSequenceState.status === 'loading' && (
                                                         <Badge variant="outline">Loading CN...</Badge>
@@ -967,14 +1049,10 @@ function NewConsignmentForm() {
                                                             <span className="text-xs text-muted-foreground">
                                                                 Assigned range {cnSequenceState.rangeStart} - {cnSequenceState.rangeEnd}
                                                             </span>
-                                                            {typeof cnSequenceState.remainingCount === 'number' && (
+                                                            {typeof cnSequenceState.remainingCount === 'number'
+                                                                && cnSequenceState.remainingCount > LOW_CN_THRESHOLD && (
                                                                 <span className="text-xs text-muted-foreground">
                                                                     {cnSequenceState.remainingCount} CNs left
-                                                                </span>
-                                                            )}
-                                                            {typeof cnSequenceState.reservedCount === 'number' && cnSequenceState.reservedCount > 0 && (
-                                                                <span className="text-xs text-muted-foreground">
-                                                                    {cnSequenceState.reservedCount} physical blocks excluded
                                                                 </span>
                                                             )}
                                                         </>
