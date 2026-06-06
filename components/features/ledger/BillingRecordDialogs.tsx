@@ -805,8 +805,8 @@ const buildVehicleCancelPdfRows = (items: BillingVehicleCancelItem[]) =>
                     <td class="center name-cell">${toUpperText(item.vehicle_no) || '—'}</td>
                     <td class="center name-cell">${toUpperText(item.from_station) || '—'}</td>
                     <td class="center name-cell">${toUpperText(item.to_station) || '—'}</td>
-                    <td colspan="8" class="center" style="font-weight: 800; color: #1d2f7a; letter-spacing: 0.2px;">VEHICLE CANCELLATION CHARGES</td>
-                    <td class="amount">${fmt(item.charges)}</td>
+                    <td colspan="8" class="center vehicle-cancel-label">VEHICLE CANCELLATION CHARGES</td>
+                    <td class="amount vehicle-cancel-amount">${fmt(item.charges)}</td>
                 </tr>
             `).join('');
 
@@ -1002,8 +1002,12 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
-.total-row td { height: 32px; font-size: 17px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; overflow: visible !important; text-overflow: clip !important; }
-.total-label { text-align: right; padding-right: 12px; color: #1d2f7a; font-size: 14px; white-space: nowrap !important; }
+.vehicle-cancel-row td { font-size: 9px; }
+.vehicle-cancel-label { font-size: 8px; font-weight: 800; color: #1d2f7a; letter-spacing: 0.1px; white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; }
+.vehicle-cancel-amount { font-size: 9px; }
+.total-row td { height: 28px; font-size: 12px; font-weight: 800; padding-top: 5px; padding-bottom: 6px; overflow: visible !important; text-overflow: clip !important; }
+.total-label { text-align: right; padding-right: 12px; color: #1d2f7a; font-size: 11px; white-space: nowrap !important; }
+.total-row .amount { font-size: 12px; }
 .words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
 .notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
 .remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
