@@ -25,7 +25,16 @@ export async function PATCH(
 
     const { partyId, recordId } = await params;
     const body = await request.json();
-    const { billing_date, billing_period_from, billing_period_to, bill_ref_no, narration, covered_cn_nos, added_other_charges_amount } = body;
+    const {
+        billing_date,
+        billing_period_from,
+        billing_period_to,
+        bill_ref_no,
+        narration,
+        covered_cn_nos,
+        added_other_charges_amount,
+        vehicle_cancel_items,
+    } = body;
 
     if (!billing_date) {
         return NextResponse.json({ error: 'billing_date is required' }, { status: 400 });
@@ -60,6 +69,7 @@ export async function PATCH(
         partyId,
         coveredCnNos: covered_cn_nos,
         addedOtherChargesAmount: added_other_charges_amount,
+        vehicleCancelItems: vehicle_cancel_items,
         excludeBillingRecordId: recordId,
     });
 
@@ -101,6 +111,8 @@ export async function PATCH(
             covered_cn_nos: snapshotData.normalizedCoveredCnNos,
             cn_total_amount: snapshotData.cnTotalAmount,
             added_other_charges_amount: snapshotData.addedOtherChargesAmount,
+            vehicle_cancel_items: snapshotData.vehicleCancelItems,
+            vehicle_cancel_charges_total: snapshotData.vehicleCancelChargesTotal,
             consignment_snapshot: snapshotData.consignmentSnapshot,
             extra_charge_items: [],
         })

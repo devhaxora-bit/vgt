@@ -14,8 +14,18 @@ import {
     Truck,
     Info,
     ChevronRight,
-    Plus
+    Plus,
+    Link2,
+    Search,
+    Check,
+    X,
+    AlertTriangle,
 } from 'lucide-react';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger
+} from "@/components/ui/popover";
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,12 +70,23 @@ interface BranchCnSequenceState {
     rangeStart?: number | null;
     rangeEnd?: number | null;
     remainingCount?: number | null;
-    reservedCount?: number | null;
     message?: string;
 }
 
 const idleCnSequenceState: BranchCnSequenceState = {
     status: 'idle',
+};
+
+const LOW_CN_THRESHOLD = 5;
+
+const getLowCnWarningMessage = (remaining: number, branchCode: string) => {
+    if (remaining <= 0) {
+        return `No CNs left in the active range for branch ${branchCode}. Contact admin to issue a new range.`;
+    }
+    if (remaining === 1) {
+        return `This is the LAST CN available for branch ${branchCode}. After saving, the range will be exhausted — contact admin immediately.`;
+    }
+    return `Only ${remaining} CN${remaining !== 1 ? 's' : ''} left for branch ${branchCode}. Contact admin to issue a new CN range before numbers run out.`;
 };
 
 // We fetch branch options dynamically now, so just a helper if we ever need it static
@@ -120,6 +141,18 @@ function NewConsignmentForm() {
     const [basicFreight, setBasicFreight] = useState("");
     const [chargedWeight, setChargedWeight] = useState("");
 
+    // Freight Include (Parent-Child Linking)
+    const [freightIncluded, setFreightIncluded] = useState(false);
+    const [parentCnId, setParentCnId] = useState<string | null>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [parentCnData, setParentCnData] = useState<any>(null);
+    const [parentCnSearch, setParentCnSearch] = useState("");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [parentCnOptions, setParentCnOptions] = useState<any[]>([]);
+    const [isSearchingParentCn, setIsSearchingParentCn] = useState(false);
+    const [isParentCnPopoverOpen, setIsParentCnPopoverOpen] = useState(false);
+    const [hasChildren, setHasChildren] = useState(false);
+
     // Freight Charges
     const [charges, setCharges] = useState({
         unloading: "",
@@ -131,6 +164,33 @@ function NewConsignmentForm() {
         trafficChallan: "",
         other: ""
     });
+
+    // Search parent CN for include feature
+    React.useEffect(() => {
+        if (!freightIncluded) {
+            setParentCnOptions([]);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setIsSearchingParentCn(true);
+            try {
+                const params = new URLSearchParams({
+                    search: parentCnSearch || '',
+                    exclude_children: 'true',
+                });
+                if (editId) params.set('exclude_id', editId);
+                const res = await fetch(`/api/consignments/by-cn?${params}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setParentCnOptions(Array.isArray(data) ? data : []);
+                }
+            } catch { /* ignore */ }
+            setIsSearchingParentCn(false);
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [parentCnSearch, freightIncluded, editId, isParentCnPopoverOpen]);
 
     // General fields state
     React.useEffect(() => {
@@ -296,7 +356,6 @@ function NewConsignmentForm() {
                             rangeStart: data.rangeStart ?? null,
                             rangeEnd: data.rangeEnd ?? null,
                             remainingCount: data.remainingCount ?? null,
-                            reservedCount: data.reservedCount ?? null,
                             message: data.message,
                         });
                         return;
@@ -493,6 +552,27 @@ function NewConsignmentForm() {
                 setStfNo(data.stf_no || "");
                 setStfDate(formatDateForInput(data.stf_date));
                 setStfValidUpto(formatDateForInput(data.stf_valid_upto));
+
+                // Load freight include state
+                if (data.freight_included && data.parent_cn_id) {
+                    setFreightIncluded(true);
+                    setParentCnId(data.parent_cn_id);
+                    // Fetch parent CN data to show in the UI
+                    try {
+                        const parentRes = await fetch(`/api/consignments/by-cn?cns=${data.parent_cn_id}`);
+                        if (parentRes.ok) {
+                            const parentArr = await parentRes.json();
+                            // by-cn with cns param returns array, find by id
+                            // Actually parent_cn_id is a UUID, but by-cn uses cn_no. Need to fetch by id.
+                            const parentFetchRes = await fetch(`/api/consignments/${data.parent_cn_id}`);
+                            if (parentFetchRes.ok) {
+                                const parentData = await parentFetchRes.json();
+                                setParentCnData(parentData);
+                            }
+                        }
+                    } catch { /* ignore - parent data is optional reference */ }
+                }
+                setHasChildren(data.has_children ?? false);
             } catch (error) {
                 console.error('Failed to load consignment for edit:', error);
                 toast.error(error instanceof Error ? error.message : 'Failed to load consignment');
@@ -532,7 +612,7 @@ function NewConsignmentForm() {
     // "Loose (Zero Package)" label suggests it counts as 0 packages?
 
     const calculateFreight = () => {
-        if (isFreightPending) return 0;
+        if (isFreightPending || freightIncluded) return 0;
         let basic = 0;
         if (freightType === 'fixed') {
             basic = parseFloat(basicFreight) || 0;
@@ -593,6 +673,16 @@ function NewConsignmentForm() {
             ) {
                 toast.error(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
                 return;
+            }
+
+            if (
+                isRangeManaged
+                && cnSequenceState.status === 'ready'
+                && typeof cnSequenceState.remainingCount === 'number'
+                && cnSequenceState.remainingCount > 0
+                && cnSequenceState.remainingCount <= LOW_CN_THRESHOLD
+            ) {
+                toast.warning(getLowCnWarningMessage(cnSequenceState.remainingCount, bookingBranchCode.toUpperCase()));
             }
         }
         setIsSaving(true);
@@ -670,20 +760,24 @@ function NewConsignmentForm() {
                 private_mark: privateMark || otherPrivateMark,
 
                 freight_pending: isFreightPending,
-                freight_rate: freightRate,
-                basic_freight: basicFrt.toFixed(2),
-                unload_charges: charges.unloading,
-                retention_charges: charges.detention,
-                extra_km_charges: charges.extraKm,
-                mhc_charges: charges.loading,
-                door_coll_charges: charges.doorColl,
-                door_del_charges: charges.doorDel,
-                traffic_challan_charges: charges.trafficChallan,
-                other_charges: charges.other,
-                total_freight: totalFrt.toFixed(2),
-                amount_in_words: numberToWords(totalFrt),
-                advance_amount: advanceAmount,
-                balance_amount: (totalFrt - adv).toFixed(2),
+                freight_rate: freightIncluded ? '0' : freightRate,
+                basic_freight: freightIncluded ? '0.00' : basicFrt.toFixed(2),
+                unload_charges: freightIncluded ? '0' : charges.unloading,
+                retention_charges: freightIncluded ? '0' : charges.detention,
+                extra_km_charges: freightIncluded ? '0' : charges.extraKm,
+                mhc_charges: freightIncluded ? '0' : charges.loading,
+                door_coll_charges: freightIncluded ? '0' : charges.doorColl,
+                door_del_charges: freightIncluded ? '0' : charges.doorDel,
+                traffic_challan_charges: freightIncluded ? '0' : charges.trafficChallan,
+                other_charges: freightIncluded ? '0' : charges.other,
+                total_freight: freightIncluded ? '0.00' : totalFrt.toFixed(2),
+                amount_in_words: freightIncluded ? numberToWords(0) : numberToWords(totalFrt),
+                advance_amount: freightIncluded ? '0' : advanceAmount,
+                balance_amount: freightIncluded ? '0.00' : (totalFrt - adv).toFixed(2),
+
+                // Parent-child freight include
+                parent_cn_id: freightIncluded ? parentCnId : null,
+                freight_included: freightIncluded,
 
                 invoice_no: invoiceNo,
                 invoice_date: parseDateForDB(invoiceDate),
@@ -781,6 +875,8 @@ function NewConsignmentForm() {
                             setInsuranceComp('not-known'); setPolicyNo(''); setPolicyDate(''); setPolicyAmount('');
                             setPoNo(''); setPoDate(''); setStfNo(''); setStfDate(''); setStfValidUpto('');
                             setRemarks(''); setAdvanceAmount(''); setVehicleNo(''); setLoadingPoint(''); setDeliveryPoint('');
+                            setFreightIncluded(false); setParentCnId(null); setParentCnData(null); setParentCnSearch(''); setParentCnOptions([]);
+                            setHasChildren(false);
                             setIsOwnersRisk(true); setIsDoorCollection(false); setIsCancelCn(false);
                             setBkgBasis(''); setDeliveryType('dd');
                             setDestBranch(''); setBookingBranchCode('');
@@ -800,7 +896,58 @@ function NewConsignmentForm() {
                 </div>
             </div>
 
-            <div className="flex-1 p-6 max-w-[1920px] mx-auto w-full">
+            <div className="flex-1 p-6 max-w-[1920px] mx-auto w-full space-y-4">
+                {!isEditMode && bookingBranchCode && cnSequenceState.status === 'range_exhausted' && (
+                    <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 flex items-start gap-3 text-sm text-red-800">
+                        <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-red-600" />
+                        <div>
+                            <div className="font-semibold">CN range exhausted — cannot create consignment</div>
+                            <p className="text-xs mt-1 text-red-700">
+                                {cnSequenceState.message || `Branch ${bookingBranchCode.toUpperCase()} has no available CN numbers. Ask admin to issue a new range via Documentation → CN Assigning.`}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {!isEditMode && bookingBranchCode && cnSequenceState.status === 'configuration_required' && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3 text-sm text-amber-800">
+                        <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+                        <div>
+                            <div className="font-semibold">No active CN range — cannot create consignment</div>
+                            <p className="text-xs mt-1 text-amber-700">
+                                {cnSequenceState.message || `Branch ${bookingBranchCode.toUpperCase()} needs a CN range assigned. Ask admin via Documentation → CN Assigning.`}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {!isEditMode
+                    && bookingBranchCode
+                    && cnSequenceState.status === 'ready'
+                    && cnSequenceState.mode === 'range'
+                    && typeof cnSequenceState.remainingCount === 'number'
+                    && cnSequenceState.remainingCount > 0
+                    && cnSequenceState.remainingCount <= LOW_CN_THRESHOLD && (
+                    <div className="rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 flex items-start gap-3 text-sm text-amber-900 shadow-sm">
+                        <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 animate-pulse" />
+                        <div>
+                            <div className="font-semibold">
+                                {cnSequenceState.remainingCount === 1
+                                    ? 'Last CN in range'
+                                    : `Only ${cnSequenceState.remainingCount} CNs left`}
+                            </div>
+                            <p className="text-xs mt-1 text-amber-800">
+                                {getLowCnWarningMessage(cnSequenceState.remainingCount, bookingBranchCode.toUpperCase())}
+                            </p>
+                            {typeof cnSequenceState.rangeEnd === 'number' && (
+                                <p className="text-xs mt-1 text-amber-700 font-mono">
+                                    Range {cnSequenceState.rangeStart}–{cnSequenceState.rangeEnd} · Next CN: {cnNo || cnSequenceState.nextNo}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     {/* Main Form Area */}
@@ -881,7 +1028,17 @@ function NewConsignmentForm() {
                                             <DatePicker className="w-40 h-9" value={cnDate} onChange={(val) => setCnDate(val)} />
                                         </div>
                                         {!isEditMode && bookingBranchCode && (
-                                            <div className="mt-2 space-y-1">
+                                            <div className="mt-2 space-y-2">
+                                                {cnSequenceState.status === 'ready'
+                                                    && cnSequenceState.mode === 'range'
+                                                    && typeof cnSequenceState.remainingCount === 'number'
+                                                    && cnSequenceState.remainingCount > 0
+                                                    && cnSequenceState.remainingCount <= LOW_CN_THRESHOLD && (
+                                                    <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 flex items-start gap-2">
+                                                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                                        <span>{getLowCnWarningMessage(cnSequenceState.remainingCount, bookingBranchCode.toUpperCase())}</span>
+                                                    </div>
+                                                )}
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     {cnSequenceState.status === 'loading' && (
                                                         <Badge variant="outline">Loading CN...</Badge>
@@ -892,14 +1049,10 @@ function NewConsignmentForm() {
                                                             <span className="text-xs text-muted-foreground">
                                                                 Assigned range {cnSequenceState.rangeStart} - {cnSequenceState.rangeEnd}
                                                             </span>
-                                                            {typeof cnSequenceState.remainingCount === 'number' && (
+                                                            {typeof cnSequenceState.remainingCount === 'number'
+                                                                && cnSequenceState.remainingCount > LOW_CN_THRESHOLD && (
                                                                 <span className="text-xs text-muted-foreground">
                                                                     {cnSequenceState.remainingCount} CNs left
-                                                                </span>
-                                                            )}
-                                                            {typeof cnSequenceState.reservedCount === 'number' && cnSequenceState.reservedCount > 0 && (
-                                                                <span className="text-xs text-muted-foreground">
-                                                                    {cnSequenceState.reservedCount} physical blocks excluded
                                                                 </span>
                                                             )}
                                                         </>
@@ -1610,12 +1763,138 @@ function NewConsignmentForm() {
                                         <div className="space-y-3 pb-6">
                                             <div className="flex flex-col space-y-2 pb-2 border-b border-primary/10">
                                                 <div className="flex items-center space-x-2">
-                                                    <Checkbox id="freight-pending" checked={isFreightPending} onCheckedChange={(c) => setIsFreightPending(!!c)} />
+                                                    <Checkbox
+                                                        id="freight-pending"
+                                                        checked={isFreightPending}
+                                                        onCheckedChange={(c) => {
+                                                            setIsFreightPending(!!c);
+                                                            if (!!c) {
+                                                                setFreightIncluded(false);
+                                                                setParentCnId(null);
+                                                                setParentCnData(null);
+                                                            }
+                                                        }}
+                                                        disabled={freightIncluded}
+                                                    />
                                                     <Label htmlFor="freight-pending" className="text-xs font-bold cursor-pointer">Freight Pending</Label>
                                                 </div>
+
+                                                {/* Freight Include Toggle */}
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id="freight-include"
+                                                            checked={freightIncluded}
+                                                            onCheckedChange={(c) => {
+                                                                const checked = !!c;
+                                                                if (isEditMode && !checked && parentCnId) {
+                                                                    const confirm = window.confirm("Warning: Removing the linking will remove the parent association, and you will need to re-enter all freight details. Do you want to proceed?");
+                                                                    if (!confirm) return;
+                                                                }
+                                                                setFreightIncluded(checked);
+                                                                if (!checked) {
+                                                                    setParentCnId(null);
+                                                                    setParentCnData(null);
+                                                                    setParentCnSearch('');
+                                                                    setParentCnOptions([]);
+                                                                } else {
+                                                                    setIsFreightPending(false);
+                                                                }
+                                                            }}
+                                                            disabled={isFreightPending || hasChildren}
+                                                        />
+                                                        <Label htmlFor="freight-include" className="text-xs font-bold cursor-pointer flex items-center gap-1">
+                                                            <Link2 className="h-3 w-3" /> Include Freight
+                                                        </Label>
+                                                    </div>
+                                                    {hasChildren && (
+                                                        <div className="text-[10px] text-amber-600 font-medium pl-6">
+                                                            This CN has child CNs linked to it, so it cannot be included in another CN.
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Parent CN Selector */}
+                                                {freightIncluded && (
+                                                    <div className="space-y-2 pt-1">
+                                                        {parentCnData ? (
+                                                            <div className="bg-blue-50 border border-blue-200 rounded-md p-2 space-y-1">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-bold text-blue-700 uppercase">Linked to Parent CN</span>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-5 w-5 text-blue-500 hover:text-destructive hover:bg-destructive/10"
+                                                                        onClick={() => {
+                                                                            if (isEditMode && parentCnId) {
+                                                                                const confirm = window.confirm("Warning: Removing the linking will remove the parent association, and you will need to re-enter all freight details. Do you want to proceed?");
+                                                                                if (!confirm) return;
+                                                                            }
+                                                                            setParentCnId(null);
+                                                                            setParentCnData(null);
+                                                                            setParentCnSearch('');
+                                                                        }}
+                                                                    >
+                                                                        <X className="h-3 w-3" />
+                                                                    </Button>
+                                                                </div>
+                                                                <div className="text-sm font-bold font-mono text-blue-900">{parentCnData.cn_no}</div>
+                                                                <div className="text-[10px] text-blue-600">Total Freight: ₹{parseFloat(parentCnData.total_freight || 0).toFixed(2)}</div>
+                                                            </div>
+                                                        ) : (
+                                                            <Popover open={isParentCnPopoverOpen} onOpenChange={setIsParentCnPopoverOpen}>
+                                                                <PopoverTrigger asChild>
+                                                                    <Button variant="outline" className="w-full h-8 justify-start text-xs font-normal text-muted-foreground">
+                                                                        <Search className="h-3 w-3 mr-2" /> Select Parent CN...
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-64 p-0" align="start">
+                                                                    <div className="p-2 border-b">
+                                                                        <Input
+                                                                            placeholder="Search CN number..."
+                                                                            className="h-7 text-xs"
+                                                                            value={parentCnSearch}
+                                                                            onChange={(e) => setParentCnSearch(e.target.value)}
+                                                                            autoFocus
+                                                                        />
+                                                                    </div>
+                                                                    <div className="max-h-48 overflow-y-auto">
+                                                                        {isSearchingParentCn ? (
+                                                                            <div className="p-3 text-center text-xs text-muted-foreground">Searching...</div>
+                                                                        ) : parentCnOptions.length === 0 ? (
+                                                                            <div className="p-3 text-center text-xs text-muted-foreground">
+                                                                                No CNs found
+                                                                            </div>
+                                                                        ) : (
+                                                                            parentCnOptions.map((cn) => (
+                                                                                <button
+                                                                                    key={cn.id}
+                                                                                    className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b last:border-0 transition-colors"
+                                                                                    onClick={() => {
+                                                                                        setParentCnId(cn.id);
+                                                                                        setParentCnData(cn);
+                                                                                        setParentCnSearch('');
+                                                                                        setParentCnOptions([]);
+                                                                                        setIsParentCnPopoverOpen(false);
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="font-mono font-bold">{cn.cn_no}</div>
+                                                                                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                                                                                        Freight: ₹{parseFloat(cn.total_freight || 0).toFixed(2)} · {cn.dest_branch || cn.delivery_point || '—'}
+                                                                                    </div>
+                                                                                </button>
+                                                                            ))
+                                                                        )}
+                                                                    </div>
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                        )}
+                                                    </div>
+                                                )}
+
                                                 <div className="flex items-center justify-between gap-4 pt-2">
                                                     <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Freight Type</Label>
-                                                    <Select value={freightType} onValueChange={setFreightType} disabled={isFreightPending}>
+                                                    <Select value={freightType} onValueChange={setFreightType} disabled={isFreightPending || freightIncluded}>
                                                         <SelectTrigger className="h-7 w-32 text-xs font-mono">
                                                             <SelectValue />
                                                         </SelectTrigger>
@@ -1627,13 +1906,22 @@ function NewConsignmentForm() {
                                                 </div>
                                             </div>
 
+                                            {/* Info banner when freight is included */}
+                                            {freightIncluded && parentCnData && (
+                                                <div className="bg-blue-50/70 border border-blue-100 rounded px-2 py-1.5 text-[10px] text-blue-700 font-medium flex items-center gap-1.5">
+                                                    <Link2 className="h-3 w-3 flex-shrink-0" />
+                                                    Freight included in CN {parentCnData.cn_no}. Values below are from parent (saved as ₹0).
+                                                </div>
+                                            )}
+
                                             <div className="flex items-center justify-between gap-4">
                                                 <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Rate</Label>
                                                 <Input
                                                     type="text"
-                                                    className="h-7 w-28 text-right font-mono text-xs"
+                                                    className={`h-7 w-28 text-right font-mono text-xs ${freightIncluded ? 'bg-blue-50/50 text-blue-400 italic' : ''}`}
                                                     disabled={isFreightPending || freightType === 'fixed'}
-                                                    value={isFreightPending ? "0" : freightRate}
+                                                    readOnly={freightIncluded}
+                                                    value={isFreightPending ? "0" : (freightIncluded && parentCnData ? String(parentCnData.freight_rate ?? '0') : freightRate)}
                                                     onChange={(e) => setFreightRate(e.target.value)}
                                                 />
                                             </div>
@@ -1641,31 +1929,32 @@ function NewConsignmentForm() {
                                                 <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">Basic Freight</Label>
                                                 <Input
                                                     type="text"
-                                                    className={`h-7 w-28 text-right font-mono text-xs ${freightType === 'fixed' ? '' : 'bg-primary/5 border-primary/20 font-bold'}`}
-                                                    readOnly={freightType !== 'fixed'}
+                                                    className={`h-7 w-28 text-right font-mono text-xs ${freightIncluded ? 'bg-blue-50/50 text-blue-400 italic' : (freightType === 'fixed' ? '' : 'bg-primary/5 border-primary/20 font-bold')}`}
+                                                    readOnly={freightType !== 'fixed' || freightIncluded}
                                                     disabled={isFreightPending}
-                                                    value={isFreightPending ? "0.00" : (freightType === 'fixed' ? basicFreight : (loadUnit.toLowerCase() === 'kg' ? (((parseFloat(chargedWeight) || 0) / 1000) * (parseFloat(freightRate) || 0)).toFixed(2) : ((parseFloat(freightRate) || 0) * parseFloat(chargedWeight || "0")).toFixed(2)))}
+                                                    value={isFreightPending ? "0.00" : (freightIncluded && parentCnData ? parseFloat(parentCnData.basic_freight || 0).toFixed(2) : (freightType === 'fixed' ? basicFreight : (loadUnit.toLowerCase() === 'kg' ? (((parseFloat(chargedWeight) || 0) / 1000) * (parseFloat(freightRate) || 0)).toFixed(2) : ((parseFloat(freightRate) || 0) * parseFloat(chargedWeight || "0")).toFixed(2))))}
                                                     onChange={(e) => setBasicFreight(e.target.value)}
                                                 />
                                             </div>
 
                                             {[
-                                                { key: 'unloading', label: "Unloading Charges" },
-                                                { key: 'detention', label: "Detention Charges" },
-                                                { key: 'extraKm', label: "Extra KM Charges" },
-                                                { key: 'loading', label: "Loading Charges" },
-                                                { key: 'doorColl', label: "Door Coll Charges" },
-                                                { key: 'doorDel', label: "Door Del Charges" },
-                                                { key: 'trafficChallan', label: "Traffic Challan Charges" },
-                                                { key: 'other', label: "Other Charges" },
+                                                { key: 'unloading', label: "Unloading Charges", dbKey: 'unload_charges' },
+                                                { key: 'detention', label: "Detention Charges", dbKey: 'retention_charges' },
+                                                { key: 'extraKm', label: "Extra KM Charges", dbKey: 'extra_km_charges' },
+                                                { key: 'loading', label: "Loading Charges", dbKey: 'mhc_charges' },
+                                                { key: 'doorColl', label: "Door Coll Charges", dbKey: 'door_coll_charges' },
+                                                { key: 'doorDel', label: "Door Del Charges", dbKey: 'door_del_charges' },
+                                                { key: 'trafficChallan', label: "Traffic Challan Charges", dbKey: 'traffic_challan_charges' },
+                                                { key: 'other', label: "Other Charges", dbKey: 'other_charges' },
                                             ].map((field) => (
                                                 <div key={field.key} className="flex items-center justify-between gap-4">
                                                     <Label className="text-[11px] font-bold text-muted-foreground whitespace-nowrap">{field.label}</Label>
                                                     <Input
                                                         type="text"
                                                         disabled={isFreightPending}
-                                                        className="h-7 w-28 text-right font-mono text-xs"
-                                                        value={isFreightPending ? "0" : charges[field.key as keyof typeof charges]}
+                                                        readOnly={freightIncluded}
+                                                        className={`h-7 w-28 text-right font-mono text-xs ${freightIncluded ? 'bg-blue-50/50 text-blue-400 italic' : ''}`}
+                                                        value={isFreightPending ? "0" : (freightIncluded && parentCnData ? String(parentCnData[field.dbKey] ?? '0') : charges[field.key as keyof typeof charges])}
                                                         onChange={(e) => setCharges({ ...charges, [field.key]: e.target.value })}
                                                     />
                                                 </div>

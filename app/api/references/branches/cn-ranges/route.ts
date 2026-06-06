@@ -11,12 +11,7 @@ const isMissingCnManagementSchema = (error: { code?: string; message?: string } 
     if (error.code === '42P01' || error.code === '42883') return true;
 
     const message = String(error.message || '').toLowerCase();
-    return (
-        message.includes('branch_cn_ranges')
-        || message.includes('branch_cn_reserved_ranges')
-        || message.includes('create_branch_cn_range')
-        || message.includes('create_branch_cn_reserved_range')
-    );
+    return message.includes('branch_cn_ranges') || message.includes('create_branch_cn_range');
 };
 
 export async function POST(request: Request) {
@@ -31,7 +26,6 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const branchId = String(body.branch_id || '').trim();
-    const rangeType = String(body.range_type || '').trim().toLowerCase();
     const rangeStart = parseRangeValue(body.range_start);
     const rangeEnd = parseRangeValue(body.range_end);
     const note = typeof body.note === 'string' ? body.note.trim() : null;
@@ -40,15 +34,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Branch, range start and range end are required.' }, { status: 400 });
     }
 
-    if (rangeType !== 'system' && rangeType !== 'physical') {
-        return NextResponse.json({ error: 'range_type must be either "system" or "physical".' }, { status: 400 });
-    }
-
-    const rpcName = rangeType === 'system'
-        ? 'create_branch_cn_range'
-        : 'create_branch_cn_reserved_range';
-
-    const { data, error } = await supabase.rpc(rpcName, {
+    const { data, error } = await supabase.rpc('create_branch_cn_range', {
         p_branch_id: branchId,
         p_range_start: rangeStart,
         p_range_end: rangeEnd,

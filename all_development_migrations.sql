@@ -1631,3 +1631,391 @@ ADD COLUMN IF NOT EXISTS traffic_challan_charges numeric DEFAULT 0;
 
 -- Reload PostgREST schema cache
 NOTIFY pgrst, 'reload schema';
+
+-- Add parent-child linking for CN freight include feature
+-- A child CN can "include" its freight in a parent CN.
+-- When freight_included = true, the child CN's freight fields are all zero,
+-- and it references the parent CN via parent_cn_id.
+
+ALTER TABLE consignments
+  ADD COLUMN IF NOT EXISTS parent_cn_id UUID REFERENCES consignments(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS freight_included BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_consignments_parent_cn_id
+  ON consignments(parent_cn_id)
+  WHERE parent_cn_id IS NOT NULL;
+
+ALTER TABLE consignments
+  ADD CONSTRAINT chk_freight_included_consistency
+  CHECK (
+    (parent_cn_id IS NULL AND freight_included = false)
+    OR (parent_cn_id IS NOT NULL AND freight_included = true)
+  );
+
+-- ============================================================
+-- Migration: 20260606000100 — Head Branch & CN Range Validation
+-- ============================================================
+
+-- 1. Mark VZM as the issuing (head) branch
+ALTER TABLE public.branches
+    ADD COLUMN IF NOT EXISTS is_head_branch BOOLEAN NOT NULL DEFAULT false;
+
+UPDATE public.branches
+SET is_head_branch = true
+WHERE UPPER(BTRIM(code)) = 'VZM';
+
+-- 2. Helper: return all numeric CN numbers that already exist in consignments
+--    within a given numeric range.  Used by the pre-activation validation API.
+CREATE OR REPLACE FUNCTION public.get_existing_cns_in_range(
+    p_range_start BIGINT,
+    p_range_end   BIGINT
+)
+RETURNS TABLE(cn_num BIGINT)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT DISTINCT cn_no::bigint AS cn_num
+    FROM   public.consignments
+    WHERE  cn_no ~ '^\d+$'
+      AND  cn_no::bigint BETWEEN p_range_start AND p_range_end
+    ORDER  BY cn_no::bigint;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_existing_cns_in_range(BIGINT, BIGINT) TO authenticated;
+
+-- 3. Rewrite create_branch_cn_range so that next_cn_no skips:
+--    a) physical (reserved) blocks already registered for the branch
+--    b) CN numbers that already exist in the consignments table
+CREATE OR REPLACE FUNCTION public.create_branch_cn_range(
+    p_branch_id  UUID,
+    p_range_start BIGINT,
+    p_range_end   BIGINT,
+    p_note        TEXT DEFAULT NULL
+)
+RETURNS public.branch_cn_ranges
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_new_range  public.branch_cn_ranges;
+    v_candidate  BIGINT;
+    v_reserved   RECORD;
+    v_cn_exists  BOOLEAN;
+BEGIN
+    IF auth.uid() IS NULL OR NOT public.is_admin(auth.uid()) THEN
+        RAISE EXCEPTION 'Only admins can manage branch CN ranges.';
+    END IF;
+
+    IF p_range_start > p_range_end THEN
+        RAISE EXCEPTION 'Range start must be less than or equal to range end.';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM public.branches WHERE id = p_branch_id) THEN
+        RAISE EXCEPTION 'Branch % not found.', p_branch_id;
+    END IF;
+
+    -- Retire any currently active range for this branch
+    UPDATE public.branch_cn_ranges
+    SET status = CASE
+                     WHEN next_cn_no > range_end THEN 'exhausted'
+                     ELSE 'inactive'
+                 END
+    WHERE branch_id = p_branch_id
+      AND status    = 'active';
+
+    -- Walk from range_start, skipping physical reservations AND existing consignments
+    v_candidate := p_range_start;
+    LOOP
+        EXIT WHEN v_candidate > p_range_end;
+
+        -- Skip physical (reserved) blocks
+        SELECT range_start, range_end
+        INTO   v_reserved
+        FROM   public.branch_cn_reserved_ranges
+        WHERE  branch_id    = p_branch_id
+          AND  range_start <= v_candidate
+          AND  range_end   >= v_candidate
+        LIMIT 1;
+
+        IF FOUND THEN
+            v_candidate := v_reserved.range_end + 1;
+            CONTINUE;
+        END IF;
+
+        -- Skip if this CN number is already stored in consignments
+        SELECT EXISTS(
+            SELECT 1
+            FROM   public.consignments
+            WHERE  cn_no ~ '^\d+$'
+              AND  cn_no::bigint = v_candidate
+        ) INTO v_cn_exists;
+
+        IF v_cn_exists THEN
+            v_candidate := v_candidate + 1;
+            CONTINUE;
+        END IF;
+
+        EXIT; -- v_candidate is the first free slot
+    END LOOP;
+
+    INSERT INTO public.branch_cn_ranges (
+        branch_id, range_start, range_end, next_cn_no, status, note
+    )
+    VALUES (
+        p_branch_id,
+        p_range_start,
+        p_range_end,
+        v_candidate,
+        CASE WHEN v_candidate > p_range_end THEN 'exhausted' ELSE 'active' END,
+        NULLIF(BTRIM(p_note), '')
+    )
+    RETURNING *
+    INTO v_new_range;
+
+    -- Keep branches.next_cn_no in sync
+    UPDATE public.branches
+    SET next_cn_no = v_new_range.next_cn_no
+    WHERE id = p_branch_id;
+
+    RETURN v_new_range;
+EXCEPTION
+    WHEN exclusion_violation THEN
+        RAISE EXCEPTION
+            'CN range % – % overlaps a range already assigned to another branch. Each CN block can only be issued to one branch.',
+            p_range_start, p_range_end;
+END;
+$$;
+
+-- ============================================================
+-- Migration: 20260606000200 — Remove physical CN reservations
+-- ============================================================
+
+DROP FUNCTION IF EXISTS public.create_branch_cn_reserved_range(UUID, BIGINT, BIGINT, TEXT);
+DROP TABLE IF EXISTS public.branch_cn_reserved_ranges;
+
+CREATE OR REPLACE FUNCTION public.next_available_branch_cn(
+    p_range_id UUID,
+    p_candidate BIGINT
+)
+RETURNS BIGINT
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $$
+DECLARE
+    v_range     public.branch_cn_ranges;
+    v_candidate BIGINT := p_candidate;
+    v_cn_exists BOOLEAN;
+BEGIN
+    SELECT *
+    INTO   v_range
+    FROM   public.branch_cn_ranges
+    WHERE  id = p_range_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'CN range % not found.', p_range_id;
+    END IF;
+
+    IF v_candidate < v_range.range_start THEN
+        v_candidate := v_range.range_start;
+    END IF;
+
+    LOOP
+        EXIT WHEN v_candidate > v_range.range_end;
+
+        SELECT EXISTS(
+            SELECT 1
+            FROM   public.consignments
+            WHERE  cn_no ~ '^\d+$'
+              AND  cn_no::bigint = v_candidate
+        ) INTO v_cn_exists;
+
+        IF NOT v_cn_exists THEN
+            RETURN v_candidate;
+        END IF;
+
+        v_candidate := v_candidate + 1;
+    END LOOP;
+
+    RETURN v_candidate;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.create_branch_cn_range(
+    p_branch_id   UUID,
+    p_range_start BIGINT,
+    p_range_end   BIGINT,
+    p_note        TEXT DEFAULT NULL
+)
+RETURNS public.branch_cn_ranges
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_new_range public.branch_cn_ranges;
+    v_candidate BIGINT;
+    v_cn_exists BOOLEAN;
+BEGIN
+    IF auth.uid() IS NULL OR NOT public.is_admin(auth.uid()) THEN
+        RAISE EXCEPTION 'Only admins can manage branch CN ranges.';
+    END IF;
+
+    IF p_range_start > p_range_end THEN
+        RAISE EXCEPTION 'Range start must be less than or equal to range end.';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM public.branches WHERE id = p_branch_id) THEN
+        RAISE EXCEPTION 'Branch % not found.', p_branch_id;
+    END IF;
+
+    UPDATE public.branch_cn_ranges
+    SET status = CASE
+                     WHEN next_cn_no > range_end THEN 'exhausted'
+                     ELSE 'inactive'
+                 END
+    WHERE branch_id = p_branch_id
+      AND status    = 'active';
+
+    v_candidate := p_range_start;
+    LOOP
+        EXIT WHEN v_candidate > p_range_end;
+
+        SELECT EXISTS(
+            SELECT 1
+            FROM   public.consignments
+            WHERE  cn_no ~ '^\d+$'
+              AND  cn_no::bigint = v_candidate
+        ) INTO v_cn_exists;
+
+        IF NOT v_cn_exists THEN
+            EXIT;
+        END IF;
+
+        v_candidate := v_candidate + 1;
+    END LOOP;
+
+    INSERT INTO public.branch_cn_ranges (
+        branch_id, range_start, range_end, next_cn_no, status, note
+    )
+    VALUES (
+        p_branch_id,
+        p_range_start,
+        p_range_end,
+        v_candidate,
+        CASE WHEN v_candidate > p_range_end THEN 'exhausted' ELSE 'active' END,
+        NULLIF(BTRIM(p_note), '')
+    )
+    RETURNING *
+    INTO v_new_range;
+
+    UPDATE public.branches
+    SET next_cn_no = v_new_range.next_cn_no
+    WHERE id = p_branch_id;
+
+    RETURN v_new_range;
+EXCEPTION
+    WHEN exclusion_violation THEN
+        RAISE EXCEPTION
+            'CN range % – % overlaps a range already assigned to another branch. Each CN block can only be issued to one branch.',
+            p_range_start, p_range_end;
+END;
+$$;
+
+-- ============================================================
+-- Migration: 20260606000300 — Track CN range assigner
+-- ============================================================
+
+ALTER TABLE public.branch_cn_ranges
+    ADD COLUMN IF NOT EXISTS assigned_by UUID REFERENCES public.users(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_branch_cn_ranges_assigned_by
+    ON public.branch_cn_ranges(assigned_by);
+
+CREATE OR REPLACE FUNCTION public.create_branch_cn_range(
+    p_branch_id   UUID,
+    p_range_start BIGINT,
+    p_range_end   BIGINT,
+    p_note        TEXT DEFAULT NULL
+)
+RETURNS public.branch_cn_ranges
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_new_range public.branch_cn_ranges;
+    v_candidate BIGINT;
+    v_cn_exists BOOLEAN;
+BEGIN
+    IF auth.uid() IS NULL OR NOT public.is_admin(auth.uid()) THEN
+        RAISE EXCEPTION 'Only admins can manage branch CN ranges.';
+    END IF;
+
+    IF p_range_start > p_range_end THEN
+        RAISE EXCEPTION 'Range start must be less than or equal to range end.';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM public.branches WHERE id = p_branch_id) THEN
+        RAISE EXCEPTION 'Branch % not found.', p_branch_id;
+    END IF;
+
+    UPDATE public.branch_cn_ranges
+    SET status = CASE
+                     WHEN next_cn_no > range_end THEN 'exhausted'
+                     ELSE 'inactive'
+                 END
+    WHERE branch_id = p_branch_id
+      AND status    = 'active';
+
+    v_candidate := p_range_start;
+    LOOP
+        EXIT WHEN v_candidate > p_range_end;
+
+        SELECT EXISTS(
+            SELECT 1
+            FROM   public.consignments
+            WHERE  cn_no ~ '^\d+$'
+              AND  cn_no::bigint = v_candidate
+        ) INTO v_cn_exists;
+
+        IF NOT v_cn_exists THEN
+            EXIT;
+        END IF;
+
+        v_candidate := v_candidate + 1;
+    END LOOP;
+
+    INSERT INTO public.branch_cn_ranges (
+        branch_id, range_start, range_end, next_cn_no, status, note, assigned_by
+    )
+    VALUES (
+        p_branch_id,
+        p_range_start,
+        p_range_end,
+        v_candidate,
+        CASE WHEN v_candidate > p_range_end THEN 'exhausted' ELSE 'active' END,
+        NULLIF(BTRIM(p_note), ''),
+        auth.uid()
+    )
+    RETURNING *
+    INTO v_new_range;
+
+    UPDATE public.branches
+    SET next_cn_no = v_new_range.next_cn_no
+    WHERE id = p_branch_id;
+
+    RETURN v_new_range;
+EXCEPTION
+    WHEN exclusion_violation THEN
+        RAISE EXCEPTION
+            'CN range % – % overlaps a range already assigned to another branch. Each CN block can only be issued to one branch.',
+            p_range_start, p_range_end;
+END;
+$$;
+
+-- Reload PostgREST schema cache
+NOTIFY pgrst, 'reload schema';

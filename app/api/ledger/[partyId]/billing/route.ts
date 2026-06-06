@@ -38,7 +38,16 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { billing_date, billing_period_from, billing_period_to, bill_ref_no, narration, covered_cn_nos, added_other_charges_amount } = body;
+    const {
+        billing_date,
+        billing_period_from,
+        billing_period_to,
+        bill_ref_no,
+        narration,
+        covered_cn_nos,
+        added_other_charges_amount,
+        vehicle_cancel_items,
+    } = body;
     const normalizedBillRefNo = String(bill_ref_no || '').trim();
 
     if (!billing_date || !normalizedBillRefNo) {
@@ -62,6 +71,7 @@ export async function POST(
         partyId,
         coveredCnNos: covered_cn_nos,
         addedOtherChargesAmount: added_other_charges_amount,
+        vehicleCancelItems: vehicle_cancel_items,
     });
 
     if (snapshotError || !snapshotData) {
@@ -88,6 +98,8 @@ export async function POST(
             covered_cn_nos: snapshotData.normalizedCoveredCnNos,
             cn_total_amount: snapshotData.cnTotalAmount,
             added_other_charges_amount: snapshotData.addedOtherChargesAmount,
+            vehicle_cancel_items: snapshotData.vehicleCancelItems,
+            vehicle_cancel_charges_total: snapshotData.vehicleCancelChargesTotal,
             consignment_snapshot: snapshotData.consignmentSnapshot,
             extra_charge_items: [],
             created_by: user.id,

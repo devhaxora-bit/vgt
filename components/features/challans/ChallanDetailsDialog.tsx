@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
+import { formatLoadWeightDisplay, normalizeLoadUnit } from '@/lib/loadWeightDisplay';
 
 interface ChallanDetails {
     id: string;
@@ -158,7 +159,8 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
             const totalPkg = resolvedLinkedDetails.reduce((sum: number, item: any) => sum + (Number(item.total_qty) || Number(item.no_of_pkg) || 0), 0);
             const totalActualWeight = resolvedLinkedDetails.reduce((sum: number, item: any) => sum + (Number(item.actual_weight) || 0), 0);
             const totalChargedWeight = resolvedLinkedDetails.reduce((sum: number, item: any) => sum + (Number(item.charged_weight) || 0), 0);
-            const weightUnit = resolvedLinkedDetails[0]?.load_unit ? String(resolvedLinkedDetails[0].load_unit).toUpperCase() : 'MT';
+            const weightUnit = normalizeLoadUnit(resolvedLinkedDetails[0]?.load_unit || 'MT');
+            const formatChallanWeight = (weight: unknown, unit: unknown) => formatLoadWeightDisplay(weight, unit, 'challan');
 
             const formatNumber = (val: any) => Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const toUpperValue = (value: any) => String(value ?? '').trim() ? String(value).toUpperCase() : '---';
@@ -297,8 +299,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                             <td style="font-size:10px; padding:6px 6px 8px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
                             <td style="font-size:10px; padding:6px 6px 8px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
                             <td style="text-align:center; padding:6px 6px 8px;">${qty || '0'}</td>
-                            <td style="text-align:right; padding:6px 6px 8px;">${item.actual_weight || '0'} ${toUpperValue(item.load_unit)}</td>
-                            <td style="text-align:right; font-weight:bold; color:#111; padding:6px 6px 8px;">${item.charged_weight || '0'} ${toUpperValue(item.load_unit)}</td>
+                            <td style="text-align:right; padding:6px 6px 8px;">${formatChallanWeight(item.actual_weight, item.load_unit)}</td>
+                            <td style="text-align:right; font-weight:bold; color:#111; padding:6px 6px 8px;">${formatChallanWeight(item.charged_weight, item.load_unit)}</td>
                         </tr>`;
                     };
                     const firstPage = resolvedLinkedDetails.slice(0, FIXED_ROWS).map(renderRow);
@@ -316,8 +318,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                         </div>
                     </td>
                     <td style="padding:6px 6px 8px; text-align:center; color:#1d2f7a;">${totalPkg} Pkg</td>
-                    <td style="padding:6px 6px 8px; text-align:right; color:#1d2f7a;">${totalActualWeight} ${weightUnit}</td>
-                    <td style="padding:6px 6px 8px; text-align:right; color:#111;">${totalChargedWeight} ${weightUnit}</td>
+                    <td style="padding:6px 6px 8px; text-align:right; color:#1d2f7a;">${formatChallanWeight(totalActualWeight, weightUnit)}</td>
+                    <td style="padding:6px 6px 8px; text-align:right; color:#111;">${formatChallanWeight(totalChargedWeight, weightUnit)}</td>
                 </tr>
             </tfoot>
         </table>
@@ -349,8 +351,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                         <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
                         <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
                         <td style="text-align:center; padding:6px 4px;">${qty || '0'}</td>
-                        <td style="text-align:right; padding:6px 4px;">${item.actual_weight || '0'} ${toUpperValue(item.load_unit)}</td>
-                        <td style="text-align:right; font-weight:bold; color:#111; padding:6px 4px;">${item.charged_weight || '0'} ${toUpperValue(item.load_unit)}</td>
+                        <td style="text-align:right; padding:6px 4px;">${formatChallanWeight(item.actual_weight, item.load_unit)}</td>
+                        <td style="text-align:right; font-weight:bold; color:#111; padding:6px 4px;">${formatChallanWeight(item.charged_weight, item.load_unit)}</td>
                     </tr>`;
                 }).join('')}
             </tbody>

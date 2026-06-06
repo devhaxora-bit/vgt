@@ -1,61 +1,17 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from "next/server";
 
-type ReservedRange = {
-    range_start: number;
-    range_end: number;
-};
-
 const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
     if (!error) return false;
     if (error.code === '42P01' || error.code === '42883') return true;
 
     const message = String(error.message || '').toLowerCase();
-    return (
-        message.includes('branch_cn_ranges')
-        || message.includes('branch_cn_reserved_ranges')
-        || message.includes('next_available_branch_cn')
-    );
+    return message.includes('branch_cn_ranges') || message.includes('next_available_branch_cn');
 };
 
-const normalizeNextAvailable = (candidate: number, rangeEnd: number, reservedRanges: ReservedRange[]) => {
-    let next = candidate;
-
-    while (next <= rangeEnd) {
-        const reserved = reservedRanges.find((range) => next >= range.range_start && next <= range.range_end);
-        if (!reserved) {
-            return next;
-        }
-        next = reserved.range_end + 1;
-    }
-
-    return next;
-};
-
-const countAvailableNumbers = (candidate: number, rangeEnd: number, reservedRanges: ReservedRange[]) => {
-    if (candidate > rangeEnd) return 0;
-
-    const sortedReserved = [...reservedRanges].sort((a, b) => a.range_start - b.range_start);
-    let cursor = candidate;
-    let available = 0;
-
-    for (const reserved of sortedReserved) {
-        if (reserved.range_end < cursor) continue;
-        if (reserved.range_start > rangeEnd) break;
-
-        if (reserved.range_start > cursor) {
-            available += reserved.range_start - cursor;
-        }
-
-        cursor = Math.max(cursor, reserved.range_end + 1);
-        if (cursor > rangeEnd) break;
-    }
-
-    if (cursor <= rangeEnd) {
-        available += rangeEnd - cursor + 1;
-    }
-
-    return available;
+const countRemaining = (nextNo: number, rangeEnd: number) => {
+    if (nextNo > rangeEnd) return 0;
+    return rangeEnd - nextNo + 1;
 };
 
 export async function GET(request: Request) {
@@ -104,56 +60,32 @@ export async function GET(request: Request) {
     const latestRange = (cnRanges || [])[0] || null;
 
     if (activeRange) {
-        const { data: reservedRanges, error: reservedRangesError } = await supabase
-            .from('branch_cn_reserved_ranges')
-            .select('range_start, range_end')
-            .eq('branch_id', branch.id)
-            .lte('range_start', activeRange.range_end)
-            .gte('range_end', activeRange.range_start)
-            .order('range_start', { ascending: true });
+        const nextNo = Number(activeRange.next_cn_no);
+        const rangeEnd = Number(activeRange.range_end);
 
-        if (reservedRangesError) {
-            console.error('Failed to fetch reserved CN ranges:', reservedRangesError);
-            return NextResponse.json({ error: 'Failed to fetch reserved CN ranges' }, { status: 500 });
-        }
-
-        const normalizedNextNo = normalizeNextAvailable(
-            Number(activeRange.next_cn_no),
-            Number(activeRange.range_end),
-            (reservedRanges || []).map((range) => ({
-                range_start: Number(range.range_start),
-                range_end: Number(range.range_end),
-            }))
-        );
-
-        if (normalizedNextNo > Number(activeRange.range_end)) {
+        if (nextNo > rangeEnd) {
             return NextResponse.json({
                 status: 'range_exhausted',
                 mode: 'range',
                 prefix: branch.cn_prefix || 'S',
                 rangeStart: Number(activeRange.range_start),
-                rangeEnd: Number(activeRange.range_end),
-                nextNo: normalizedNextNo,
-                message: `CN range ${activeRange.range_start}-${activeRange.range_end} is exhausted for branch ${branch.code}. Update Branch Management with a new range.`,
+                rangeEnd,
+                nextNo,
+                message: `CN range ${activeRange.range_start}-${rangeEnd} is exhausted for branch ${branch.code}. Update Branch Management with a new range.`,
             });
         }
+
+        const remainingCount = countRemaining(nextNo, rangeEnd);
 
         return NextResponse.json({
             status: 'ready',
             mode: 'range',
             prefix: branch.cn_prefix || 'S',
             rangeStart: Number(activeRange.range_start),
-            rangeEnd: Number(activeRange.range_end),
-            nextNo: normalizedNextNo,
-            reservedCount: (reservedRanges || []).length,
-            remainingCount: countAvailableNumbers(
-                normalizedNextNo,
-                Number(activeRange.range_end),
-                (reservedRanges || []).map((range) => ({
-                    range_start: Number(range.range_start),
-                    range_end: Number(range.range_end),
-                }))
-            ),
+            rangeEnd,
+            nextNo,
+            remainingCount,
+            isLowCn: remainingCount > 0 && remainingCount <= 5,
         });
     }
 
@@ -178,6 +110,6 @@ export async function GET(request: Request) {
         mode: 'legacy',
         prefix: branch.cn_prefix || 'S',
         nextNo: Number(branch.next_cn_no || 800001),
-        message: `Branch ${branch.code} is using the legacy CN counter. Configure a branch CN range in Branch Management to enforce assigned ranges and physical-copy exclusions.`,
+        message: `Branch ${branch.code} is using the legacy CN counter. Configure a branch CN range in Branch Management to enforce assigned ranges.`,
     });
 }

@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveBrokerId } from '@/lib/server/resolveBrokerId';
 
 export async function GET(
     _req: NextRequest,
@@ -130,6 +131,18 @@ export async function PUT(
         linked_cn_nos: Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [],
         updated_at: new Date().toISOString(),
     };
+
+    const { brokerId, error: brokerError } = await resolveBrokerId(supabase, {
+        engagement_type: body.engagement_type,
+        broker_id: body.broker_id,
+        broker_code: body.broker_code,
+    });
+
+    if (brokerError) {
+        return NextResponse.json({ error: brokerError }, { status: 400 });
+    }
+
+    updateData.broker_id = brokerId;
 
     const { data, error } = await supabase
         .from('challans')

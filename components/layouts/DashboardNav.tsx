@@ -136,6 +136,7 @@ export default function DashboardNav() {
                     title: 'Accounts',
                     items: [
                         { title: 'Party Ledger Book', href: '/dashboard/ledger' },
+                        { title: 'Broker Challan Ledger', href: '/dashboard/challan-ledger' },
                         { title: 'Invoicing', href: '#' },
                         { title: 'Payment Entry', href: '#' },
                     ]
@@ -189,7 +190,7 @@ export default function DashboardNav() {
                 {
                     title: 'Support',
                     items: [
-                        { title: 'Documentation', href: '#' },
+                        { title: 'Documentation', href: '/dashboard/documentation' },
                         { title: 'Help Center', href: '#' },
                     ]
                 }

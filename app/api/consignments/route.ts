@@ -22,28 +22,9 @@ const isMissingCnManagementSchema = (error: { code?: string; message?: string } 
     const message = String(error.message || '').toLowerCase();
     return (
         message.includes('branch_cn_ranges')
-        || message.includes('branch_cn_reserved_ranges')
         || message.includes('next_available_branch_cn')
         || message.includes('advance_branch_cn_sequence')
     );
-};
-
-const normalizeNextAvailable = (
-    candidate: number,
-    rangeEnd: number,
-    reservedRanges: Array<{ range_start: number; range_end: number }>
-) => {
-    let next = candidate;
-
-    while (next <= rangeEnd) {
-        const reserved = reservedRanges.find((range) => next >= range.range_start && next <= range.range_end);
-        if (!reserved) {
-            return next;
-        }
-        next = reserved.range_end + 1;
-    }
-
-    return next;
 };
 
 const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClient>>, branchCode: string) => {
@@ -81,36 +62,7 @@ const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClie
     const latestRange = ((cnRanges || []) as ManagedCnRange[])[0] || null;
 
     if (activeRange) {
-        const { data: reservedRanges, error: reservedRangesError } = await supabase
-            .from('branch_cn_reserved_ranges')
-            .select('range_start, range_end')
-            .eq('branch_id', branch.id)
-            .lte('range_start', activeRange.range_end)
-            .gte('range_end', activeRange.range_start)
-            .order('range_start', { ascending: true });
-
-        if (reservedRangesError) {
-            if (isMissingCnManagementSchema(reservedRangesError)) {
-                return {
-                    branch,
-                    mode: 'legacy' as const,
-                    activeRange: null,
-                    latestRange: null,
-                    expectedCn: Number(branch.next_cn_no || 800001),
-                };
-            }
-
-            return { error: reservedRangesError.message };
-        }
-
-        const expectedCn = normalizeNextAvailable(
-            Number(activeRange.next_cn_no),
-            Number(activeRange.range_end),
-            (reservedRanges || []).map((range) => ({
-                range_start: Number(range.range_start),
-                range_end: Number(range.range_end),
-            }))
-        );
+        const expectedCn = Number(activeRange.next_cn_no);
 
         return {
             branch,
@@ -280,6 +232,10 @@ export async function POST(request: Request) {
         remarks: body.remarks,
         vehicle_no: body.vehicle_no,
         amount_in_words: body.amount_in_words,
+
+        // Parent-child freight include
+        parent_cn_id: body.parent_cn_id || null,
+        freight_included: body.freight_included ?? false,
 
         created_by: user.id,
     };

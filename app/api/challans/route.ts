@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { resolveBrokerId } from '@/lib/server/resolveBrokerId';
 
 // Validation schema for creating a challan
 const createChallanSchema = z.object({
@@ -197,6 +198,20 @@ export async function POST(request: Request) {
         created_by: user.id,
         status: 'ACTIVE'
     };
+
+    const { brokerId, error: brokerError } = await resolveBrokerId(supabase, {
+        engagement_type: body.engagement_type,
+        broker_id: body.broker_id,
+        broker_code: body.broker_code,
+    });
+
+    if (brokerError) {
+        return NextResponse.json({ error: brokerError }, { status: 400 });
+    }
+
+    if (brokerId) {
+        insertData.broker_id = brokerId;
+    }
 
     const { data, error } = await supabase
         .from('challans')
