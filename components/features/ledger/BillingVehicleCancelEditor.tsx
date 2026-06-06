@@ -1,16 +1,29 @@
 'use client';
 
-import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 
 import type { BillingVehicleCancelDraftItem } from '@/lib/billingVehicleCancel';
 import { createEmptyVehicleCancelDraft } from '@/lib/billingVehicleCancel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 const fmt = (n: number) =>
     new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+
+interface VehicleOption {
+    id: string;
+    vehicle_no: string;
+    vehicle_type?: string | null;
+}
 
 export function BillingVehicleCancelEditor({
     items,
@@ -19,6 +32,46 @@ export function BillingVehicleCancelEditor({
     items: BillingVehicleCancelDraftItem[];
     onChange: (next: BillingVehicleCancelDraftItem[]) => void;
 }) {
+    const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+    const [loadingVehicles, setLoadingVehicles] = useState(true);
+
+    useEffect(() => {
+        let active = true;
+
+        const loadVehicles = async () => {
+            try {
+                const res = await fetch('/api/vehicles');
+                const data = await res.json();
+                if (!active) return;
+                setVehicles(Array.isArray(data) ? data : []);
+            } catch {
+                if (active) setVehicles([]);
+            } finally {
+                if (active) setLoadingVehicles(false);
+            }
+        };
+
+        void loadVehicles();
+        return () => { active = false; };
+    }, []);
+
+    const vehicleOptions = useMemo(() => {
+        const knownVehicleNos = new Set(vehicles.map((vehicle) => vehicle.vehicle_no));
+        const savedVehicleNos = items
+            .map((item) => item.vehicle_no.trim().toUpperCase())
+            .filter((vehicleNo) => vehicleNo && !knownVehicleNos.has(vehicleNo));
+
+        const extraOptions = savedVehicleNos.map((vehicleNo) => ({
+            id: `saved-${vehicleNo}`,
+            vehicle_no: vehicleNo,
+            vehicle_type: null,
+        }));
+
+        return [...vehicles, ...extraOptions].sort((left, right) => (
+            left.vehicle_no.localeCompare(right.vehicle_no)
+        ));
+    }, [vehicles, items]);
+
     const total = items.reduce((sum, item) => {
         const amount = Number(item.charges || 0);
         return sum + (Number.isNaN(amount) ? 0 : amount);
@@ -63,12 +116,35 @@ export function BillingVehicleCancelEditor({
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <div className="space-y-1.5">
                                 <Label className="text-[11px] font-bold uppercase text-muted-foreground">Vehicle Number</Label>
-                                <Input
-                                    value={item.vehicle_no}
-                                    onChange={(e) => updateItem(item.id, { vehicle_no: e.target.value.toUpperCase() })}
-                                    placeholder="e.g. AP39TA1234"
-                                    className="h-9 font-mono"
-                                />
+                                <Select
+                                    value={item.vehicle_no || undefined}
+                                    onValueChange={(value) => updateItem(item.id, { vehicle_no: value })}
+                                    disabled={loadingVehicles}
+                                >
+                                    <SelectTrigger className="h-9 font-mono">
+                                        <SelectValue placeholder={loadingVehicles ? 'Loading vehicles...' : 'Select vehicle'} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {vehicleOptions.map((vehicle) => (
+                                            <SelectItem key={vehicle.id} value={vehicle.vehicle_no}>
+                                                <span className="font-mono font-bold">{vehicle.vehicle_no}</span>
+                                                {vehicle.vehicle_type ? (
+                                                    <span className="ml-2 text-muted-foreground uppercase">{vehicle.vehicle_type}</span>
+                                                ) : null}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {loadingVehicles ? (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        Loading vehicle list...
+                                    </div>
+                                ) : vehicleOptions.length === 0 ? (
+                                    <div className="text-[11px] text-muted-foreground">
+                                        No active vehicles found. Add vehicles in Admin → Vehicle Management.
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="space-y-1.5">
                                 <Label className="text-[11px] font-bold uppercase text-muted-foreground">Cancellation Date</Label>

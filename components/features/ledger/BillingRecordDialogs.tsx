@@ -1002,8 +1002,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
-.total-row td { height: 32px; font-size: 17px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; }
-.total-label { text-align: center; color: #1d2f7a; font-size: 14px; }
+.total-row td { height: 32px; font-size: 17px; font-weight: 800; padding-top: 6px; padding-bottom: 7px; overflow: visible !important; text-overflow: clip !important; }
+.total-label { text-align: right; padding-right: 12px; color: #1d2f7a; font-size: 14px; white-space: nowrap !important; }
 .words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
 .notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
 .remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
@@ -1091,8 +1091,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 ${vehicleCancelRows}
                 ${blankRows}
                 <tr class="total-row">
-                    <td colspan="13"></td>
-                    <td class="total-label">TOTAL</td>
+                    <td colspan="14" class="total-label">TOTAL</td>
                     <td class="amount" style="color: #111;">${fmt(displayTotal)}</td>
                 </tr>
             </tbody>
@@ -1226,14 +1225,25 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                         </DialogDescription>
                     </div>
                     <div className="flex flex-wrap gap-2 justify-end">
-                        <Button variant="outline" className="gap-2" onClick={() => void handlePrint('print')}>
+                        <Button
+                            variant="outline"
+                            className="gap-2 border-white/50 bg-white text-primary hover:bg-white/90 hover:text-primary"
+                            onClick={() => void handlePrint('print')}
+                        >
                             <Printer className="h-4 w-4" /> Print
                         </Button>
-                        <Button variant="outline" className="gap-2" onClick={() => void handlePrint('download')}>
+                        <Button
+                            variant="outline"
+                            className="gap-2 border-white/50 bg-white text-primary hover:bg-white/90 hover:text-primary"
+                            onClick={() => void handlePrint('download')}
+                        >
                             <Download className="h-4 w-4" /> Download PDF
                         </Button>
                         {isAdmin && record.status === 'ACTIVE' && (
-                            <Button className="gap-2" onClick={onEdit}>
+                            <Button
+                                className="gap-2 bg-white text-primary hover:bg-white/90"
+                                onClick={onEdit}
+                            >
                                 <Pencil className="h-4 w-4" /> Edit Bill
                             </Button>
                         )}
