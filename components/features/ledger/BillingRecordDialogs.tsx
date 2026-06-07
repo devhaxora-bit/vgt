@@ -995,16 +995,16 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
+.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #ffffff; background: #17308b; }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .invoice-cell, .name-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .invoice-cell { word-break: break-all !important; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
-.vehicle-cancel-row td { font-size: 9px; }
-.vehicle-cancel-label { font-size: 8px; font-weight: 800; color: #1d2f7a; letter-spacing: 0.1px; white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; }
-.vehicle-cancel-amount { font-size: 9px; }
+.vehicle-cancel-row td { font-size: 10.8px; }
+.vehicle-cancel-label { font-size: 10.8px; font-weight: 800; color: #1d2f7a; letter-spacing: 0.1px; white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; }
+.vehicle-cancel-amount { font-size: 10.8px; }
 .total-row td { height: 28px; font-size: 12px; font-weight: 800; padding-top: 5px; padding-bottom: 6px; overflow: visible !important; text-overflow: clip !important; }
 .total-label { text-align: right; padding-right: 12px; color: #1d2f7a; font-size: 11px; white-space: nowrap !important; }
 .total-row .amount { font-size: 12px; }

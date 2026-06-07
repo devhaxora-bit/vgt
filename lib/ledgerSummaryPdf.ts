@@ -220,7 +220,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 5px 6px; vertical-align: middle; overflow: hidden; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 11.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: #1d2f7a; background: rgba(29, 47, 122, 0.12); }
+.items-table thead th { text-align: center; font-size: 11.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: #ffffff; background: #17308b; }
 .items-table tbody td { height: 22px; font-size: 11.2px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
 .items-table tbody td.branch-cell { white-space: normal; overflow-wrap: anywhere; line-height: 1.2; vertical-align: middle; }
 .items-table .party-name { text-align: left; }
