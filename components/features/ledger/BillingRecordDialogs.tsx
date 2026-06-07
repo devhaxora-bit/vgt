@@ -974,7 +974,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .sheet { border: 1.2px solid #1d2f7a; min-height: 186mm; display: flex; flex-direction: column; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
-.header-logo img { width: 102px; max-width: 100%; filter: grayscale(1) contrast(1.6) brightness(0.2); object-fit: contain; }
+.header-logo img { width: 102px; max-width: 100%; object-fit: contain; }
 .header-copy { text-align: center; }
 .header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
