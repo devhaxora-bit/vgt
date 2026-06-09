@@ -23,6 +23,7 @@ import {
     type BillingVehicleCancelDraftItem,
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
+import { downloadBillPdfFromDocument, renderBillPdfPages } from '@/lib/billPdf';
 
 interface PartyInfo {
     id: string;
@@ -796,20 +797,6 @@ export function EditBillingDialog({
     );
 }
 
-const buildVehicleCancelPdfRows = (items: BillingVehicleCancelItem[]) =>
-    normalizeVehicleCancelItems(items).map((item) => `
-                <tr class="item-row vehicle-cancel-row">
-                    <td class="center">&nbsp;</td>
-                    <td class="center">${fmtDotDate(item.cancellation_date)}</td>
-                    <td class="center">&nbsp;</td>
-                    <td class="center name-cell">${toUpperText(item.vehicle_no) || '—'}</td>
-                    <td class="center name-cell">${toUpperText(item.from_station) || '—'}</td>
-                    <td class="center name-cell">${toUpperText(item.to_station) || '—'}</td>
-                    <td colspan="8" class="center vehicle-cancel-label">VEHICLE CANCELLATION CHARGES</td>
-                    <td class="amount vehicle-cancel-amount">${fmt(item.charges)}</td>
-                </tr>
-            `).join('');
-
 export function BillingRecordViewDialog({
     open,
     onClose,
@@ -933,230 +920,28 @@ export function BillingRecordViewDialog({
                 otherCharges: '',
                 totalAmount: fmt(displayTotal),
             }];
-        const vehicleCancelRows = buildVehicleCancelPdfRows(vehicleCancelItems);
-        const minimumDetailRows = Math.max(12, detailRows.length + vehicleCancelItems.length);
-        const coveredRows = detailRows.map((row) => `
-                <tr class="item-row">
-                    <td class="center">${row.cnNo}</td>
-                    <td class="center">${row.date}</td>
-                    <td class="center invoice-cell">${row.invoiceNo}</td>
-                    <td class="center name-cell">${row.vehicleNo}</td>
-                    <td class="center name-cell">${row.loadingStation}</td>
-                    <td class="center name-cell">${row.deliveryStation}</td>
-                    <td class="center">${row.chargeWt}</td>
-                    <td class="center">${row.rate}</td>
-                    <td class="amount">${row.freight}</td>
-                    <td class="amount">${row.detention}</td>
-                    <td class="amount">${row.loading}</td>
-                    <td class="amount">${row.unloading}</td>
-                    <td class="amount">${row.extraKm}</td>
-                    <td class="amount">${row.otherCharges}</td>
-                    <td class="amount">${row.totalAmount}</td>
-                </tr>
-            `).join('');
-        const blankRows = Array.from({ length: Math.max(0, minimumDetailRows - detailRows.length - vehicleCancelItems.length) }, () => `
-                <tr class="item-row blank-row">
-                    <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
-                    <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
-                    <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
-                </tr>
-            `).join('');
-
-        const html = `<!DOCTYPE html>
-<html>
-<head>
-<title>${record.bill_ref_no || record.id}</title>
-<style>
-@page { size: A4 landscape; margin: 5mm; }
-* { box-sizing: border-box; }
-body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
-.page { width: 287mm; min-height: 200mm; margin: 0 auto; padding: 6mm 10mm; background: #fff; }
-.sheet { border: 1.2px solid #1d2f7a; min-height: 186mm; display: flex; flex-direction: column; }
-.header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
-.header-logo { display: flex; align-items: center; justify-content: flex-start; }
-.header-logo img { width: 102px; max-width: 100%; object-fit: contain; }
-.header-copy { text-align: center; }
-.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
-.header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
-.header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
-.detail-grid { display: grid; grid-template-columns: 56% 44%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
-.party-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 8px 10px; }
-.party-line { font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
-.party-address-line2 { display: block; margin-top: 4px; }
-.right-block { display: grid; grid-template-rows: 44px minmax(50px, 1fr); height: 100%; }
-.branch-row { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 24% 76%; align-items: stretch; }
-.branch-label { border-right: 1.2px solid #1d2f7a; padding: 4px 6px; font-size: 10px; font-weight: 800; line-height: 1.15; display: flex; align-items: center; color: #1d2f7a; }
-.branch-value { display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #111; padding: 4px 6px; }
-.bill-row { display: grid; grid-template-columns: 42% 16% 42%; align-items: stretch; min-height: 50px; }
-.bill-cell { border-right: 1.2px solid #1d2f7a; padding: 4px 6px; font-size: 10px; font-weight: 700; line-height: 1.12; display: flex; align-items: center; }
-.bill-cell:last-child { border-right: none; }
-.bill-cell.center { text-align: center; justify-content: center; }
-.bill-cell.value { font-size: 13px; font-weight: 800; }
-.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; border-top: 1.2px solid #1d2f7a; }
-.items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
-.items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #ffffff; background: #17308b; }
-.items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.invoice-cell, .name-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
-.invoice-cell { word-break: break-all !important; }
-.items-table .center { text-align: center; }
-.items-table .amount { text-align: right; padding-right: 8px; }
-.blank-row td { font-weight: 400; }
-.vehicle-cancel-row td { font-size: 10.8px; }
-.vehicle-cancel-label { font-size: 10.8px; font-weight: 800; color: #1d2f7a; letter-spacing: 0.1px; white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; }
-.vehicle-cancel-amount { font-size: 10.8px; }
-.total-row td { height: 28px; font-size: 12px; font-weight: 800; padding-top: 5px; padding-bottom: 6px; overflow: visible !important; text-overflow: clip !important; }
-.total-label { text-align: right; padding-right: 12px; color: #1d2f7a; font-size: 11px; white-space: nowrap !important; }
-.total-row .amount { font-size: 12px; }
-.words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
-.notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
-.remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
-.footer-grid { display: grid; grid-template-columns: 65% 35%; flex-grow: 1; }
-.bank-block { border-right: 1.2px solid #1d2f7a; padding: 0 10px; font-size: 9.2px; font-weight: 700; line-height: 1.45; color: #111; display: grid; grid-template-columns: 1fr 1.2px 1.05fr; gap: 10px; align-items: stretch; }
-.bank-details-sub { display: flex; flex-direction: column; justify-content: center; padding: 3px 0; }
-.bank-divider { background-color: #1d2f7a; width: 1.2px; height: 100%; }
-.eway-sub { display: flex; flex-direction: column; justify-content: center; line-height: 1.45; padding: 3px 0; }
-.bank-title { font-size: 9.4px; font-weight: 800; color: #1d2f7a; }
-.signature-block { padding: 6px 8px 8px; display: flex; align-items: flex-start; justify-content: center; }
-.signature-inner { width: 100%; text-align: center; font-size: 9.4px; font-weight: 700; line-height: 1.45; }
-.signature-company { font-size: 10.5px; font-weight: 800; margin-bottom: 16px; color: #1d2f7a; }
-.signature-name { margin-top: 10px; color: #111; }
-.signature-role { font-size: 9.4px; font-weight: 800; color: #1d2f7a; }
-</style>
-</head>
-<body>
-<div class="page">
-    <div class="sheet">
-        <div class="header-band">
-            <div class="header-logo">
-                <img src="${logoUrl}" alt="VGT Logo" />
-            </div>
-            <div class="header-copy">
-                <div class="header-title">VISAKHA GOLDEN TRANSPORT</div>
-                <div class="header-line">
-                    <span>D. NO. 8-19-58/A, GOPAL NAGAR, NEAR BANK COLONY, VIZIANAGARAM, ANDHRA PRADESH - 535003</span>
-                </div>
-                <div class="header-line contact">Contact:9392223404,8756314575 Email:vsp@visakhagolden.com</div>
-            </div>
-            <div style="text-align: right; font-size: 11px; font-weight: 800; line-height: 1.35;">
-                <span style="color: #1d2f7a;">PAN NO:</span><br/><span style="color: #111;">AAWFV7670H</span>
-            </div>
-        </div>
-
-        <div class="detail-grid">
-            <div class="party-block">
-                <div class="party-line" style="color: #111;">${partyName}</div>
-                <div class="party-line" style="color: #111;">
-                    ${addressLine1}
-                    ${addressStateLine ? `<span class="party-address-line2">${addressStateLine}</span>` : ''}
-                </div>
-                <div class="party-line" style="color: #111; display: flex; align-items: center;">
-                    ${party.gstin ? `<span><span style="color: #1d2f7a; font-weight: 800;">GSTIN:</span> <span style="font-weight: 800;">${toUpperText(party.gstin)}</span></span>` : '&nbsp;'}
-                </div>
-            </div>
-            <div class="right-block">
-                <div class="branch-row">
-                    <div class="branch-label">Issuing<br/>Branch :</div>
-                    <div class="branch-value">${branchDisplay}</div>
-                </div>
-                <div class="bill-row">
-                    <div class="bill-cell value">
-                        <span style="color: #1d2f7a; font-weight: 800; margin-right: 4px;">Bill No.</span>
-                        <span style="color: #cc1a1a; font-weight: 800;">${record.bill_ref_no || `VGT-${record.id.slice(0, 8).toUpperCase()}`}</span>
-                    </div>
-                    <div class="bill-cell center" style="color: #1d2f7a; font-weight: 800;">Date.</div>
-                    <div class="bill-cell value center" style="color: #111;">${fmtDotDate(record.billing_date)}</div>
-                </div>
-            </div>
-        </div>
-
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th style="width:4%;">CNS<br/>No</th>
-                    <th style="width:6.5%;">Date</th>
-                    <th style="width:13%;">Invoice<br/>No</th>
-                    <th style="width:8%;">Vehicle no.</th>
-                    <th style="width:10%;">Loading<br/>Station</th>
-                    <th style="width:10%;">Destination</th>
-                    <th style="width:6.5%;">Charge Wt.</th>
-                    <th style="width:5.5%;">Rate</th>
-                    <th style="width:5%;">Freight</th>
-                    <th style="width:6%;">Detention</th>
-                    <th style="width:5.5%;">Loading</th>
-                    <th style="width:5.5%;">Unload</th>
-                    <th style="width:5.5%;">Extra KM</th>
-                    <th style="width:5%;">Other<br/>Charg</th>
-                    <th style="width:6.5%;">Total Billed<br/>Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${coveredRows}
-                ${vehicleCancelRows}
-                ${blankRows}
-                <tr class="total-row">
-                    <td colspan="14" class="total-label">TOTAL</td>
-                    <td class="amount" style="color: #111;">${fmt(displayTotal)}</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="words-row">
-            <span style="color: #1d2f7a; font-weight: 800; margin-right: 4px;">Rupees In Words:-</span>
-            <span style="color: #111;">${amountWords}</span>
-        </div>
-
-        <div class="notes-block">
-            ${narrationHtml || '&nbsp;'}
-        </div>
-
-        <div class="footer-grid">
-            <div class="bank-block">
-                <div class="bank-details-sub">
-                    <div class="bank-title">Bank Details: Visakha Golden Transport</div>
-                    <div><span style="color: #1d2f7a; font-weight: 700;">A/C No:</span> 070205500602</div>
-                    <div><span style="color: #1d2f7a; font-weight: 700;">IFSC Code:</span> ICIC0000702</div>
-                    <div>ICICI Bank Vizianagaram</div>
-                </div>
-                <div class="bank-divider"></div>
-                <div class="eway-sub">
-                    <div style="color: #1d2f7a; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
-                    <div style="margin-top: 2px;"><span style="color: #1d2f7a; font-weight: 800; font-size: 9.5px;">Ewaybill id:</span> <span style="font-weight: 800; font-size: 9.5px; color: #111;">37AAWFV7670H1Z8</span></div>
-                </div>
-            </div>
-            <div class="signature-block">
-                <div class="signature-inner">
-                    <div class="signature-company">For Visakha Golden Transport</div>
-                    <div class="signature-name">${record.status === 'CANCELLED' ? 'Cancelled Bill' : '&nbsp;'}</div>
-                    <div class="signature-role">(Authorized Signatory)</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-</body>
-</html>`;
-
         const iframe = iframeRef.current;
         if (!iframe) return;
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (!doc) return;
 
-        doc.open();
-        doc.write(html);
-        doc.close();
-
-        await Promise.all(
-            Array.from(doc.images).map((image) => {
-                if (image.complete) return Promise.resolve();
-                return new Promise<void>((resolve) => {
-                    image.onload = () => resolve();
-                    image.onerror = () => resolve();
-                });
-            })
-        );
-
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await renderBillPdfPages(doc, {
+            logoUrl,
+            partyName,
+            addressLine1,
+            addressStateLine,
+            partyGstin: party.gstin || null,
+            branchDisplay,
+            billRefNo: record.bill_ref_no || '',
+            billRefFallback: `VGT-${record.id.slice(0, 8).toUpperCase()}`,
+            billingDate: fmtDotDate(record.billing_date),
+            displayTotal,
+            amountWords,
+            narrationHtml,
+            detailRows,
+            vehicleCancelItems,
+            status: record.status,
+        });
 
         if (mode === 'print') {
             iframe.contentWindow?.focus();
@@ -1164,34 +949,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             return;
         }
 
-        const page = doc.querySelector('.page') as HTMLElement | null;
-        if (!page) return;
-
-        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-            import('html2canvas'),
-            import('jspdf'),
-        ]);
-
-        const canvas = await html2canvas(page, {
-            scale: 3,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            width: page.scrollWidth,
-            height: page.scrollHeight,
-            windowWidth: page.scrollWidth,
-            windowHeight: page.scrollHeight,
-        });
-
-        const imageData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF({
-            orientation: 'landscape',
-            unit: 'mm',
-            format: 'a4',
-            compress: true,
-        });
-
-        pdf.addImage(imageData, 'PNG', 5, 5, 287, 200, undefined, 'FAST');
-        pdf.save(getBillDownloadName(record.bill_ref_no, record.id));
+        await downloadBillPdfFromDocument(doc, getBillDownloadName(record.bill_ref_no, record.id));
     };
 
     if (!party || !record) return null;
