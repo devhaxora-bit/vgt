@@ -163,7 +163,7 @@ function NewChallanPageContent() {
         rateType: 'mt', rate: 0, hire: 0,
         extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
         detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
-        advPayment: 0, tdsPercent: 2, lessTds: 0,
+        advPayment: 0, tdsPercent: 0, lessTds: 0,
         balAmount: 0,
     });
 
@@ -310,7 +310,7 @@ function NewChallanPageContent() {
             totalExtra: data.total_extra_charges || 0,
             totalHire: data.total_hire_amount || 0,
             advPayment: data.advance_amount || 0,
-            tdsPercent: data.tds_percent || 2,
+            tdsPercent: data.tds_percent ?? 0,
             lessTds: data.less_tds || 0,
             balAmount: 0,
         });
@@ -372,7 +372,7 @@ function NewChallanPageContent() {
             rateType: 'mt', rate: 0, hire: 0,
             extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
             detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
-            advPayment: 0, tdsPercent: 2, lessTds: 0, balAmount: 0,
+            advPayment: 0, tdsPercent: 0, lessTds: 0, balAmount: 0,
         });
     };
 
@@ -403,27 +403,13 @@ function NewChallanPageContent() {
         setInsCity(v.insurance_city || '');
         setFinanceDetail(v.finance_detail || '');
 
-        // TDS / ITDS
-        setItdsRefBranch(v.itds_ref_branch || '');
-        setItdsDeclareDate(v.itds_declare_date ? String(v.itds_declare_date).slice(0, 10) : '');
-        setItdsFinYear(v.itds_financial_year || '');
+        // TDS / ITDS — only overwrite when the vehicle record actually has values
+        if (v.itds_ref_branch) setItdsRefBranch(v.itds_ref_branch);
+        if (v.itds_declare_date) setItdsDeclareDate(String(v.itds_declare_date).slice(0, 10));
+        if (v.itds_financial_year) setItdsFinYear(v.itds_financial_year);
 
         setVehicleOwnerStatus('✓ Vehicle details auto-filled from master');
     };
-
-    // Auto-cut TDS based on ITDS Declaration presence
-    useEffect(() => {
-        const hasItds = Boolean(itdsRefBranch.trim() || itdsDeclareDate);
-        const autoTdsPercent = hasItds ? 0 : 2;
-        
-        setHireDetails(prev => {
-            if (prev.tdsPercent === autoTdsPercent) return prev;
-            const next = { ...prev, tdsPercent: autoTdsPercent };
-            next.lessTds = Math.round(next.totalHire * ((Number(next.tdsPercent) || 0) / 100));
-            next.balAmount = next.totalHire - (Number(next.advPayment) || 0) - next.lessTds;
-            return next;
-        });
-    }, [itdsRefBranch, itdsDeclareDate]);
 
     useEffect(() => {
         const normalizedVehicleNo = vehicleNo.trim().toUpperCase();
@@ -1449,9 +1435,16 @@ function NewChallanPageContent() {
                                             <Label className={labelCls}>TDS Deduction</Label>
                                             <div className="flex gap-2 items-center">
                                                 <div className="relative flex-1">
-                                                    <Input type="text" inputMode="numeric" className={inputCls + " bg-white pr-6"}
+                                                    <Input type="text" inputMode="decimal" className={inputCls + " bg-white pr-6"}
                                                         value={hireDetails.tdsPercent}
-                                                        onChange={(e) => updateHire('tdsPercent', Number(e.target.value))} />
+                                                        onChange={(e) => {
+                                                            const raw = e.target.value.trim();
+                                                            if (raw === '') return;
+                                                            const parsed = Number(raw);
+                                                            if (!Number.isNaN(parsed) && parsed >= 0) {
+                                                                updateHire('tdsPercent', parsed);
+                                                            }
+                                                        }} />
                                                     <span className="absolute right-2 top-2 text-xs text-slate-400">%</span>
                                                 </div>
                                                 <span className="text-xs font-bold">=</span>
