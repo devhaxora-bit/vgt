@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { formatLoadWeightDisplay, normalizeLoadUnit } from '@/lib/loadWeightDisplay';
+import { sortLinkedConsignments } from '@/lib/sortLinkedConsignments';
 
 interface ChallanDetails {
     id: string;
@@ -73,7 +74,11 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
                 const res = await fetch(`/api/consignments/by-cn?cns=${challan.linked_cn_nos.join(',')}`);
                 if (!res.ok) throw new Error('Failed');
                 const data = await res.json();
-                if (isMounted) setLinkedDetails(Array.isArray(data) ? data : []);
+                if (isMounted) {
+                    setLinkedDetails(
+                        Array.isArray(data) ? sortLinkedConsignments(data, 'cn_no', 'asc') : []
+                    );
+                }
             } catch (err) {
                 console.error('Error resolving CN details:', err);
                 if (isMounted) setLinkedDetails([]);
@@ -146,7 +151,9 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
                     const res = await fetch(`/api/consignments/by-cn?cns=${c.linked_cn_nos.join(',')}`);
                     if (res.ok) {
                         const data = await res.json();
-                        resolvedLinkedDetails = Array.isArray(data) ? data : [];
+                        resolvedLinkedDetails = Array.isArray(data)
+                            ? sortLinkedConsignments(data, 'cn_no', 'asc')
+                            : [];
                         setLinkedDetails(resolvedLinkedDetails);
                     }
                 } catch { /* fall through with empty array */ }

@@ -26,10 +26,10 @@ interface LedgerBroker {
     primary_branch_code: string | null;
     total_challan_amount: number;
     total_challan_count: number;
-    total_billed: number;
+    total_advance_amount: number;
+    total_tds_amount: number;
+    net_payable_amount: number;
     total_paid: number;
-    unbilled_amount: number;
-    overbilled_amount?: number;
     outstanding: number;
 }
 
@@ -43,10 +43,9 @@ const fmt = (n: number) =>
 
 const hasLedgerActivity = (broker: LedgerBroker) =>
     Number(broker.total_challan_amount || 0) !== 0 ||
-    Number(broker.total_billed || 0) !== 0 ||
+    Number(broker.net_payable_amount || 0) !== 0 ||
+    Number(broker.total_advance_amount || 0) !== 0 ||
     Number(broker.total_paid || 0) !== 0 ||
-    Number(broker.unbilled_amount || 0) !== 0 ||
-    Number(broker.overbilled_amount || 0) !== 0 ||
     Number(broker.outstanding || 0) !== 0;
 
 const KPI_COLOR_STYLES = {
@@ -57,9 +56,8 @@ const KPI_COLOR_STYLES = {
     red: { iconBg: 'bg-red-50', iconText: 'text-red-600' },
 } as const;
 
-type BillingFilter = 'all' | 'has_bills' | 'no_bills';
 type PaymentFilter = 'all' | 'has_payments' | 'no_payments';
-type KpiFilter = 'none' | 'challans' | 'billed' | 'unbilled' | 'paid' | 'outstanding';
+type KpiFilter = 'none' | 'challans' | 'advance' | 'net_payable' | 'paid' | 'outstanding';
 
 export default function ChallanLedgerPage() {
     const [brokers, setBrokers] = useState<LedgerBroker[]>([]);
@@ -70,10 +68,9 @@ export default function ChallanLedgerPage() {
     const [outstandingOnly, setOutstandingOnly] = useState(false);
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
-    const [billingFilter, setBillingFilter] = useState<BillingFilter>('all');
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
     const [isPdfExporting, setIsPdfExporting] = useState(false);
-    const [sortField, setSortField] = useState<'broker_code' | 'broker_name' | 'primary_branch_code' | 'outstanding' | 'unbilled_amount' | 'total_challan_amount' | 'total_billed' | 'total_paid'>('broker_code');
+    const [sortField, setSortField] = useState<'broker_code' | 'broker_name' | 'primary_branch_code' | 'outstanding' | 'total_advance_amount' | 'net_payable_amount' | 'total_challan_amount' | 'total_paid'>('broker_code');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
     const [kpiFilter, setKpiFilter] = useState<KpiFilter>('none');
@@ -90,7 +87,6 @@ export default function ChallanLedgerPage() {
             if (outstandingOnly) params.set('has_outstanding', 'true');
             if (dateFrom) params.set('date_from', dateFrom);
             if (dateTo) params.set('date_to', dateTo);
-            if (billingFilter !== 'all') params.set('billing_status', billingFilter);
             if (paymentFilter !== 'all') params.set('payment_status', paymentFilter);
 
             const res = await fetch(`/api/challan-ledger/summary?${params.toString()}`);
@@ -103,7 +99,7 @@ export default function ChallanLedgerPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [branchFilter, outstandingOnly, dateFrom, dateTo, billingFilter, paymentFilter]);
+    }, [branchFilter, outstandingOnly, dateFrom, dateTo, paymentFilter]);
 
     useEffect(() => { fetchLedger(); }, [fetchLedger]);
 
@@ -126,8 +122,8 @@ export default function ChallanLedgerPage() {
             );
         }
         if (kpiFilter === 'challans') list = list.filter((b) => Number(b.total_challan_amount || 0) > 0);
-        if (kpiFilter === 'billed') list = list.filter((b) => Number(b.total_billed || 0) > 0);
-        if (kpiFilter === 'unbilled') list = list.filter((b) => Number(b.unbilled_amount || 0) > 0);
+        if (kpiFilter === 'advance') list = list.filter((b) => Number(b.total_advance_amount || 0) > 0);
+        if (kpiFilter === 'net_payable') list = list.filter((b) => Number(b.net_payable_amount || 0) > 0);
         if (kpiFilter === 'paid') list = list.filter((b) => Number(b.total_paid || 0) > 0);
         if (kpiFilter === 'outstanding') list = list.filter((b) => Number(b.outstanding || 0) > 0);
 
@@ -146,8 +142,8 @@ export default function ChallanLedgerPage() {
 
     const totals = useMemo(() => ({
         challans: filtered.reduce((s, b) => s + (b.total_challan_amount || 0), 0),
-        billed: filtered.reduce((s, b) => s + (b.total_billed || 0), 0),
-        unbilled: filtered.reduce((s, b) => s + (b.unbilled_amount || 0), 0),
+        advance: filtered.reduce((s, b) => s + (b.total_advance_amount || 0), 0),
+        netPayable: filtered.reduce((s, b) => s + (b.net_payable_amount || 0), 0),
         paid: filtered.reduce((s, b) => s + (b.total_paid || 0), 0),
         outstanding: filtered.reduce((s, b) => s + (b.outstanding || 0), 0),
     }), [filtered]);
@@ -169,7 +165,6 @@ export default function ChallanLedgerPage() {
         outstandingOnly,
         !!dateFrom,
         !!dateTo,
-        billingFilter !== 'all',
         paymentFilter !== 'all',
     ].filter(Boolean).length;
 
@@ -179,7 +174,6 @@ export default function ChallanLedgerPage() {
         setOutstandingOnly(false);
         setDateFrom('');
         setDateTo('');
-        setBillingFilter('all');
         setPaymentFilter('all');
         setKpiFilter('none');
     };
@@ -200,16 +194,14 @@ export default function ChallanLedgerPage() {
                     primary_branch_code: b.primary_branch_code,
                     total_challan_count: b.total_challan_count,
                     total_challan_amount: b.total_challan_amount,
-                    total_billed: b.total_billed,
-                    unbilled_amount: b.unbilled_amount,
-                    overbilled_amount: b.overbilled_amount ?? 0,
+                    total_advance_amount: b.total_advance_amount,
+                    net_payable_amount: b.net_payable_amount,
                     total_paid: b.total_paid,
                     outstanding: b.outstanding,
                 })),
                 periodLabel,
                 filters: {
                     branch: branchFilter !== 'all' ? branchFilter : undefined,
-                    billingStatus: billingFilter !== 'all' ? billingFilter : undefined,
                     paymentStatus: paymentFilter !== 'all' ? paymentFilter : undefined,
                     outstandingOnly,
                 },
@@ -248,9 +240,9 @@ export default function ChallanLedgerPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
                 {[
                     { key: 'challans' as const, label: 'Total Challan Amount', value: totals.challans, icon: Truck, color: 'primary' as const },
-                    { key: 'billed' as const, label: 'Total Billed', value: totals.billed, icon: TrendingUp, color: 'emerald' as const },
-                    { key: 'unbilled' as const, label: 'Unbilled', value: totals.unbilled, icon: AlertCircle, color: 'amber' as const },
-                    { key: 'paid' as const, label: 'Total Received', value: totals.paid, icon: DollarSign, color: 'indigo' as const },
+                    { key: 'advance' as const, label: 'Advance Paid', value: totals.advance, icon: AlertCircle, color: 'amber' as const },
+                    { key: 'net_payable' as const, label: 'Net Payable', value: totals.netPayable, icon: TrendingUp, color: 'emerald' as const },
+                    { key: 'paid' as const, label: 'Total Paid', value: totals.paid, icon: DollarSign, color: 'indigo' as const },
                     { key: 'outstanding' as const, label: 'Outstanding', value: totals.outstanding, icon: BookOpen, color: 'red' as const },
                 ].map(({ key, label, value, icon: Icon, color }) => {
                     const styles = KPI_COLOR_STYLES[color];
@@ -315,14 +307,6 @@ export default function ChallanLedgerPage() {
                         <Input type="date" className="h-9 w-36" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                         <span className="text-xs">–</span>
                         <Input type="date" className="h-9 w-36" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                        <Select value={billingFilter} onValueChange={(v) => setBillingFilter(v as BillingFilter)}>
-                            <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Billing</SelectItem>
-                                <SelectItem value="has_bills">Has Bills</SelectItem>
-                                <SelectItem value="no_bills">No Bills</SelectItem>
-                            </SelectContent>
-                        </Select>
                         <Select value={paymentFilter} onValueChange={(v) => setPaymentFilter(v as PaymentFilter)}>
                             <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -345,8 +329,8 @@ export default function ChallanLedgerPage() {
                                     <TableHead className="cursor-pointer" onClick={() => toggleSort('broker_name')}>Broker <SortIcon field="broker_name" /></TableHead>
                                     <TableHead className="cursor-pointer" onClick={() => toggleSort('primary_branch_code')}>Branch <SortIcon field="primary_branch_code" /></TableHead>
                                     <TableHead className="text-right cursor-pointer" onClick={() => toggleSort('total_challan_amount')}>Challan Amt <SortIcon field="total_challan_amount" /></TableHead>
-                                    <TableHead className="text-right cursor-pointer" onClick={() => toggleSort('total_billed')}>Billed <SortIcon field="total_billed" /></TableHead>
-                                    <TableHead className="text-right cursor-pointer" onClick={() => toggleSort('unbilled_amount')}>Unbilled <SortIcon field="unbilled_amount" /></TableHead>
+                                    <TableHead className="text-right cursor-pointer" onClick={() => toggleSort('total_advance_amount')}>Advance <SortIcon field="total_advance_amount" /></TableHead>
+                                    <TableHead className="text-right cursor-pointer" onClick={() => toggleSort('net_payable_amount')}>Net Payable <SortIcon field="net_payable_amount" /></TableHead>
                                     <TableHead className="text-right cursor-pointer" onClick={() => toggleSort('total_paid')}>Paid <SortIcon field="total_paid" /></TableHead>
                                     <TableHead className="text-right cursor-pointer" onClick={() => toggleSort('outstanding')}>Outstanding <SortIcon field="outstanding" /></TableHead>
                                     <TableHead />
@@ -366,8 +350,8 @@ export default function ChallanLedgerPage() {
                                         </TableCell>
                                         <TableCell>{b.primary_branch_code || '—'}</TableCell>
                                         <TableCell className="text-right font-mono font-bold">₹{fmt(b.total_challan_amount)}</TableCell>
-                                        <TableCell className="text-right font-mono text-emerald-700">₹{fmt(b.total_billed)}</TableCell>
-                                        <TableCell className="text-right font-mono text-amber-700">₹{fmt(b.unbilled_amount)}</TableCell>
+                                        <TableCell className="text-right font-mono text-amber-700">₹{fmt(b.total_advance_amount)}</TableCell>
+                                        <TableCell className="text-right font-mono text-emerald-700">₹{fmt(b.net_payable_amount)}</TableCell>
                                         <TableCell className="text-right font-mono text-indigo-700">₹{fmt(b.total_paid)}</TableCell>
                                         <TableCell className="text-right font-mono text-red-700">₹{fmt(b.outstanding)}</TableCell>
                                         <TableCell className="text-right">

@@ -1,8 +1,9 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { compareCnNo } from '@/lib/sortLinkedConsignments';
 
-const CN_SEARCH_FIELDS = 'id, cn_no, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point, booking_branch, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, total_freight, advance_amount, balance_amount, freight_pending';
+const CN_SEARCH_FIELDS = 'id, cn_no, bkg_date, consignor_name, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point, booking_branch, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, total_freight, advance_amount, balance_amount, freight_pending';
 
 const CN_SELECT_FIELDS = `${CN_SEARCH_FIELDS}, parent_cn_id, freight_included`;
 
@@ -99,7 +100,9 @@ export async function GET(request: Request) {
                 .in('cn_no', cnArray));
         }
         if (error) return NextResponse.json([], { status: 200 });
-        return NextResponse.json(data ?? []);
+        const rows = (data ?? []) as Array<{ cn_no?: string }>;
+        rows.sort((a, b) => compareCnNo(String(a.cn_no || ''), String(b.cn_no || '')));
+        return NextResponse.json(rows);
     }
 
     // --- Exact lookup mode ---

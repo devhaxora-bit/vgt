@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ChallanBillingChallanPicker, type ChallanBillingChallanOption } from './ChallanBillingChallanPicker';
-import { ChallanBillingRecordPicker, type ChallanBillingRecordOption } from './ChallanBillingRecordPicker';
 import {
     ChallanBillingExtraChargesEditor,
     type ChallanBillingExtraChargeDraftItem,
@@ -69,6 +68,16 @@ export interface ChallanBillingRecord {
     payment_status?: string;
 }
 
+export interface ChallanPaymentChallanAllocation {
+    challan_no: string;
+    settled_amount: number;
+    deduction_items?: Array<{ label: string; amount: number }>;
+    addition_items?: Array<{ label: string; amount: number }>;
+    deduction_total?: number;
+    addition_total?: number;
+    net_paid_amount?: number;
+}
+
 export interface ChallanPaymentReceipt {
     id: string;
     receipt_date: string;
@@ -78,8 +87,10 @@ export interface ChallanPaymentReceipt {
     reference_no?: string;
     bank_name?: string;
     narration?: string;
+    payer_name?: string | null;
     status: string;
     related_billing_record_ids?: string[];
+    challan_allocations?: ChallanPaymentChallanAllocation[];
     bill_allocations?: Array<{
         billing_record_id: string;
         settled_amount: number;
@@ -87,37 +98,6 @@ export interface ChallanPaymentReceipt {
         deduction_items?: Array<{ label: string; amount: number }>;
     }>;
 }
-
-const buildSettledBillAmountMap = (paymentReceipts: ChallanPaymentReceipt[]) => {
-    const billSettledMap = new Map<string, number>();
-
-    paymentReceipts
-        .filter((receipt) => receipt.status === 'ACTIVE')
-        .forEach((receipt) => {
-            if ((receipt.bill_allocations || []).length > 0) {
-                receipt.bill_allocations?.forEach((allocation) => {
-                    const billId = String(allocation.billing_record_id || '').trim();
-                    if (!billId) return;
-                    billSettledMap.set(
-                        billId,
-                        roundMoney((billSettledMap.get(billId) || 0) + Number(allocation.settled_amount || 0))
-                    );
-                });
-                return;
-            }
-
-            if ((receipt.related_billing_record_ids || []).length === 1) {
-                const billId = String(receipt.related_billing_record_ids?.[0] || '').trim();
-                if (!billId) return;
-                billSettledMap.set(
-                    billId,
-                    roundMoney((billSettledMap.get(billId) || 0) + Number(receipt.amount || 0))
-                );
-            }
-        });
-
-    return billSettledMap;
-};
 
 const normalizeExtraChargeDraftItems = (items: ChallanBillingExtraChargeDraftItem[]) =>
     items
@@ -277,25 +257,32 @@ export function CreateChallanBillDialog({
     );
 }
 
+const getChallanBalance = (challan: ChallanBillingChallanOption) => {
+    const netPayable = Number(challan.net_payable_amount);
+    const balance = Number(challan.balance_amount);
+    if (!Number.isNaN(balance)) return roundMoney(balance);
+    if (!Number.isNaN(netPayable)) return roundMoney(netPayable);
+    return getFullHire(challan);
+};
+
 export function RecordChallanPaymentDialog({
     open,
     onClose,
     brokerId,
-    billingRecords,
-    paymentReceipts,
+    challans,
     onSuccess,
 }: {
     open: boolean;
     onClose: () => void;
     brokerId: string;
-    billingRecords: ChallanBillingRecord[];
-    paymentReceipts: ChallanPaymentReceipt[];
+    challans: ChallanBillingChallanOption[];
     onSuccess: () => void;
 }) {
-    interface PaymentBillAllocationDraft {
-        billing_record_id: string;
+    interface PaymentChallanAllocationDraft {
+        challan_no: string;
         settled_amount: string;
         deduction_items: ChallanBillingExtraChargeDraftItem[];
+        addition_items: ChallanBillingExtraChargeDraftItem[];
     }
 
     const [form, setForm] = useState({
@@ -304,79 +291,120 @@ export function RecordChallanPaymentDialog({
         reference_no: '',
         bank_name: '',
         narration: '',
-        related_billing_record_ids: [] as string[],
-        bill_allocations: [] as PaymentBillAllocationDraft[],
+        payer_name: '',
+        challan_allocations: [] as PaymentChallanAllocationDraft[],
     });
     const [saving, setSaving] = useState(false);
+    const [pickerSearch, setPickerSearch] = useState('');
 
-    const settledBillAmountMap = useMemo(() => buildSettledBillAmountMap(paymentReceipts), [paymentReceipts]);
-
-    const payableBillingRecords = useMemo(
-        () => billingRecords
-            .filter((record) => record.status === 'ACTIVE')
-            .map((record) => {
-                const settledAmount = settledBillAmountMap.get(record.id) || 0;
-                const remainingAmount = Math.max(roundMoney(parseMoney(record.amount) - settledAmount), 0);
-                return { ...record, settled_amount: settledAmount, remaining_amount: remainingAmount };
-            })
-            .filter((record) => parseMoney(record.remaining_amount) > 0.009),
-        [billingRecords, settledBillAmountMap]
+    const payableChallans = useMemo(
+        () => challans.filter((challan) => getChallanBalance(challan) > 0.009),
+        [challans]
     );
 
-    const syncBillAllocationDrafts = (billIds: string[], current: PaymentBillAllocationDraft[]) => {
-        const existing = new Map(current.map((item) => [item.billing_record_id, item]));
-        return billIds.map((billingRecordId) => {
-            const bill = payableBillingRecords.find((entry) => entry.id === billingRecordId);
-            const remaining = parseMoney(bill?.remaining_amount ?? bill?.amount);
-            return existing.get(billingRecordId) || {
-                billing_record_id: billingRecordId,
-                settled_amount: remaining > 0 ? String(remaining) : '',
-                deduction_items: [],
+    const filteredPayableChallans = useMemo(() => {
+        const query = pickerSearch.trim().toLowerCase();
+        if (!query) return payableChallans;
+        return payableChallans.filter((challan) =>
+            [challan.challan_no, challan.vehicle_no, challan.driver_name, challan.owner_name]
+                .join(' ').toLowerCase().includes(query)
+        );
+    }, [payableChallans, pickerSearch]);
+
+    const selectedChallanNos = new Set(form.challan_allocations.map((a) => a.challan_no));
+
+    const toggleChallan = (challan: ChallanBillingChallanOption) => {
+        setForm((current) => {
+            if (current.challan_allocations.some((a) => a.challan_no === challan.challan_no)) {
+                return {
+                    ...current,
+                    challan_allocations: current.challan_allocations.filter((a) => a.challan_no !== challan.challan_no),
+                };
+            }
+            const balance = getChallanBalance(challan);
+            return {
+                ...current,
+                challan_allocations: [
+                    ...current.challan_allocations,
+                    {
+                        challan_no: challan.challan_no,
+                        settled_amount: balance > 0 ? String(balance) : '',
+                        deduction_items: [],
+                        addition_items: [],
+                    },
+                ],
             };
         });
     };
 
-    const selectedAllocationDrafts = form.bill_allocations
-        .map((draft) => ({
-            draft,
-            bill: payableBillingRecords.find((record) => record.id === draft.billing_record_id),
-        }))
-        .filter((entry): entry is { draft: PaymentBillAllocationDraft; bill: ChallanBillingRecord & { settled_amount: number; remaining_amount: number } } => Boolean(entry.bill));
-
-    const selectedBillSettledTotal = roundMoney(
-        selectedAllocationDrafts.reduce((sum, { draft }) => sum + parseMoney(draft.settled_amount), 0)
+    const challanByNo = useMemo(
+        () => new Map(payableChallans.map((challan) => [challan.challan_no, challan])),
+        [payableChallans]
     );
-    const selectedBillDeductionTotal = roundMoney(
-        selectedAllocationDrafts.reduce((sum, { draft }) => (
+
+    const settledTotal = roundMoney(
+        form.challan_allocations.reduce((sum, draft) => sum + parseMoney(draft.settled_amount), 0)
+    );
+    const deductionTotal = roundMoney(
+        form.challan_allocations.reduce((sum, draft) => (
             sum + normalizeExtraChargeDraftItems(draft.deduction_items).reduce((inner, item) => inner + item.amount, 0)
         ), 0)
     );
-    const selectedBillActualReceivedTotal = roundMoney(selectedBillSettledTotal - selectedBillDeductionTotal);
+    const additionTotal = roundMoney(
+        form.challan_allocations.reduce((sum, draft) => (
+            sum + normalizeExtraChargeDraftItems(draft.addition_items).reduce((inner, item) => inner + item.amount, 0)
+        ), 0)
+    );
+    const netCashTotal = roundMoney(settledTotal - deductionTotal + additionTotal);
+
+    const updateDraft = (challanNo: string, patch: Partial<PaymentChallanAllocationDraft>) => {
+        setForm((current) => ({
+            ...current,
+            challan_allocations: current.challan_allocations.map((allocation) => (
+                allocation.challan_no === challanNo ? { ...allocation, ...patch } : allocation
+            )),
+        }));
+    };
+
+    const resetForm = () => setForm({
+        receipt_date: new Date().toISOString().split('T')[0],
+        payment_mode: 'NEFT',
+        reference_no: '',
+        bank_name: '',
+        narration: '',
+        payer_name: '',
+        challan_allocations: [],
+    });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (form.related_billing_record_ids.length === 0) {
-            toast.error('Select at least one bill');
+        if (form.challan_allocations.length === 0) {
+            toast.error('Select at least one challan to pay against');
             return;
         }
-        if (selectedBillSettledTotal <= 0) {
-            toast.error('Settled amount must be greater than zero');
+        if (settledTotal <= 0) {
+            toast.error('Enter the amount paid against the selected challan(s)');
             return;
+        }
+
+        // Client-side guard: never exceed a challan's remaining balance.
+        for (const draft of form.challan_allocations) {
+            const challan = challanByNo.get(draft.challan_no);
+            const balance = challan ? getChallanBalance(challan) : 0;
+            if (parseMoney(draft.settled_amount) > balance + 0.009) {
+                toast.error(`Amount for challan ${draft.challan_no} exceeds its balance of ₹${fmt(balance)}`);
+                return;
+            }
         }
 
         setSaving(true);
         try {
-            const bill_allocations = selectedAllocationDrafts.map(({ draft }) => {
-                const deductionItems = normalizeExtraChargeDraftItems(draft.deduction_items);
-                const settledAmount = roundMoney(parseMoney(draft.settled_amount));
-                const deductionTotal = roundMoney(deductionItems.reduce((sum, item) => sum + item.amount, 0));
-                return {
-                    billing_record_id: draft.billing_record_id,
-                    settled_amount: settledAmount,
-                    received_amount: roundMoney(settledAmount - deductionTotal),
-                    deduction_items: deductionItems,
-                };
-            });
+            const challan_allocations = form.challan_allocations.map((draft) => ({
+                challan_no: draft.challan_no,
+                settled_amount: roundMoney(parseMoney(draft.settled_amount)),
+                deduction_items: normalizeExtraChargeDraftItems(draft.deduction_items),
+                addition_items: normalizeExtraChargeDraftItems(draft.addition_items),
+            }));
 
             const res = await fetch(`/api/challan-ledger/${brokerId}/payments`, {
                 method: 'POST',
@@ -387,7 +415,8 @@ export function RecordChallanPaymentDialog({
                     reference_no: form.reference_no || null,
                     bank_name: form.bank_name || null,
                     narration: form.narration || null,
-                    bill_allocations,
+                    payer_name: form.payer_name || null,
+                    challan_allocations,
                 }),
             });
             if (!res.ok) {
@@ -397,6 +426,7 @@ export function RecordChallanPaymentDialog({
             toast.success('Payment recorded successfully');
             onSuccess();
             onClose();
+            resetForm();
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to record payment');
         } finally {
@@ -412,7 +442,7 @@ export function RecordChallanPaymentDialog({
                         <Banknote className="h-4 w-4 text-primary" /> Record Payment
                     </DialogTitle>
                     <DialogDescription>
-                        Link payment to challan bills. Partial payments are supported until the bill is fully settled.
+                        Pay directly against challan numbers. Partial payments are allowed until a challan is fully paid.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -435,6 +465,10 @@ export function RecordChallanPaymentDialog({
                                     </Select>
                                 </div>
                             </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Paid To / Received By</Label>
+                                <Input value={form.payer_name} onChange={(e) => setForm((f) => ({ ...f, payer_name: e.target.value }))} placeholder="Name of the person/party" className="h-9" />
+                            </div>
                             {form.payment_mode !== 'CASH' && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1.5">
@@ -452,71 +486,87 @@ export function RecordChallanPaymentDialog({
                                 <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
                             </div>
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Numbers</Label>
-                                <ChallanBillingRecordPicker
-                                    billingRecords={payableBillingRecords as ChallanBillingRecordOption[]}
-                                    value={form.related_billing_record_ids}
-                                    onChange={(related_billing_record_ids) => setForm((current) => ({
-                                        ...current,
-                                        related_billing_record_ids,
-                                        bill_allocations: syncBillAllocationDrafts(related_billing_record_ids, current.bill_allocations),
-                                    }))}
-                                />
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">Select Challans *</Label>
+                                <div className="rounded-md border">
+                                    <div className="border-b p-2">
+                                        <Input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Search challan / vehicle / driver..." className="h-8 text-xs" />
+                                    </div>
+                                    <div className="max-h-56 overflow-y-auto divide-y">
+                                        {filteredPayableChallans.length === 0 ? (
+                                            <div className="px-3 py-6 text-center text-xs text-muted-foreground">No challans with an outstanding balance.</div>
+                                        ) : filteredPayableChallans.map((challan) => {
+                                            const checked = selectedChallanNos.has(challan.challan_no);
+                                            return (
+                                                <button
+                                                    key={challan.id}
+                                                    type="button"
+                                                    onClick={() => toggleChallan(challan)}
+                                                    className={`w-full px-3 py-2 text-left hover:bg-muted/40 transition-colors ${checked ? 'bg-primary/5' : ''}`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="font-mono text-xs font-bold text-primary">{challan.challan_no}</span>
+                                                        <span className="text-[11px] font-semibold text-amber-700">Bal ₹{fmt(getChallanBalance(challan))}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-muted-foreground">{fmtDate(challan.date_from)} • {challan.vehicle_no || '—'}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                             </div>
                             <div className="rounded-lg border bg-muted/10 p-4 text-sm space-y-2">
-                                <div className="flex justify-between"><span>Settled Total</span><span className="font-mono font-semibold text-indigo-700">₹{fmt(selectedBillSettledTotal)}</span></div>
-                                <div className="flex justify-between"><span>Actual Received</span><span className="font-mono font-semibold">₹{fmt(selectedBillActualReceivedTotal)}</span></div>
+                                <div className="flex justify-between"><span>Settled (against challans)</span><span className="font-mono font-semibold text-indigo-700">₹{fmt(settledTotal)}</span></div>
+                                <div className="flex justify-between"><span>Deductions</span><span className="font-mono font-semibold text-destructive">− ₹{fmt(deductionTotal)}</span></div>
+                                <div className="flex justify-between"><span>Extra Charges</span><span className="font-mono font-semibold text-emerald-700">+ ₹{fmt(additionTotal)}</span></div>
+                                <div className="flex justify-between border-t pt-2 font-bold"><span>Net Cash</span><span className="font-mono">₹{fmt(netCashTotal)}</span></div>
                             </div>
                         </div>
                         <div className="space-y-4">
-                            {selectedAllocationDrafts.length === 0 ? (
+                            {form.challan_allocations.length === 0 ? (
                                 <div className="rounded-lg border border-dashed bg-muted/10 p-6 text-sm text-muted-foreground">
-                                    Select unpaid bills to record partial or full payment.
+                                    Select challans on the left to enter the amount paid, deductions, and extra charges.
                                 </div>
-                            ) : selectedAllocationDrafts.map(({ bill, draft }) => {
-                                const remainingBefore = parseMoney(bill.remaining_amount ?? bill.amount);
+                            ) : form.challan_allocations.map((draft) => {
+                                const challan = challanByNo.get(draft.challan_no);
+                                const balance = challan ? getChallanBalance(challan) : 0;
                                 return (
-                                    <div key={bill.id} className="rounded-lg border p-4 space-y-3">
+                                    <div key={draft.challan_no} className="rounded-lg border p-4 space-y-3">
                                         <div className="flex justify-between gap-3">
                                             <div>
-                                                <div className="font-mono text-sm font-bold text-primary">{bill.bill_ref_no || bill.id.slice(0, 8)}</div>
-                                                <div className="text-xs text-muted-foreground">{fmtDate(bill.billing_date)} • Bal ₹{fmt(remainingBefore)}</div>
+                                                <div className="font-mono text-sm font-bold text-primary">{draft.challan_no}</div>
+                                                <div className="text-xs text-muted-foreground">{challan ? `${fmtDate(challan.date_from)} • ` : ''}Balance ₹{fmt(balance)}</div>
                                             </div>
-                                            <Badge variant="outline">{bill.payment_status || 'UNPAID'}</Badge>
+                                            <Button type="button" variant="ghost" size="sm" className="h-7 text-destructive" onClick={() => challan && toggleChallan(challan)}>Remove</Button>
                                         </div>
                                         <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold uppercase text-muted-foreground">Settled For This Bill (₹)</Label>
+                                            <Label className="text-xs font-bold uppercase text-muted-foreground">Amount Paid For This Challan (₹) *</Label>
                                             <Input
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
-                                                max={remainingBefore > 0 ? remainingBefore : undefined}
+                                                max={balance > 0 ? balance : undefined}
                                                 value={draft.settled_amount}
-                                                onChange={(e) => setForm((current) => ({
-                                                    ...current,
-                                                    bill_allocations: current.bill_allocations.map((allocation) => (
-                                                        allocation.billing_record_id === draft.billing_record_id
-                                                            ? { ...allocation, settled_amount: e.target.value }
-                                                            : allocation
-                                                    )),
-                                                }))}
+                                                onChange={(e) => updateDraft(draft.challan_no, { settled_amount: e.target.value })}
                                                 className="h-9 font-mono"
                                             />
                                         </div>
                                         <ChallanBillingExtraChargesEditor
                                             items={draft.deduction_items}
-                                            onChange={(deduction_items) => setForm((current) => ({
-                                                ...current,
-                                                bill_allocations: current.bill_allocations.map((allocation) => (
-                                                    allocation.billing_record_id === draft.billing_record_id
-                                                        ? { ...allocation, deduction_items }
-                                                        : allocation
-                                                )),
-                                            }))}
-                                            title="Deduction Breakup"
-                                            description="Optional deductions from the settled amount."
+                                            onChange={(deduction_items) => updateDraft(draft.challan_no, { deduction_items })}
+                                            title="Deductions"
+                                            description="Amounts subtracted from the cash paid (e.g. TDS, penalty)."
                                             lineLabel="Deduction"
                                             addButtonLabel="Add Deduction"
+                                            emptyMessage="No deductions added."
+                                        />
+                                        <ChallanBillingExtraChargesEditor
+                                            items={draft.addition_items}
+                                            onChange={(addition_items) => updateDraft(draft.challan_no, { addition_items })}
+                                            title="Extra Charges"
+                                            description="Extra amounts added to the cash paid (e.g. detention, extra hire)."
+                                            lineLabel="Charge"
+                                            addButtonLabel="Add Extra Charge"
+                                            emptyMessage="No extra charges added."
                                         />
                                     </div>
                                 );
@@ -531,6 +581,94 @@ export function RecordChallanPaymentDialog({
                         </Button>
                     </div>
                 </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+export function ViewChallanPaymentDialog({
+    open,
+    onClose,
+    receipt,
+}: {
+    open: boolean;
+    onClose: () => void;
+    receipt: ChallanPaymentReceipt | null;
+}) {
+    if (!receipt) return null;
+
+    const allocations = Array.isArray(receipt.challan_allocations) ? receipt.challan_allocations : [];
+    const deductionTotal = roundMoney(
+        allocations.reduce((sum, a) => sum + (a.deduction_items || []).reduce((inner, item) => inner + Number(item.amount || 0), 0), 0)
+    );
+    const additionTotal = roundMoney(
+        allocations.reduce((sum, a) => sum + (a.addition_items || []).reduce((inner, item) => inner + Number(item.amount || 0), 0), 0)
+    );
+    const settledTotal = roundMoney(allocations.reduce((sum, a) => sum + Number(a.settled_amount || 0), 0));
+    const netCash = roundMoney(settledTotal - deductionTotal + additionTotal);
+
+    return (
+        <Dialog open={open} onOpenChange={onClose}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Banknote className="h-4 w-4 text-primary" /> Payment Receipt
+                    </DialogTitle>
+                    <DialogDescription>{receipt.narration || 'Payment recorded against challans'}</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div><span className="text-muted-foreground">Date</span><div className="font-semibold">{fmtDate(receipt.receipt_date)}</div></div>
+                        <div><span className="text-muted-foreground">Mode</span><div className="font-semibold">{receipt.payment_mode}</div></div>
+                        <div><span className="text-muted-foreground">Paid To</span><div className="font-semibold">{receipt.payer_name || '—'}</div></div>
+                        <div><span className="text-muted-foreground">Reference</span><div className="font-semibold font-mono text-xs">{receipt.reference_no || '—'}</div></div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 rounded-lg border bg-muted/10 p-3 text-sm">
+                        <div><span className="text-muted-foreground text-xs">Settled</span><div className="font-mono font-bold text-indigo-700">₹{fmt(settledTotal)}</div></div>
+                        <div><span className="text-muted-foreground text-xs">Deductions</span><div className="font-mono font-bold text-destructive">₹{fmt(deductionTotal)}</div></div>
+                        <div><span className="text-muted-foreground text-xs">Extra Charges</span><div className="font-mono font-bold text-emerald-700">₹{fmt(additionTotal)}</div></div>
+                        <div><span className="text-muted-foreground text-xs">Net Cash</span><div className="font-mono font-bold">₹{fmt(netCash)}</div></div>
+                    </div>
+
+                    <div className="rounded-md border overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Challan</TableHead>
+                                    <TableHead className="text-right">Settled</TableHead>
+                                    <TableHead>Deductions</TableHead>
+                                    <TableHead>Extra Charges</TableHead>
+                                    <TableHead className="text-right">Net</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {allocations.map((allocation, index) => {
+                                    const dTotal = (allocation.deduction_items || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+                                    const aTotal = (allocation.addition_items || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+                                    const net = Number(allocation.net_paid_amount ?? (Number(allocation.settled_amount || 0) - dTotal + aTotal));
+                                    return (
+                                        <TableRow key={`${allocation.challan_no}-${index}`}>
+                                            <TableCell className="font-mono text-xs font-bold text-primary">{allocation.challan_no}</TableCell>
+                                            <TableCell className="text-right font-mono">₹{fmt(Number(allocation.settled_amount || 0))}</TableCell>
+                                            <TableCell className="text-xs">
+                                                {(allocation.deduction_items || []).length === 0 ? '—' : (allocation.deduction_items || []).map((item, i) => (
+                                                    <div key={i}>{item.label}: ₹{fmt(Number(item.amount || 0))}</div>
+                                                ))}
+                                            </TableCell>
+                                            <TableCell className="text-xs">
+                                                {(allocation.addition_items || []).length === 0 ? '—' : (allocation.addition_items || []).map((item, i) => (
+                                                    <div key={i}>{item.label}: ₹{fmt(Number(item.amount || 0))}</div>
+                                                ))}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono font-semibold">₹{fmt(net)}</TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
             </DialogContent>
         </Dialog>
     );

@@ -23,6 +23,12 @@ export interface ChallanBillingChallanOption {
     extra_hire_amount: number;
     full_hire_amount?: number;
     bill_status?: string;
+    advance_amount?: number;
+    less_tds?: number;
+    net_payable_amount?: number;
+    paid_amount?: number;
+    balance_amount?: number;
+    payment_status?: string;
 }
 
 const fmt = (n: number) =>

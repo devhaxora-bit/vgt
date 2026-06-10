@@ -6,9 +6,8 @@ export type ChallanLedgerSummaryBrokerRow = {
     primary_branch_code: string | null;
     total_challan_count: number;
     total_challan_amount: number;
-    total_billed: number;
-    unbilled_amount: number;
-    overbilled_amount: number;
+    total_advance_amount: number;
+    net_payable_amount: number;
     total_paid: number;
     outstanding: number;
 };
@@ -61,8 +60,8 @@ const splitRows = (rows: ChallanLedgerSummaryBrokerRow[]) => {
 const totalsFor = (rows: ChallanLedgerSummaryBrokerRow[]) => ({
     challanCount: rows.reduce((sum, row) => sum + Number(row.total_challan_count || 0), 0),
     challanAmount: rows.reduce((sum, row) => sum + Number(row.total_challan_amount || 0), 0),
-    billed: rows.reduce((sum, row) => sum + Number(row.total_billed || 0), 0),
-    unbilled: rows.reduce((sum, row) => sum + Number(row.unbilled_amount || 0), 0),
+    advance: rows.reduce((sum, row) => sum + Number(row.total_advance_amount || 0), 0),
+    netPayable: rows.reduce((sum, row) => sum + Number(row.net_payable_amount || 0), 0),
     paid: rows.reduce((sum, row) => sum + Number(row.total_paid || 0), 0),
     outstanding: rows.reduce((sum, row) => sum + Number(row.outstanding || 0), 0),
 });
@@ -74,8 +73,8 @@ const buildRow = (row: ChallanLedgerSummaryBrokerRow) => `
         <td class="center branch-cell">${safe(formatBranchLabel(row.primary_branch_code, null))}</td>
         <td class="amount">${fmt(row.total_challan_count)}</td>
         <td class="amount">${fmt(row.total_challan_amount)}</td>
-        <td class="amount">${fmt(row.total_billed)}</td>
-        <td class="amount unbilled">${fmt(row.unbilled_amount)}</td>
+        <td class="amount advance">${fmt(row.total_advance_amount)}</td>
+        <td class="amount">${fmt(row.net_payable_amount)}</td>
         <td class="amount">${fmt(row.total_paid)}</td>
         <td class="amount outstanding">${fmt(row.outstanding)}</td>
     </tr>
@@ -99,8 +98,8 @@ const buildTable = (rows: ChallanLedgerSummaryBrokerRow[], allRows: ChallanLedge
                     <th style="width:11%;">Branch</th>
                     <th style="width:5%;">Ch.</th>
                     <th style="width:12%;">Challan<br/>Amount</th>
-                    <th style="width:11%;">Billed</th>
-                    <th style="width:11%;">Unbilled</th>
+                    <th style="width:11%;">Advance</th>
+                    <th style="width:11%;">Net<br/>Payable</th>
                     <th style="width:10%;">Paid</th>
                     <th style="width:12%;">Outstanding</th>
                 </tr>
@@ -115,8 +114,8 @@ const buildTable = (rows: ChallanLedgerSummaryBrokerRow[], allRows: ChallanLedge
                         <td></td>
                         <td class="amount">${fmt(totals.challanCount)}</td>
                         <td class="amount">${fmt(totals.challanAmount)}</td>
-                        <td class="amount">${fmt(totals.billed)}</td>
-                        <td class="amount">${fmt(totals.unbilled)}</td>
+                        <td class="amount">${fmt(totals.advance)}</td>
+                        <td class="amount">${fmt(totals.netPayable)}</td>
                         <td class="amount">${fmt(totals.paid)}</td>
                         <td class="amount">${fmt(totals.outstanding)}</td>
                     </tr>
@@ -193,7 +192,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .party-name { text-align: left; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 7px; font-variant-numeric: tabular-nums; }
-.items-table .unbilled:not(:empty) { background: rgba(255, 221, 120, 0.28); }
+.items-table .advance:not(:empty) { background: rgba(255, 221, 120, 0.28); }
 .items-table .outstanding:not(:empty) { background: rgba(255, 162, 162, 0.22); }
 .blank-row td { font-weight: 400; background: #fff; }
 .total-row td { height: 40px; font-size: 17px; font-weight: 800; background: rgba(29, 47, 122, 0.12); }

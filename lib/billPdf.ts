@@ -2,6 +2,7 @@ import type { BillingVehicleCancelItem } from '@/lib/billingVehicleCancel';
 
 export type BillPdfDetailRow = {
     cnNo: string;
+    isFreightIncluded?: boolean;
     date: string;
     invoiceNo: string;
     vehicleNo: string;
@@ -48,7 +49,11 @@ type BillPageSlice = {
 };
 
 const BILL_TABLE_COLUMNS = 15;
-const PAGE_LAYOUT_BUFFER_PX = 22;
+const PAGE_LAYOUT_BUFFER_PX = 16;
+/** Match the old single-page bill layout: pad short bills up to this many detail rows. */
+const MIN_SINGLE_PAGE_DETAIL_ROWS = 12;
+/** Website primary button color: hsl(221.2 83.2% 53.3%) */
+const BILL_TABLE_HEADER_BG = '#2563eb';
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -101,7 +106,7 @@ const billTableHeadHtml = () => `
 
 const detailRowHtml = (row: BillPdfDetailRow) => `
     <tr class="item-row">
-        <td class="center">${safe(row.cnNo)}</td>
+        <td class="center cn-cell${row.isFreightIncluded ? ' incl' : ''}">${safe(row.cnNo)}</td>
         <td class="center">${safe(row.date)}</td>
         <td class="center invoice-cell">${safe(row.invoiceNo)}</td>
         <td class="center name-cell">${safe(row.vehicleNo)}</td>
@@ -183,10 +188,11 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .page--continuation .items-table { margin-top: 0; border-top: none; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #ffffff; background: #17308b; }
+.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #ffffff; background: ${BILL_TABLE_HEADER_BG}; }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.invoice-cell, .name-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
+.invoice-cell, .name-cell, .cn-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .invoice-cell { word-break: break-all !important; }
+.cn-cell.incl { color: #1d4ed8; font-weight: 800; font-size: 9.6px; line-height: 1.2; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }
@@ -295,26 +301,44 @@ const billFooterHtml = (payload: BillPdfPayload) => `
     </div>
 `;
 
-const measureTableBudget = (pageEl: HTMLElement) => {
-    const tableWrap = pageEl.querySelector<HTMLElement>('.table-wrap');
-    const thead = pageEl.querySelector<HTMLElement>('.items-table thead');
-    if (!tableWrap || !thead) return 0;
-    return Math.max(0, tableWrap.offsetHeight - thead.offsetHeight - PAGE_LAYOUT_BUFFER_PX);
+type BillLayoutHeights = {
+    sheetHeight: number;
+    headerHeight: number;
+    detailHeight: number;
+    footerHeight: number;
+    theadHeight: number;
+    contSheetHeight: number;
 };
 
-const measureFooterOverhead = (doc: Document) => {
-    const footerEl = doc.getElementById('measure-bill-footer');
-    return footerEl?.offsetHeight || 120;
+const readLayoutHeights = (doc: Document): BillLayoutHeights => {
+    const singlePage = doc.getElementById('measure-single-page');
+    const contPage = doc.getElementById('measure-cont-page');
+    const sheet = singlePage?.querySelector<HTMLElement>('.sheet');
+    const header = singlePage?.querySelector<HTMLElement>('.header-band');
+    const detail = singlePage?.querySelector<HTMLElement>('.detail-grid');
+    const footer = singlePage?.querySelector<HTMLElement>('.bill-footer');
+    const thead = singlePage?.querySelector<HTMLElement>('.items-table thead');
+    const contSheet = contPage?.querySelector<HTMLElement>('.sheet');
+
+    return {
+        sheetHeight: sheet?.offsetHeight || 700,
+        headerHeight: header?.offsetHeight || 88,
+        detailHeight: detail?.offsetHeight || 98,
+        footerHeight: footer?.offsetHeight || 118,
+        theadHeight: thead?.offsetHeight || 44,
+        contSheetHeight: contSheet?.offsetHeight || 700,
+    };
 };
+
+const sumRowHeights = (rowHeights: number[], start = 0) =>
+    rowHeights.slice(start).reduce((sum, height) => sum + height, 0);
 
 const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlice[] => {
     if (rows.length === 0) {
         return [{ rows: [], isFirst: true, isLast: true, blankCount: 0 }];
     }
 
-    const firstBudget = measureTableBudget(doc.getElementById('measure-first-page') as HTMLElement) || 320;
-    const contBudget = measureTableBudget(doc.getElementById('measure-cont-page') as HTMLElement) || 620;
-    const footerOverhead = measureFooterOverhead(doc);
+    const layout = readLayoutHeights(doc);
     const rowEls = Array.from(doc.querySelectorAll<HTMLTableRowElement>('#measure-all-rows .item-row'));
     const rowHeights = rowEls.map((el) => el.offsetHeight);
     const blankRowEl = doc.querySelector<HTMLTableRowElement>('#measure-blank-row');
@@ -322,21 +346,77 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
     const blankRowHeight = Math.max(blankRowEl?.offsetHeight || 24, 1);
     const totalRowHeight = totalRowEl?.offsetHeight || 28;
 
+    const singlePageTbodyBudget = Math.max(
+        blankRowHeight,
+        layout.sheetHeight
+            - layout.headerHeight
+            - layout.detailHeight
+            - layout.theadHeight
+            - layout.footerHeight
+            - totalRowHeight
+            - PAGE_LAYOUT_BUFFER_PX,
+    );
+
+    const firstPageTbodyBudget = Math.max(
+        blankRowHeight,
+        layout.sheetHeight
+            - layout.headerHeight
+            - layout.detailHeight
+            - layout.theadHeight
+            - PAGE_LAYOUT_BUFFER_PX,
+    );
+
+    const contPageTbodyBudget = Math.max(
+        blankRowHeight,
+        layout.contSheetHeight - layout.theadHeight - PAGE_LAYOUT_BUFFER_PX,
+    );
+
+    const dataHeight = sumRowHeights(rowHeights);
+    const singlePageContentHeight = dataHeight + totalRowHeight;
+
+    if (singlePageContentHeight <= singlePageTbodyBudget) {
+        const desiredBlankRows = Math.max(0, MIN_SINGLE_PAGE_DETAIL_ROWS - rows.length);
+        const maxBlankRowsByBudget = Math.max(
+            0,
+            Math.floor((singlePageTbodyBudget - singlePageContentHeight) / blankRowHeight),
+        );
+        return [{
+            rows,
+            isFirst: true,
+            isLast: true,
+            blankCount: Math.min(desiredBlankRows, maxBlankRowsByBudget),
+        }];
+    }
+
     const pages: BillPageSlice[] = [];
     let rowIndex = 0;
 
     while (rowIndex < rows.length) {
         const isFirst = pages.length === 0;
-        const budget = Math.max(isFirst ? firstBudget : contBudget, blankRowHeight);
+        const budget = isFirst ? firstPageTbodyBudget : contPageTbodyBudget;
+        const remainingDataHeight = sumRowHeights(rowHeights, rowIndex);
+        const remainingWithEnd = remainingDataHeight + totalRowHeight + layout.footerHeight;
+
+        if (remainingWithEnd <= budget) {
+            const blankCount = Math.max(
+                0,
+                Math.floor((budget - remainingDataHeight - totalRowHeight) / blankRowHeight),
+            );
+            pages.push({
+                rows: rows.slice(rowIndex),
+                isFirst,
+                isLast: true,
+                blankCount,
+            });
+            break;
+        }
+
         const pageRows: BillPrintableRow[] = [];
         let usedHeight = 0;
 
         while (rowIndex < rows.length) {
             const rowHeight = rowHeights[rowIndex] ?? blankRowHeight;
-            const isFinalRow = rowIndex === rows.length - 1;
-            const reserveEnd = isFinalRow ? totalRowHeight + footerOverhead : 0;
-
-            if (pageRows.length > 0 && usedHeight + rowHeight + reserveEnd > budget) {
+            if (pageRows.length > 0 && usedHeight + rowHeight > budget) {
                 break;
             }
 
@@ -345,12 +425,17 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
             rowIndex += 1;
         }
 
-        const isLast = rowIndex >= rows.length;
-        const reserveEnd = isLast ? totalRowHeight + footerOverhead : 0;
-        const remaining = budget - usedHeight - reserveEnd;
-        const blankCount = Math.max(0, Math.floor(remaining / blankRowHeight));
+        if (pageRows.length === 0 && rowIndex < rows.length) {
+            pageRows.push(rows[rowIndex]);
+            rowIndex += 1;
+        }
 
-        pages.push({ rows: pageRows, isFirst, isLast, blankCount });
+        pages.push({
+            rows: pageRows,
+            isFirst,
+            isLast: false,
+            blankCount: 0,
+        });
     }
 
     return pages;
@@ -384,13 +469,14 @@ const measurementHtml = (payload: BillPdfPayload, rows: BillPrintableRow[]) => `
 <head><style>${billStyles()}</style></head>
 <body>
 <div id="measure-root">
-    <div class="page page--first" id="measure-first-page">
+    <div class="page page--first" id="measure-single-page">
         <div class="sheet">
             ${headerBandHtml(payload.logoUrl)}
             ${detailGridHtml(payload)}
             <div class="table-wrap">
                 <table class="items-table">${billTableHeadHtml()}<tbody></tbody></table>
             </div>
+            ${billFooterHtml(payload)}
         </div>
     </div>
     <div class="page page--continuation" id="measure-cont-page">

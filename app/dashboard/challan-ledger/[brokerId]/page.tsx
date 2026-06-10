@@ -1,9 +1,9 @@
 'use client';
 
-import React, { use, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-    ArrowLeft, Truck, TrendingUp, AlertCircle, DollarSign, Plus, FileText,
+    ArrowLeft, Truck,
     Banknote, Search, RotateCcw, Eye, XCircle, Package, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,9 +17,8 @@ import {
 } from '@/components/ui/table';
 import { ChallanDetailsDialog } from '@/components/features/challans/ChallanDetailsDialog';
 import {
-    CreateChallanBillDialog,
     RecordChallanPaymentDialog,
-    ViewChallanBillDialog,
+    ViewChallanPaymentDialog,
     CancelReasonDialog,
     type ChallanBillingRecord,
     type ChallanPaymentReceipt,
@@ -55,6 +54,9 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
         summary: {
             total_challan_amount: number;
             total_challan_count: number;
+            total_advance_amount: number;
+            total_tds_amount: number;
+            net_payable_amount: number;
             total_billed: number;
             total_paid: number;
             unbilled_amount: number;
@@ -78,8 +80,9 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
         broker: null,
         account: null,
         summary: {
-            total_challan_amount: 0, total_challan_count: 0, total_billed: 0,
-            total_paid: 0, unbilled_amount: 0, outstanding: 0,
+            total_challan_amount: 0, total_challan_count: 0,
+            total_advance_amount: 0, total_tds_amount: 0, net_payable_amount: 0,
+            total_billed: 0, total_paid: 0, unbilled_amount: 0, outstanding: 0,
             unchallaned_cns_count: 0, unchallaned_cns_amount: 0,
         },
         challans: [],
@@ -95,11 +98,10 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
     const [challanSearch, setChallanSearch] = useState('');
     const [activeTab, setActiveTab] = useState('challans');
 
-    const [showBillDialog, setShowBillDialog] = useState(false);
     const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-    const [selectedBill, setSelectedBill] = useState<ChallanBillingRecord | null>(null);
+    const [selectedReceipt, setSelectedReceipt] = useState<ChallanPaymentReceipt | null>(null);
     const [selectedChallan, setSelectedChallan] = useState<Record<string, unknown> | null>(null);
-    const [cancelTarget, setCancelTarget] = useState<{ type: 'billing' | 'payment'; id: string } | null>(null);
+    const [cancelTarget, setCancelTarget] = useState<{ type: 'payment'; id: string } | null>(null);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -128,29 +130,6 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
             .then((r) => setIsAdmin(r?.data?.role === 'admin'))
             .catch(console.error);
     }, []);
-
-    const billedChallanNos = useMemo(() => {
-        const set = new Set<string>();
-        data.billing_records
-            .filter((b) => b.status === 'ACTIVE')
-            .forEach((b) => (b.covered_challan_nos || []).forEach((no) => set.add(no)));
-        return Array.from(set);
-    }, [data.billing_records]);
-
-    const handleCancelBilling = async (reason: string) => {
-        if (!cancelTarget) return;
-        const res = await fetch(`/api/challan-ledger/${brokerId}/billing/${cancelTarget.id}/cancel`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cancel_reason: reason }),
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.error);
-        }
-        toast.success('Bill cancelled');
-        fetchData();
-    };
 
     const handleReversePayment = async (reason: string) => {
         if (!cancelTarget) return;
@@ -187,10 +166,7 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                 </div>
                 {isAdmin && (
                     <div className="flex items-center gap-2">
-                        <Button onClick={() => setShowBillDialog(true)} className="gap-2">
-                            <Plus className="h-4 w-4" /> Create Bill
-                        </Button>
-                        <Button variant="outline" onClick={() => setShowPaymentDialog(true)} className="gap-2">
+                        <Button onClick={() => setShowPaymentDialog(true)} className="gap-2">
                             <Banknote className="h-4 w-4" /> Record Payment
                         </Button>
                     </div>
@@ -201,9 +177,9 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                 {[
                     { label: 'Opening Balance', value: data.account?.opening_balance || 0 },
                     { label: 'Challan Amount', value: summary.total_challan_amount, icon: Truck },
-                    { label: 'Total Billed', value: summary.total_billed, color: 'text-emerald-700' },
-                    { label: 'Unbilled', value: summary.unbilled_amount, color: 'text-amber-700' },
-                    { label: 'Total Received', value: summary.total_paid, color: 'text-indigo-700' },
+                    { label: 'Advance Paid', value: summary.total_advance_amount, color: 'text-amber-700' },
+                    { label: 'Net Payable', value: summary.net_payable_amount, color: 'text-emerald-700' },
+                    { label: 'Total Paid', value: summary.total_paid, color: 'text-indigo-700' },
                     { label: 'Outstanding', value: summary.outstanding, color: 'text-red-700' },
                 ].map(({ label, value, color }) => (
                     <Card key={label} className="min-w-0">
@@ -233,7 +209,6 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
             <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList>
                     <TabsTrigger value="challans">Challans ({data.challans.length})</TabsTrigger>
-                    <TabsTrigger value="billing">Billing ({data.billing_records.length})</TabsTrigger>
                     <TabsTrigger value="payments">Payments ({data.payment_receipts.length})</TabsTrigger>
                     <TabsTrigger value="unchallaned">Unchallaned CNS ({summary.unchallaned_cns_count})</TabsTrigger>
                 </TabsList>
@@ -250,12 +225,14 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                                             <TableHead>Challan No</TableHead>
                                             <TableHead>Date</TableHead>
                                             <TableHead>Vehicle</TableHead>
-                                            <TableHead>Driver</TableHead>
                                             <TableHead>Owner</TableHead>
-                                            <TableHead>Linked CNs</TableHead>
                                             <TableHead className="text-right">Full Hire</TableHead>
-                                            <TableHead>Bill Status</TableHead>
-                                            <TableHead />
+                                            <TableHead className="text-right">Advance</TableHead>
+                                            <TableHead className="text-right">Net Payable</TableHead>
+                                            <TableHead className="text-right">Paid</TableHead>
+                                            <TableHead className="text-right">Balance</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -264,73 +241,34 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                                                 <TableCell className="font-mono font-bold text-primary">{ch.challan_no}</TableCell>
                                                 <TableCell>{fmtDate(ch.date_from)}</TableCell>
                                                 <TableCell>{ch.vehicle_no}</TableCell>
-                                                <TableCell>{ch.driver_name || '—'}</TableCell>
                                                 <TableCell>{ch.owner_name || '—'}</TableCell>
-                                                <TableCell className="text-xs max-w-[180px] truncate">{(ch.linked_cn_nos || []).join(', ') || '—'}</TableCell>
-                                                <TableCell className="text-right font-mono font-bold">₹{fmt(Number(ch.full_hire_amount || 0))}</TableCell>
+                                                <TableCell className="text-right font-mono">₹{fmt(Number(ch.full_hire_amount || 0))}</TableCell>
+                                                <TableCell className="text-right font-mono text-amber-700">₹{fmt(Number(ch.advance_amount || 0))}</TableCell>
+                                                <TableCell className="text-right font-mono font-bold">₹{fmt(Number(ch.net_payable_amount || 0))}</TableCell>
+                                                <TableCell className="text-right font-mono text-indigo-700">₹{fmt(Number(ch.paid_amount || 0))}</TableCell>
+                                                <TableCell className="text-right font-mono text-red-700">₹{fmt(Number(ch.balance_amount || 0))}</TableCell>
                                                 <TableCell>
-                                                    <Badge variant="outline" className={ch.bill_status === 'BILLED' ? 'text-emerald-700' : 'text-amber-700'}>
-                                                        {ch.bill_status || 'UNBILLED'}
+                                                    <Badge className={PAYMENT_STATUS_BADGE[ch.payment_status || 'UNPAID'] || ''}>
+                                                        {ch.payment_status || 'UNPAID'}
                                                     </Badge>
                                                 </TableCell>
-                                                <TableCell>
-                                                    <Button size="sm" variant="ghost" onClick={() => setSelectedChallan(ch as unknown as Record<string, unknown>)}>
-                                                        <Eye className="h-4 w-4" />
-                                                    </Button>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-1">
+                                                        <Button size="sm" variant="ghost" title="View challan" onClick={() => setSelectedChallan(ch as unknown as Record<string, unknown>)}>
+                                                            <Eye className="h-4 w-4" />
+                                                        </Button>
+                                                        {isAdmin && Number(ch.balance_amount || 0) > 0.009 && (
+                                                            <Button size="sm" variant="ghost" className="text-primary" title="Record payment" onClick={() => setShowPaymentDialog(true)}>
+                                                                <Banknote className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
                                 </Table>
                             )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                <TabsContent value="billing" className="mt-4">
-                    <Card>
-                        <CardContent className="p-0 overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Bill No</TableHead>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Challans</TableHead>
-                                        <TableHead className="text-right">Amount</TableHead>
-                                        <TableHead className="text-right">Paid</TableHead>
-                                        <TableHead className="text-right">Balance</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead />
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {data.billing_records.map((bill) => (
-                                        <TableRow key={bill.id}>
-                                            <TableCell className="font-mono font-bold text-primary">{bill.bill_ref_no || bill.id.slice(0, 8)}</TableCell>
-                                            <TableCell>{fmtDate(bill.billing_date)}</TableCell>
-                                            <TableCell className="text-xs max-w-[180px] truncate">{(bill.covered_challan_nos || []).join(', ')}</TableCell>
-                                            <TableCell className="text-right font-mono">₹{fmt(Number(bill.amount || 0))}</TableCell>
-                                            <TableCell className="text-right font-mono text-indigo-700">₹{fmt(Number(bill.settled_amount || 0))}</TableCell>
-                                            <TableCell className="text-right font-mono text-amber-700">₹{fmt(Number(bill.remaining_amount || 0))}</TableCell>
-                                            <TableCell>
-                                                {bill.status === 'ACTIVE' ? (
-                                                    <Badge className={PAYMENT_STATUS_BADGE[bill.payment_status || 'UNPAID'] || ''}>{bill.payment_status || 'UNPAID'}</Badge>
-                                                ) : (
-                                                    <Badge variant="destructive">CANCELLED</Badge>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="space-x-1">
-                                                <Button size="sm" variant="ghost" onClick={() => setSelectedBill(bill)}><Eye className="h-4 w-4" /></Button>
-                                                {isAdmin && bill.status === 'ACTIVE' && (
-                                                    <Button size="sm" variant="ghost" onClick={() => setCancelTarget({ type: 'billing', id: bill.id })}>
-                                                        <XCircle className="h-4 w-4 text-destructive" />
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -343,31 +281,54 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                                     <TableRow>
                                         <TableHead>Date</TableHead>
                                         <TableHead>Mode</TableHead>
+                                        <TableHead>Paid To</TableHead>
+                                        <TableHead>Challans</TableHead>
                                         <TableHead>Reference</TableHead>
-                                        <TableHead className="text-right">Amount</TableHead>
+                                        <TableHead className="text-right">Settled</TableHead>
+                                        <TableHead className="text-right">Deduct</TableHead>
+                                        <TableHead className="text-right">Extra</TableHead>
+                                        <TableHead className="text-right">Net Cash</TableHead>
                                         <TableHead>Status</TableHead>
-                                        <TableHead />
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {data.payment_receipts.map((receipt) => (
-                                        <TableRow key={receipt.id}>
-                                            <TableCell>{fmtDate(receipt.receipt_date)}</TableCell>
-                                            <TableCell>{receipt.payment_mode}</TableCell>
-                                            <TableCell className="font-mono text-xs">{receipt.reference_no || '—'}</TableCell>
-                                            <TableCell className="text-right font-mono font-bold">₹{fmt(Number(receipt.amount || 0))}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={receipt.status === 'ACTIVE' ? 'outline' : 'destructive'}>{receipt.status}</Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                {isAdmin && receipt.status === 'ACTIVE' && (
-                                                    <Button size="sm" variant="ghost" onClick={() => setCancelTarget({ type: 'payment', id: receipt.id })}>
-                                                        <XCircle className="h-4 w-4 text-destructive" />
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                    {data.payment_receipts.map((receipt) => {
+                                        const allocations = receipt.challan_allocations || [];
+                                        const challanNos = allocations.map((a) => a.challan_no).join(', ');
+                                        const deduct = allocations.reduce((sum, a) => sum + (a.deduction_items || []).reduce((i, x) => i + Number(x.amount || 0), 0), 0);
+                                        const extra = allocations.reduce((sum, a) => sum + (a.addition_items || []).reduce((i, x) => i + Number(x.amount || 0), 0), 0);
+                                        const settled = Number(receipt.amount || 0);
+                                        const netCash = settled - deduct + extra;
+                                        return (
+                                            <TableRow key={receipt.id}>
+                                                <TableCell>{fmtDate(receipt.receipt_date)}</TableCell>
+                                                <TableCell>{receipt.payment_mode}</TableCell>
+                                                <TableCell>{receipt.payer_name || '—'}</TableCell>
+                                                <TableCell className="text-xs max-w-[160px] truncate font-mono">{challanNos || '—'}</TableCell>
+                                                <TableCell className="font-mono text-xs">{receipt.reference_no || '—'}</TableCell>
+                                                <TableCell className="text-right font-mono font-bold text-indigo-700">₹{fmt(settled)}</TableCell>
+                                                <TableCell className="text-right font-mono text-destructive">₹{fmt(deduct)}</TableCell>
+                                                <TableCell className="text-right font-mono text-emerald-700">₹{fmt(extra)}</TableCell>
+                                                <TableCell className="text-right font-mono">₹{fmt(netCash)}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={receipt.status === 'ACTIVE' ? 'outline' : 'destructive'}>{receipt.status}</Badge>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-1">
+                                                        <Button size="sm" variant="ghost" title="View receipt" onClick={() => setSelectedReceipt(receipt)}>
+                                                            <Eye className="h-4 w-4" />
+                                                        </Button>
+                                                        {isAdmin && receipt.status === 'ACTIVE' && (
+                                                            <Button size="sm" variant="ghost" title="Reverse payment" onClick={() => setCancelTarget({ type: 'payment', id: receipt.id })}>
+                                                                <XCircle className="h-4 w-4 text-destructive" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </CardContent>
@@ -412,28 +373,18 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                 </TabsContent>
             </Tabs>
 
-            <CreateChallanBillDialog
-                open={showBillDialog}
-                onClose={() => setShowBillDialog(false)}
-                brokerId={brokerId}
-                challans={data.challans}
-                billedChallanNos={billedChallanNos}
-                onSuccess={fetchData}
-            />
-
             <RecordChallanPaymentDialog
                 open={showPaymentDialog}
                 onClose={() => setShowPaymentDialog(false)}
                 brokerId={brokerId}
-                billingRecords={data.billing_records}
-                paymentReceipts={data.payment_receipts}
+                challans={data.challans}
                 onSuccess={fetchData}
             />
 
-            <ViewChallanBillDialog
-                open={!!selectedBill}
-                onClose={() => setSelectedBill(null)}
-                record={selectedBill}
+            <ViewChallanPaymentDialog
+                open={!!selectedReceipt}
+                onClose={() => setSelectedReceipt(null)}
+                receipt={selectedReceipt}
             />
 
             <ChallanDetailsDialog
@@ -445,11 +396,9 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
             <CancelReasonDialog
                 open={!!cancelTarget}
                 onClose={() => setCancelTarget(null)}
-                title={cancelTarget?.type === 'billing' ? 'Cancel Bill' : 'Reverse Payment'}
-                description={cancelTarget?.type === 'billing'
-                    ? 'Provide a reason for cancelling this bill. Linked challans will become billable again.'
-                    : 'Provide a reason for reversing this payment receipt.'}
-                onConfirm={cancelTarget?.type === 'billing' ? handleCancelBilling : handleReversePayment}
+                title="Reverse Payment"
+                description="Provide a reason for reversing this payment receipt."
+                onConfirm={handleReversePayment}
             />
         </div>
     );
