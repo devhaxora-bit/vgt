@@ -67,15 +67,40 @@ export async function GET(
     // 3. Consignments (all rows kept for bill view/edit, filtered rows used for the main list)
     const allConsignmentsQuery = supabase
         .from('consignments')
-        .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, no_of_pkg, total_qty, is_loose, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no, bkg_basis, cancel_cn, goods_desc, delivery_type')
+        .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, no_of_pkg, total_qty, is_loose, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no, bkg_basis, cancel_cn, goods_desc, delivery_type, freight_included, parent_cn_id')
         .eq('billing_party_id', partyId)
         .eq('cancel_cn', false)
         .order('bkg_date', { ascending: false })
         .order('cn_no', { ascending: false });
 
-    const { data: allConsignments } = await allConsignmentsQuery;
+    const { data: allConsignmentsRaw } = await allConsignmentsQuery;
 
-    const consignments = (allConsignments || []).filter((record) => {
+    const cnNoById = new Map(
+        (allConsignmentsRaw || []).map((record) => [record.id, record.cn_no] as const),
+    );
+    const missingParentIds = Array.from(new Set(
+        (allConsignmentsRaw || [])
+            .map((record) => record.parent_cn_id)
+            .filter((parentId): parentId is string => Boolean(parentId) && !cnNoById.has(parentId)),
+    ));
+
+    if (missingParentIds.length > 0) {
+        const { data: parentRows } = await supabase
+            .from('consignments')
+            .select('id, cn_no')
+            .in('id', missingParentIds);
+
+        (parentRows || []).forEach((parentRow) => {
+            cnNoById.set(parentRow.id, parentRow.cn_no);
+        });
+    }
+
+    const allConsignments = (allConsignmentsRaw || []).map((record) => ({
+        ...record,
+        parent_cn_no: record.parent_cn_id ? cnNoById.get(record.parent_cn_id) ?? null : null,
+    }));
+
+    const consignments = allConsignments.filter((record) => {
         const bookingDate = record.bkg_date?.slice(0, 10) || '';
         if (dateFrom && bookingDate < dateFrom) return false;
         if (dateTo && bookingDate > dateTo) return false;

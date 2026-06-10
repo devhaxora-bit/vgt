@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
     buildSettledChallanBillAmountMap,
     getChallanBillPaymentStatus,
+    buildSettledChallanAmountMap,
+    getChallanNetPayable,
+    getChallanPaymentStatus,
 } from '@/lib/server/challanBillingSnapshot';
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
@@ -122,6 +125,15 @@ export async function GET(
         (sum, ch) => sum + getChallanFullHire(ch),
         0
     );
+    const totalAdvanceAmount = roundMoney(
+        summaryChallans.reduce((sum, ch) => sum + parseMoney(ch.advance_amount), 0)
+    );
+    const totalTdsAmount = roundMoney(
+        summaryChallans.reduce((sum, ch) => sum + parseMoney(ch.less_tds), 0)
+    );
+    const totalNetPayable = roundMoney(
+        summaryChallans.reduce((sum, ch) => sum + getChallanNetPayable(ch), 0)
+    );
     const totalBilled = activeBills.reduce(
         (sum, b) => sum + parseMoney((b as { amount?: unknown }).amount),
         0
@@ -154,12 +166,23 @@ export async function GET(
         (raw || []).forEach((challanNo) => billedChallanNos.add(String(challanNo).trim()));
     });
 
+    const settledChallanMap = buildSettledChallanAmountMap(allPaymentReceipts || []);
+
     const enrichedChallans = (challans || []).map((challan) => {
-        const isBilled = billedChallanNos.has(challan.challan_no);
+        const fullHire = getChallanFullHire(challan);
+        const netPayable = getChallanNetPayable(challan);
+        const paidAmount = roundMoney(settledChallanMap.get(challan.challan_no) || 0);
+        const balanceAmount = roundMoney(Math.max(netPayable - paidAmount, 0));
         return {
             ...challan,
-            full_hire_amount: getChallanFullHire(challan),
-            bill_status: isBilled ? 'BILLED' : 'UNBILLED',
+            full_hire_amount: fullHire,
+            net_payable_amount: netPayable,
+            advance_amount: roundMoney(parseMoney(challan.advance_amount)),
+            less_tds: roundMoney(parseMoney(challan.less_tds)),
+            paid_amount: paidAmount,
+            balance_amount: balanceAmount,
+            payment_status: getChallanPaymentStatus(netPayable, paidAmount),
+            bill_status: billedChallanNos.has(challan.challan_no) ? 'BILLED' : 'UNBILLED',
         };
     });
 
@@ -190,11 +213,14 @@ export async function GET(
     const summary = {
         total_challan_amount: totalChallanAmount,
         total_challan_count: summaryChallans.length,
+        total_advance_amount: totalAdvanceAmount,
+        total_tds_amount: totalTdsAmount,
+        net_payable_amount: totalNetPayable,
         total_billed: totalBilled,
         total_paid: totalPaid,
         unbilled_amount: Math.max(rawUnbilledAmount, 0),
         overbilled_amount: Math.max(-rawUnbilledAmount, 0),
-        outstanding: openingBalance + totalBilled - totalPaid,
+        outstanding: roundMoney(openingBalance + totalNetPayable - totalPaid),
         opening_balance: openingBalance,
         total_bills_count: activeBills.length,
         unchallaned_cns_count: unchallanedCns.length,

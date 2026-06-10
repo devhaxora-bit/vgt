@@ -368,3 +368,62 @@ export const getChallanBillPaymentStatus = (billAmount: number, settledAmount: n
     if (settledAmount >= billAmount - 0.009) return 'COMPLETE' as const;
     return 'PARTIAL' as const;
 };
+
+// ============================================================
+// Direct-to-challan payment helpers
+// ============================================================
+
+export interface ChallanAllocation {
+    challan_no?: string;
+    settled_amount?: number | null;
+    deduction_items?: Array<{ label?: string; amount?: number | null }> | null;
+    addition_items?: Array<{ label?: string; amount?: number | null }> | null;
+}
+
+/**
+ * Net hire payable to the broker for a single challan:
+ * full hire (total + extra) − advance already paid − TDS deducted.
+ */
+export const getChallanNetPayable = (challan: {
+    total_hire_amount?: number | string | null;
+    extra_hire_amount?: number | string | null;
+    advance_amount?: number | string | null;
+    less_tds?: number | string | null;
+}) => {
+    const fullHire = parseMoney(challan.total_hire_amount) + parseMoney(challan.extra_hire_amount);
+    const advance = parseMoney(challan.advance_amount);
+    const tds = parseMoney(challan.less_tds);
+    return roundMoney(Math.max(fullHire - advance - tds, 0));
+};
+
+/**
+ * Sum the settled (hire) amount applied to each challan across all
+ * ACTIVE payment receipts, keyed by challan number.
+ */
+export const buildSettledChallanAmountMap = (paymentReceipts: Array<{
+    status?: string | null;
+    challan_allocations?: ChallanAllocation[] | null;
+}>) => {
+    const settledMap = new Map<string, number>();
+
+    paymentReceipts
+        .filter((receipt) => receipt.status === 'ACTIVE')
+        .forEach((receipt) => {
+            (receipt.challan_allocations || []).forEach((allocation) => {
+                const challanNo = String(allocation.challan_no || '').trim();
+                if (!challanNo) return;
+                settledMap.set(
+                    challanNo,
+                    roundMoney((settledMap.get(challanNo) || 0) + parseMoney(allocation.settled_amount))
+                );
+            });
+        });
+
+    return settledMap;
+};
+
+export const getChallanPaymentStatus = (netPayable: number, settledAmount: number) => {
+    if (settledAmount <= 0.009) return 'UNPAID' as const;
+    if (settledAmount >= netPayable - 0.009) return 'COMPLETE' as const;
+    return 'PARTIAL' as const;
+};

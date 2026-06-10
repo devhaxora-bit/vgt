@@ -24,6 +24,7 @@ import {
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
 import { downloadBillPdfFromDocument, renderBillPdfPages } from '@/lib/billPdf';
+import { formatBillCnNo, isFreightIncludedCn } from '@/lib/formatBillCnNo';
 
 interface PartyInfo {
     id: string;
@@ -89,10 +90,15 @@ interface Consignment {
     bkg_basis: string;
     goods_desc?: string;
     delivery_type?: string;
+    freight_included?: boolean;
+    parent_cn_id?: string | null;
+    parent_cn_no?: string | null;
 }
 
 interface BillingConsignmentSnapshotRow {
     cn_no: string;
+    freight_included?: boolean;
+    parent_cn_no?: string | null;
     bkg_date: string | null;
     invoice_no: string | null;
     vehicle_no: string | null;
@@ -345,6 +351,8 @@ const normalizeSnapshotRows = (value: unknown): BillingConsignmentSnapshotRow[] 
 
         rows.push({
             cn_no: cnNo,
+            freight_included: Boolean(snapshotRow.freight_included),
+            parent_cn_no: snapshotRow.parent_cn_no ? String(snapshotRow.parent_cn_no) : null,
             bkg_date: snapshotRow.bkg_date ? String(snapshotRow.bkg_date) : null,
             invoice_no: snapshotRow.invoice_no ? String(snapshotRow.invoice_no) : cnNo,
             vehicle_no: snapshotRow.vehicle_no ? String(snapshotRow.vehicle_no) : null,
@@ -382,6 +390,8 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
 
         return {
             cn_no: consignment.cn_no,
+            freight_included: Boolean(consignment.freight_included),
+            parent_cn_no: consignment.parent_cn_no || null,
             bkg_date: consignment.bkg_date || null,
             invoice_no: consignment.invoice_no || consignment.cn_no || null,
             vehicle_no: consignment.vehicle_no || null,
@@ -409,18 +419,35 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
 const isFixedFreight = (freightRate: number | undefined | null, basicFreight: number | undefined | null) =>
     parseMoney(freightRate) === 0 && parseMoney(basicFreight) > 0;
 
+const enrichBillRowIncludeInfo = (
+    row: BillingConsignmentSnapshotRow,
+    consignments: Consignment[],
+): BillingConsignmentSnapshotRow => {
+    if (isFreightIncludedCn(row)) return row;
+
+    const live = consignments.find((consignment) => consignment.cn_no === row.cn_no);
+    if (!live?.freight_included || !live.parent_cn_no) return row;
+
+    return {
+        ...row,
+        freight_included: true,
+        parent_cn_no: live.parent_cn_no,
+    };
+};
+
 const buildBillDetailRows = (record: BillingRecord, consignments: Consignment[]) => {
     const snapshotRows = normalizeSnapshotRows(record.consignment_snapshot);
     if (snapshotRows.length > 0) {
         const cnLookup = new Map(consignments.map((c) => [c.cn_no, c]));
         return snapshotRows.map((row) => {
-            if (row.freight_rate > 0) return row;
-            const live = cnLookup.get(row.cn_no);
+            const enriched = enrichBillRowIncludeInfo(row, consignments);
+            if (enriched.freight_rate > 0) return enriched;
+            const live = cnLookup.get(enriched.cn_no);
             // Fixed-rate CNS: freight_rate is 0 and basic_freight > 0 on the live record
-            if (isFixedFreight(live?.freight_rate, live?.basic_freight)) return { ...row, is_fixed_rate: true };
+            if (isFixedFreight(live?.freight_rate, live?.basic_freight)) return { ...enriched, is_fixed_rate: true };
             const liveRate = roundMoney(parseMoney(live?.freight_rate));
-            if (liveRate > 0) return { ...row, freight_rate: liveRate };
-            return row;
+            if (liveRate > 0) return { ...enriched, freight_rate: liveRate };
+            return enriched;
         });
     }
     return buildLiveSnapshotRows(record, consignments);
@@ -885,7 +912,8 @@ export function BillingRecordViewDialog({
         const narrationHtml = `<div class="remark-title">Remarks :</div><div>${narrationValue}</div>`;
         const detailRows = billDetailRows.length > 0
             ? billDetailRows.map((row) => ({
-                cnNo: row.cn_no || '—',
+                cnNo: formatBillCnNo(row.cn_no, row),
+                isFreightIncluded: isFreightIncludedCn(row),
                 date: fmtDotDate(row.bkg_date),
                 invoiceNo: row.invoice_no || row.cn_no || '—',
                 vehicleNo: toUpperText(row.vehicle_no) || '—',
@@ -1105,7 +1133,9 @@ export function BillingRecordViewDialog({
                                                     return (
                                                         <tr key={`${row.cn_no}-${index}`} className="border-b last:border-0">
                                                             <td className="p-2 text-xs">{index + 1}</td>
-                                                            <td className="p-2 font-mono text-xs text-primary font-bold">{row.cn_no}</td>
+                                                            <td className={`p-2 font-mono text-xs font-bold ${isFreightIncludedCn(row) ? 'text-blue-700' : 'text-primary'}`}>
+                                                                {formatBillCnNo(row.cn_no, row)}
+                                                            </td>
                                                             <td className="p-2 text-xs">{fmtDate(row.bkg_date)}</td>
                                                             <td className="p-2 text-xs">{row.invoice_no || '—'}</td>
                                                             <td className="p-2 text-xs">{row.vehicle_no || '—'}</td>

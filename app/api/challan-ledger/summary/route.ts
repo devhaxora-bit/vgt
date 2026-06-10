@@ -42,6 +42,8 @@ const normalizeLedgerSummaryRow = <T extends {
 type PeriodLedgerMetrics = {
     total_challan_amount: number;
     total_challan_count: number;
+    total_advance_amount: number;
+    total_tds_amount: number;
     total_billed: number;
     total_paid: number;
 };
@@ -49,6 +51,8 @@ type PeriodLedgerMetrics = {
 const emptyPeriodMetrics = (): PeriodLedgerMetrics => ({
     total_challan_amount: 0,
     total_challan_count: 0,
+    total_advance_amount: 0,
+    total_tds_amount: 0,
     total_billed: 0,
     total_paid: 0,
 });
@@ -82,7 +86,7 @@ export async function GET(request: Request) {
     if (dateFrom || dateTo) {
         let challanQuery = supabase
             .from('challans')
-            .select('broker_id, total_hire_amount, extra_hire_amount')
+            .select('broker_id, total_hire_amount, extra_hire_amount, advance_amount, less_tds')
             .eq('status', 'ACTIVE')
             .not('broker_id', 'is', null)
             .limit(10000);
@@ -130,6 +134,12 @@ export async function GET(request: Request) {
             metrics.total_challan_count += 1;
             metrics.total_challan_amount = roundMoney(
                 metrics.total_challan_amount + getChallanFullHire(record)
+            );
+            metrics.total_advance_amount = roundMoney(
+                metrics.total_advance_amount + toMoney(record.advance_amount)
+            );
+            metrics.total_tds_amount = roundMoney(
+                metrics.total_tds_amount + toMoney(record.less_tds)
             );
         });
         (billRes.data || []).forEach((record) => {
@@ -179,17 +189,24 @@ export async function GET(request: Request) {
 
             const metrics = periodMetricsByBrokerId.get(row.broker_id) || emptyPeriodMetrics();
             const rawUnbilledAmount = roundMoney(metrics.total_challan_amount - metrics.total_billed);
+            const netPayable = roundMoney(Math.max(
+                metrics.total_challan_amount - metrics.total_advance_amount - metrics.total_tds_amount,
+                0
+            ));
 
             return normalizeLedgerSummaryRow({
                 ...row,
                 opening_balance: 0,
                 total_challan_amount: metrics.total_challan_amount,
                 total_challan_count: metrics.total_challan_count,
+                total_advance_amount: metrics.total_advance_amount,
+                total_tds_amount: metrics.total_tds_amount,
+                net_payable_amount: netPayable,
                 total_billed: metrics.total_billed,
                 total_paid: metrics.total_paid,
                 unbilled_amount: Math.max(rawUnbilledAmount, 0),
                 overbilled_amount: Math.max(-rawUnbilledAmount, 0),
-                outstanding: roundMoney(metrics.total_billed - metrics.total_paid),
+                outstanding: roundMoney(netPayable - metrics.total_paid),
             });
         })
         .filter(hasLedgerActivity);

@@ -37,7 +37,7 @@ export async function GET(request: Request) {
             origin_branch:branches!origin_branch_code(name, city),
             destination_branch:branches!destination_branch_code(name, city)
         `)
-        .order('created_at', { ascending: false });
+        .order('challan_no', { ascending: true });
 
     if (search) {
         query = query.or(`challan_no.ilike.%${search}%,vehicle_no.ilike.%${search}%`);

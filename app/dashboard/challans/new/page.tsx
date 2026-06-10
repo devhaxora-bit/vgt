@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ArrowLeft, Save, RotateCcw, FileText, Truck, Users,
-    Shield, CreditCard, Info, Link2, X, Download
+    Shield, CreditCard, Info, Link2, X, Download, ArrowUpDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/use-debounce';
+import { sortLinkedConsignments, type LinkedCnSortField } from '@/lib/sortLinkedConsignments';
+import { format } from 'date-fns';
 
 // Branch interface
 interface Branch {
@@ -30,6 +32,8 @@ interface Branch {
 interface LinkedConsignment {
     id: string;
     cn_no: string;
+    bkg_date?: string;
+    consignor_name?: string;
     packages?: Array<{ method?: string; qty?: number; sr_no?: number }>;
     no_of_pkg?: number;
     total_qty?: number;
@@ -62,6 +66,8 @@ function NewChallanPageContent() {
     const [destinationPoint, setDestinationPoint] = useState('');
     const [linkedCnInput, setLinkedCnInput] = useState('');
     const [linkedConsignments, setLinkedConsignments] = useState<LinkedConsignment[]>([]);
+    const [cnSortField, setCnSortField] = useState<LinkedCnSortField>('cn_no');
+    const [cnSortDir, setCnSortDir] = useState<'asc' | 'desc'>('asc');
     const [cnSuggestions, setCnSuggestions] = useState<LinkedConsignment[]>([]);
     const [showCnSuggestions, setShowCnSuggestions] = useState(false);
     const [vehicleOwnerStatus, setVehicleOwnerStatus] = useState('');
@@ -72,6 +78,28 @@ function NewChallanPageContent() {
     const linkedConsignmentsRef = useRef<LinkedConsignment[]>([]);
     useEffect(() => { linkedConsignmentsRef.current = linkedConsignments; }, [linkedConsignments]);
 
+    const sortedLinkedConsignments = useMemo(
+        () => sortLinkedConsignments(linkedConsignments, cnSortField, cnSortDir),
+        [linkedConsignments, cnSortField, cnSortDir]
+    );
+
+    const toggleCnSort = (field: LinkedCnSortField) => {
+        if (cnSortField === field) {
+            setCnSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setCnSortField(field);
+            setCnSortDir('asc');
+        }
+    };
+
+    const CnSortIcon = ({ field }: { field: LinkedCnSortField }) => {
+        if (cnSortField !== field) {
+            return <ArrowUpDown className="h-3 w-3 ml-1 inline text-muted-foreground/40" />;
+        }
+        return cnSortDir === 'asc'
+            ? <ArrowUpDown className="h-3 w-3 ml-1 inline text-primary" />
+            : <ArrowUpDown className="h-3 w-3 ml-1 inline text-primary rotate-180" />;
+    };
 
     // Owner/Broker
     const [ownerPan, setOwnerPan] = useState('');
@@ -135,7 +163,7 @@ function NewChallanPageContent() {
         rateType: 'mt', rate: 0, hire: 0,
         extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
         detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
-        advPayment: 0, tdsPercent: 2, lessTds: 0,
+        advPayment: 0, tdsPercent: 0, lessTds: 0,
         balAmount: 0,
     });
 
@@ -282,7 +310,7 @@ function NewChallanPageContent() {
             totalExtra: data.total_extra_charges || 0,
             totalHire: data.total_hire_amount || 0,
             advPayment: data.advance_amount || 0,
-            tdsPercent: data.tds_percent || 2,
+            tdsPercent: data.tds_percent ?? 0,
             lessTds: data.less_tds || 0,
             balAmount: 0,
         });
@@ -344,7 +372,7 @@ function NewChallanPageContent() {
             rateType: 'mt', rate: 0, hire: 0,
             extraOverWeight: 0, overLength: 0, overWidth: 0, overHeight: 0, extraKmCharges: 0,
             detentCharges: 0, unloadingCharges: 0, totalExtra: 0, totalHire: 0,
-            advPayment: 0, tdsPercent: 2, lessTds: 0, balAmount: 0,
+            advPayment: 0, tdsPercent: 0, lessTds: 0, balAmount: 0,
         });
     };
 
@@ -375,27 +403,13 @@ function NewChallanPageContent() {
         setInsCity(v.insurance_city || '');
         setFinanceDetail(v.finance_detail || '');
 
-        // TDS / ITDS
-        setItdsRefBranch(v.itds_ref_branch || '');
-        setItdsDeclareDate(v.itds_declare_date ? String(v.itds_declare_date).slice(0, 10) : '');
-        setItdsFinYear(v.itds_financial_year || '');
+        // TDS / ITDS — only overwrite when the vehicle record actually has values
+        if (v.itds_ref_branch) setItdsRefBranch(v.itds_ref_branch);
+        if (v.itds_declare_date) setItdsDeclareDate(String(v.itds_declare_date).slice(0, 10));
+        if (v.itds_financial_year) setItdsFinYear(v.itds_financial_year);
 
         setVehicleOwnerStatus('✓ Vehicle details auto-filled from master');
     };
-
-    // Auto-cut TDS based on ITDS Declaration presence
-    useEffect(() => {
-        const hasItds = Boolean(itdsRefBranch.trim() || itdsDeclareDate);
-        const autoTdsPercent = hasItds ? 0 : 2;
-        
-        setHireDetails(prev => {
-            if (prev.tdsPercent === autoTdsPercent) return prev;
-            const next = { ...prev, tdsPercent: autoTdsPercent };
-            next.lessTds = Math.round(next.totalHire * ((Number(next.tdsPercent) || 0) / 100));
-            next.balAmount = next.totalHire - (Number(next.advPayment) || 0) - next.lessTds;
-            return next;
-        });
-    }, [itdsRefBranch, itdsDeclareDate]);
 
     useEffect(() => {
         const normalizedVehicleNo = vehicleNo.trim().toUpperCase();
@@ -688,7 +702,7 @@ function NewChallanPageContent() {
 
                 // Others
                 remarks,
-                linked_cn_nos: linkedConsignments.map((item) => item.cn_no)
+                linked_cn_nos: sortedLinkedConsignments.map((item) => item.cn_no)
             };
 
             const method = isEditMode ? 'PUT' : 'POST';
@@ -919,32 +933,53 @@ function NewChallanPageContent() {
                                     </div>
 
                                     <div className="overflow-x-auto rounded-md border">
-                                        <div className="min-w-[920px]">
-                                            <div className="grid grid-cols-[70px_150px_180px_150px_1fr_120px_160px_48px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase text-muted-foreground border-b">
+                                        <div className="min-w-[1100px]">
+                                            <div className="grid grid-cols-[56px_130px_100px_140px_150px_130px_1fr_100px_140px_48px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase text-muted-foreground border-b">
                                                 <div>Sr No</div>
-                                                <div>CNS No</div>
-                                                <div>Package Details</div>
+                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('cn_no')}>
+                                                    CNS No <CnSortIcon field="cn_no" />
+                                                </button>
+                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('bkg_date')}>
+                                                    CN Date <CnSortIcon field="bkg_date" />
+                                                </button>
+                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('consignor_name')}>
+                                                    Consignor <CnSortIcon field="consignor_name" />
+                                                </button>
+                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('packages')}>
+                                                    Package Details <CnSortIcon field="packages" />
+                                                </button>
                                                 <div>Type Of Package</div>
-                                                <div>Material Details</div>
-                                                <div>Weight</div>
-                                                <div>Destination</div>
+                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('goods_desc')}>
+                                                    Material Details <CnSortIcon field="goods_desc" />
+                                                </button>
+                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('weight')}>
+                                                    Weight <CnSortIcon field="weight" />
+                                                </button>
+                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('destination')}>
+                                                    Destination <CnSortIcon field="destination" />
+                                                </button>
                                                 <div></div>
                                             </div>
-                                            {linkedConsignments.length === 0 ? (
+                                            {sortedLinkedConsignments.length === 0 ? (
                                                 <div className="px-3 py-6 text-sm text-muted-foreground text-center">
                                                     No CNS numbers linked.
                                                 </div>
-                                            ) : linkedConsignments.map((cn, index) => {
+                                            ) : sortedLinkedConsignments.map((cn, index) => {
                                                 const packageSummary = (cn.packages || [])
                                                     .map((pkg) => `${pkg.qty || 0} ${pkg.method || 'Pkg'}`)
                                                     .join(', ');
                                                 const packageTypes = Array.from(new Set((cn.packages || []).map((pkg) => pkg.method).filter(Boolean))).join(', ');
                                                 const weight = cn.charged_weight || cn.actual_weight || 0;
+                                                const cnDate = cn.bkg_date
+                                                    ? format(new Date(cn.bkg_date), 'dd/MM/yyyy')
+                                                    : '---';
 
                                                 return (
-                                                    <div key={cn.id} className="grid grid-cols-[70px_150px_180px_150px_1fr_120px_160px_48px] gap-3 px-3 py-2 text-xs border-b last:border-b-0 items-center">
+                                                    <div key={cn.id} className="grid grid-cols-[56px_130px_100px_140px_150px_130px_1fr_100px_140px_48px] gap-3 px-3 py-2 text-xs border-b last:border-b-0 items-center">
                                                         <div className="font-mono">{index + 1}</div>
                                                         <div className="font-mono font-bold text-primary">{cn.cn_no}</div>
+                                                        <div className="font-mono">{cnDate}</div>
+                                                        <div className="truncate" title={cn.consignor_name || ''}>{cn.consignor_name || '---'}</div>
                                                         <div>{packageSummary || `${cn.no_of_pkg || 0} packages`}</div>
                                                         <div>{packageTypes || cn.goods_class || '---'}</div>
                                                         <div className="truncate" title={cn.goods_desc || cn.goods_class || ''}>{cn.goods_desc || cn.goods_class || '---'}</div>
@@ -1400,9 +1435,16 @@ function NewChallanPageContent() {
                                             <Label className={labelCls}>TDS Deduction</Label>
                                             <div className="flex gap-2 items-center">
                                                 <div className="relative flex-1">
-                                                    <Input type="text" inputMode="numeric" className={inputCls + " bg-white pr-6"}
+                                                    <Input type="text" inputMode="decimal" className={inputCls + " bg-white pr-6"}
                                                         value={hireDetails.tdsPercent}
-                                                        onChange={(e) => updateHire('tdsPercent', Number(e.target.value))} />
+                                                        onChange={(e) => {
+                                                            const raw = e.target.value.trim();
+                                                            if (raw === '') return;
+                                                            const parsed = Number(raw);
+                                                            if (!Number.isNaN(parsed) && parsed >= 0) {
+                                                                updateHire('tdsPercent', parsed);
+                                                            }
+                                                        }} />
                                                     <span className="absolute right-2 top-2 text-xs text-slate-400">%</span>
                                                 </div>
                                                 <span className="text-xs font-bold">=</span>

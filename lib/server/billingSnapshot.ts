@@ -10,6 +10,9 @@ type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 type BillingSnapshotConsignment = {
     id: string;
     cn_no: string;
+    freight_included?: boolean | null;
+    parent_cn_id?: string | null;
+    parent_cn_no?: string | null;
     invoice_no?: string | null;
     bkg_date?: string | null;
     booking_branch?: string | null;
@@ -35,6 +38,8 @@ type BillingSnapshotConsignment = {
 
 export interface BillingConsignmentSnapshotRow {
     cn_no: string;
+    freight_included?: boolean;
+    parent_cn_no?: string | null;
     bkg_date: string | null;
     invoice_no: string | null;
     vehicle_no: string | null;
@@ -171,6 +176,8 @@ const buildConsignmentSnapshot = (
 
         return {
             cn_no: consignment.cn_no,
+            freight_included: Boolean(consignment.freight_included),
+            parent_cn_no: consignment.parent_cn_no || null,
             bkg_date: consignment.bkg_date || null,
             invoice_no: consignment.invoice_no || consignment.cn_no,
             vehicle_no: consignment.vehicle_no || null,
@@ -331,7 +338,7 @@ export async function prepareBillingSnapshot(
 
     const { data: consignments, error } = await supabase
         .from('consignments')
-        .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no')
+        .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no, freight_included, parent_cn_id')
         .eq('billing_party_id', partyId)
         .eq('cancel_cn', false)
         .in('cn_no', normalizedCoveredCnNos);
@@ -340,12 +347,38 @@ export async function prepareBillingSnapshot(
         return { data: null, error: error.message };
     }
 
+    const cnNoById = new Map<string, string>();
+    (consignments || []).forEach((consignment) => {
+        cnNoById.set(consignment.id, consignment.cn_no);
+    });
+
+    const missingParentIds = Array.from(new Set(
+        (consignments || [])
+            .map((consignment) => consignment.parent_cn_id)
+            .filter((parentId): parentId is string => Boolean(parentId) && !cnNoById.has(parentId)),
+    ));
+
+    if (missingParentIds.length > 0) {
+        const { data: parentRows } = await supabase
+            .from('consignments')
+            .select('id, cn_no')
+            .in('id', missingParentIds);
+
+        (parentRows || []).forEach((parentRow) => {
+            cnNoById.set(parentRow.id, parentRow.cn_no);
+        });
+    }
+
     const consignmentMap = new Map<string, BillingSnapshotConsignment>();
     (consignments || []).forEach((consignment) => {
         const existing = consignmentMap.get(consignment.cn_no);
-        if (!existing) {
-            consignmentMap.set(consignment.cn_no, consignment as BillingSnapshotConsignment);
-        }
+        if (existing) return;
+
+        const parentCnId = consignment.parent_cn_id ? String(consignment.parent_cn_id) : null;
+        consignmentMap.set(consignment.cn_no, {
+            ...(consignment as BillingSnapshotConsignment),
+            parent_cn_no: parentCnId ? cnNoById.get(parentCnId) ?? null : null,
+        });
     });
 
     const missingCnNos = normalizedCoveredCnNos.filter((cnNo) => !consignmentMap.has(cnNo));
