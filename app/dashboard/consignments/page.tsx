@@ -5,21 +5,25 @@ import Link from 'next/link';
 import {
     Search,
     Calendar as CalendarIcon,
-    FileDown,
     Plus,
     RotateCcw,
     Filter,
     MoreHorizontal,
     ArrowUpDown,
     Download,
-    Building2,
     Package,
     Truck,
     Hash,
     Printer,
     Pencil,
-    Link2
+    Link2,
+    TrendingUp,
+    AlertCircle,
+    CheckCircle2,
+    DollarSign,
+    X,
 } from 'lucide-react';
+import { compareCnNo } from '@/lib/sortLinkedConsignments';
 import { Button } from "@/components/ui/button";
 import { createClient as createSupabaseClient } from "@/utils/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -67,13 +71,51 @@ const getFullBranchName = (code?: string, options: {value: string; label: string
     return BRANCH_MAP[upperCode] || upperCode;
 };
 
+const fmt = (n: number) =>
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+
+type ConsignmentSortField =
+    | 'cn_no'
+    | 'booking_branch'
+    | 'bkg_date'
+    | 'dest_branch'
+    | 'consignor_name'
+    | 'no_of_pkg'
+    | 'actual_weight'
+    | 'delivery_type'
+    | 'bkg_basis'
+    | 'total_freight';
+
+type KpiFilter = 'none' | 'billed' | 'unbilled' | 'freight';
+
+interface ConsignmentRow {
+    id: string;
+    cn_no: string;
+    bkg_date?: string;
+    booking_branch?: string;
+    dest_branch?: string;
+    delivery_point?: string;
+    consignor_name?: string;
+    no_of_pkg?: number;
+    actual_weight?: number;
+    load_unit?: string;
+    delivery_type?: string;
+    bkg_basis?: string;
+    total_freight?: number;
+    freight_included?: boolean;
+    parent_cn_id?: string | null;
+}
+
 export default function ConsignmentsPage() {
-    const [consignments, setConsignments] = useState<any[]>([]);
+    const [consignments, setConsignments] = useState<ConsignmentRow[]>([]);
     const [billingRecords, setBillingRecords] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
-    
+    const [sortField, setSortField] = useState<ConsignmentSortField>('cn_no');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [kpiFilter, setKpiFilter] = useState<KpiFilter>('none');
+
     const [searchTerm, setSearchTerm] = useState('');
     const [cnNoFilter, setCnNoFilter] = useState('');
     const [selectedConsignment, setSelectedConsignment] = useState<any>(null);
@@ -210,48 +252,90 @@ export default function ConsignmentsPage() {
         return map;
     }, [consignments]);
 
-    // Filtering & Grouping logic
-    const filteredData = useMemo(() => {
-        const sortedBase = (consignments || []).filter((item: any) => {
-            // Table Search (Live)
+    const getDestLabel = (item: ConsignmentRow) =>
+        item.dest_branch || item.delivery_point || '';
+
+    const getSortValue = (item: ConsignmentRow, field: ConsignmentSortField): string | number => {
+        switch (field) {
+            case 'cn_no':
+                return item.cn_no || '';
+            case 'booking_branch':
+                return item.booking_branch || '';
+            case 'bkg_date':
+                return item.bkg_date || '';
+            case 'dest_branch':
+                return getDestLabel(item).toLowerCase();
+            case 'consignor_name':
+                return (item.consignor_name || '').toLowerCase();
+            case 'no_of_pkg':
+                return Number(item.no_of_pkg) || 0;
+            case 'actual_weight':
+                return Number(item.actual_weight) || 0;
+            case 'delivery_type':
+                return (item.delivery_type || '').toLowerCase();
+            case 'bkg_basis':
+                return (item.bkg_basis || '').toLowerCase();
+            case 'total_freight':
+                return Number(item.total_freight) || 0;
+            default:
+                return '';
+        }
+    };
+
+    const compareConsignments = (a: ConsignmentRow, b: ConsignmentRow) => {
+        if (sortField === 'cn_no') {
+            const cmp = compareCnNo(a.cn_no || '', b.cn_no || '');
+            return sortDir === 'asc' ? cmp : -cmp;
+        }
+
+        const va = getSortValue(a, sortField);
+        const vb = getSortValue(b, sortField);
+
+        if (typeof va === 'number' && typeof vb === 'number') {
+            return sortDir === 'asc' ? va - vb : vb - va;
+        }
+
+        const sa = String(va);
+        const sb = String(vb);
+        const cmp = sa.localeCompare(sb);
+        return sortDir === 'asc' ? cmp : -cmp;
+    };
+
+    const filteredList = useMemo(() => {
+        return (consignments || []).filter((item) => {
             const matchesSearch =
                 item.cn_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (item.dest_branch || item.delivery_point || '').toLowerCase().includes(searchTerm.toLowerCase());
+                getDestLabel(item).toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (item.consignor_name || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-            // Form Filters (Applied on Click)
             const { cnNo, bkgBranch: ab, deliveryBranch: ad, bookingType: at, deliveryType: adt, dateFrom: df, dateTo: dt } = appliedFilters;
 
             const matchesCn = cnNo === '' || item.cn_no?.toLowerCase().includes(cnNo.toLowerCase());
             const matchesBkgBranch = ab === 'all' || item.booking_branch === ab;
-            const matchesDestBranch = ad === 'all' || (item.dest_branch || item.delivery_point || '').includes(ad);
+            const matchesDestBranch = ad === 'all' || getDestLabel(item).includes(ad);
             const matchesBkgBasis = at === 'all' || item.bkg_basis === at;
             const matchesDelType = adt === 'all' || item.delivery_type === adt;
 
-            // Date Range Filter (String-based comparison to avoid timezone issues)
-            const itemDateStr = item.bkg_date; // Format: "YYYY-MM-DD"
-            const fromStr = df ? format(df, "yyyy-MM-dd") : null;
-            const toStr = dt ? format(dt, "yyyy-MM-dd") : null;
-
+            const itemDateStr = item.bkg_date || '';
+            const fromStr = df ? format(df, 'yyyy-MM-dd') : null;
+            const toStr = dt ? format(dt, 'yyyy-MM-dd') : null;
             const matchesDateFrom = !fromStr || itemDateStr >= fromStr;
             const matchesDateTo = !toStr || itemDateStr <= toStr;
 
             return matchesSearch && matchesCn && matchesBkgBranch && matchesDestBranch &&
                 matchesBkgBasis && matchesDelType && matchesDateFrom && matchesDateTo;
-        }).sort((a: any, b: any) => {
-            // Sort by cn_no descending so largest comes first
-            const cnA = a.cn_no || "";
-            const cnB = b.cn_no || "";
-            return cnB.localeCompare(cnA);
         });
+    }, [searchTerm, appliedFilters, consignments]);
 
-        // Group consecutive rows sharing the same active bill number
+    const groupedList = useMemo(() => {
+        const sortedBase = [...filteredList].sort((a, b) => compareCnNo(a.cn_no || '', b.cn_no || ''));
         const processed = new Set<string>();
-        const groupedList: any[] = [];
+        const grouped: ConsignmentRow[] = [];
 
         sortedBase.forEach((c) => {
             if (processed.has(c.cn_no)) return;
 
-            groupedList.push(c);
+            grouped.push(c);
             processed.add(c.cn_no);
 
             const billing = consignmentBillingMap.get(c.cn_no);
@@ -263,7 +347,7 @@ export default function ConsignmentsPage() {
                     if (!processed.has(item.cn_no)) {
                         const itemBilling = consignmentBillingMap.get(item.cn_no);
                         if (itemBilling?.status === 'BILLED' && itemBilling.billRef === billRef) {
-                            groupedList.push(item);
+                            grouped.push(item);
                             processed.add(item.cn_no);
                         }
                     }
@@ -271,8 +355,72 @@ export default function ConsignmentsPage() {
             }
         });
 
-        return groupedList;
-    }, [searchTerm, appliedFilters, consignments, consignmentBillingMap]);
+        return grouped;
+    }, [filteredList, consignmentBillingMap]);
+
+    const filteredData = useMemo(() => {
+        let list = [...groupedList];
+
+        if (kpiFilter === 'billed') {
+            list = list.filter((item) => consignmentBillingMap.get(item.cn_no)?.status === 'BILLED');
+        } else if (kpiFilter === 'unbilled') {
+            list = list.filter((item) => consignmentBillingMap.get(item.cn_no)?.status !== 'BILLED');
+        } else if (kpiFilter === 'freight') {
+            list = list.filter((item) => Number(item.total_freight || 0) > 0);
+        }
+
+        list.sort(compareConsignments);
+        return list;
+    }, [groupedList, kpiFilter, consignmentBillingMap, sortField, sortDir]);
+
+    const totals = useMemo(() => {
+        let totalFreight = 0;
+        let billedFreight = 0;
+        let unbilledFreight = 0;
+        let billedCount = 0;
+
+        filteredData.forEach((item) => {
+            const freight = Number(item.total_freight) || 0;
+            totalFreight += freight;
+            if (consignmentBillingMap.get(item.cn_no)?.status === 'BILLED') {
+                billedFreight += freight;
+                billedCount += 1;
+            } else {
+                unbilledFreight += freight;
+            }
+        });
+
+        return {
+            count: filteredData.length,
+            totalFreight,
+            billedFreight,
+            unbilledFreight,
+            billedCount,
+            unbilledCount: filteredData.length - billedCount,
+        };
+    }, [filteredData, consignmentBillingMap]);
+
+    const toggleSort = (field: ConsignmentSortField) => {
+        if (sortField === field) {
+            setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortField(field);
+            setSortDir(field === 'cn_no' || field === 'bkg_date' ? 'asc' : 'desc');
+        }
+    };
+
+    const SortIcon = ({ field }: { field: ConsignmentSortField }) => {
+        if (sortField !== field) {
+            return <ArrowUpDown className="h-3.5 w-3.5 ml-1 inline text-muted-foreground/40" />;
+        }
+        return sortDir === 'asc'
+            ? <ArrowUpDown className="h-3.5 w-3.5 ml-1 inline text-primary" />
+            : <ArrowUpDown className="h-3.5 w-3.5 ml-1 inline text-primary rotate-180" />;
+    };
+
+    const toggleKpiFilter = (next: KpiFilter) => {
+        setKpiFilter((prev) => (prev === next ? 'none' : next));
+    };
 
     // Reset to page 1 whenever filters or rows-per-page change
     useEffect(() => {
@@ -335,6 +483,7 @@ export default function ConsignmentsPage() {
             dateFrom: defaultFrom,
             dateTo: defaultTo
         });
+        setKpiFilter('none');
     };
 
     const handleExportCSV = () => {
@@ -547,17 +696,94 @@ export default function ConsignmentsPage() {
                 </CardContent>
             </Card>
 
-            {/* Enhanced Table Section */}
+            {/* KPI Summary — click to filter */}
+            {kpiFilter !== 'none' && (
+                <div className="flex items-center gap-2 text-xs text-primary font-medium bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                    <Filter className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                        Showing CNS filtered by:{' '}
+                        <strong className="capitalize">
+                            {kpiFilter === 'freight' ? 'With Freight' : kpiFilter}
+                        </strong>
+                    </span>
+                    <button type="button" onClick={() => setKpiFilter('none')} className="ml-auto flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors">
+                        <X className="h-3.5 w-3.5" /> Clear
+                    </button>
+                </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button
+                    type="button"
+                    onClick={() => toggleKpiFilter('freight')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all hover:shadow-lg ${kpiFilter === 'freight' ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'}`}
+                >
+                    <div className="p-4 flex items-start gap-3">
+                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${kpiFilter === 'freight' ? 'bg-primary' : 'bg-primary/10'}`}>
+                            <Package className={`h-5 w-5 ${kpiFilter === 'freight' ? 'text-white' : 'text-primary'}`} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total CNS</p>
+                            <p className="text-lg font-black">{totals.count}</p>
+                            <p className="text-[10px] text-muted-foreground">₹{fmt(totals.totalFreight)} freight</p>
+                        </div>
+                    </div>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => toggleKpiFilter('billed')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all hover:shadow-lg ${kpiFilter === 'billed' ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-transparent'}`}
+                >
+                    <div className="p-4 flex items-start gap-3">
+                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${kpiFilter === 'billed' ? 'bg-emerald-500' : 'bg-emerald-50'}`}>
+                            <TrendingUp className={`h-5 w-5 ${kpiFilter === 'billed' ? 'text-white' : 'text-emerald-600'}`} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Billed CNS</p>
+                            <p className="text-lg font-black text-emerald-700">{totals.billedCount}</p>
+                            <p className="text-[10px] text-emerald-600">₹{fmt(totals.billedFreight)}</p>
+                        </div>
+                    </div>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => toggleKpiFilter('unbilled')}
+                    className={`text-left rounded-xl border-2 shadow-md bg-white transition-all hover:shadow-lg ${kpiFilter === 'unbilled' ? 'border-amber-500 ring-2 ring-amber-200' : 'border-transparent'}`}
+                >
+                    <div className="p-4 flex items-start gap-3">
+                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${kpiFilter === 'unbilled' ? 'bg-amber-500' : 'bg-amber-50'}`}>
+                            <AlertCircle className={`h-5 w-5 ${kpiFilter === 'unbilled' ? 'text-white' : 'text-amber-600'}`} />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Unbilled CNS</p>
+                            <p className="text-lg font-black text-amber-700">{totals.unbilledCount}</p>
+                            <p className="text-[10px] text-amber-600">₹{fmt(totals.unbilledFreight)}</p>
+                        </div>
+                    </div>
+                </button>
+                <div className="rounded-xl border-2 border-transparent shadow-md bg-white">
+                    <div className="p-4 flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 bg-indigo-50">
+                            <DollarSign className="h-5 w-5 text-indigo-600" />
+                        </div>
+                        <div>
+                            <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total Freight</p>
+                            <p className="text-lg font-black text-indigo-700">₹{fmt(totals.totalFreight)}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* CNS Table — ledger style */}
             <Card className="border shadow-lg overflow-hidden bg-card/60 backdrop-blur-xl border-border/40">
-                <CardHeader className="flex flex-row items-center justify-between pb-2 px-6">
+                <CardHeader className="flex flex-row items-center justify-between pb-2 px-6 border-b bg-muted/20">
                     <CardTitle className="text-lg font-bold flex items-center gap-2">
-                        <Truck className="h-5 w-5 text-primary" /> CNs List
+                        <Truck className="h-5 w-5 text-primary" /> CNS List
                     </CardTitle>
                     <div className="relative w-72">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Filter table content..."
-                            className="pl-9 h-9 bg-background/50 border-none shadow-inner"
+                            className="pl-9 h-9 bg-background"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -566,32 +792,65 @@ export default function ConsignmentsPage() {
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
                         <Table>
-                            <TableHeader className="bg-muted/40 backdrop-blur-sm border-b overflow-hidden">
+                            <TableHeader className="bg-muted/40 border-b">
                                 <TableRow className="hover:bg-transparent">
-                                    <TableHead className="font-bold py-4">Bkg Branch</TableHead>
-                                    <TableHead className="font-bold py-4">CNs No</TableHead>
-                                    <TableHead className="font-bold py-4">Bkg Date</TableHead>
-                                    <TableHead className="font-bold py-4">Dest Branch</TableHead>
-                                    <TableHead className="font-bold py-4 text-center">No Of Pkg</TableHead>
-                                    <TableHead className="font-bold py-4 text-right">Actual Weight</TableHead>
-                                    <TableHead className="font-bold py-4">Delivery Type</TableHead>
-                                    <TableHead className="font-bold py-4 text-right">Freight</TableHead>
-                                    <TableHead className="text-right py-4"></TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('booking_branch')}>
+                                        Bkg Branch <SortIcon field="booking_branch" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('cn_no')}>
+                                        CNS No <SortIcon field="cn_no" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_date')}>
+                                        Bkg Date <SortIcon field="bkg_date" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('dest_branch')}>
+                                        Dest Branch <SortIcon field="dest_branch" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('consignor_name')}>
+                                        Consignor <SortIcon field="consignor_name" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 text-center cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('no_of_pkg')}>
+                                        Pkgs <SortIcon field="no_of_pkg" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('actual_weight')}>
+                                        Weight <SortIcon field="actual_weight" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('delivery_type')}>
+                                        Del. Type <SortIcon field="delivery_type" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_basis')}>
+                                        Basis <SortIcon field="bkg_basis" />
+                                    </TableHead>
+                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_freight')}>
+                                        Freight <SortIcon field="total_freight" />
+                                    </TableHead>
+                                    <TableHead className="text-right py-4" />
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {paginatedData.length > 0 ? (
+                                {isLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
+                                            Loading consignments...
+                                        </TableCell>
+                                    </TableRow>
+                                ) : paginatedData.length > 0 ? (
                                     paginatedData.map((item) => (
                                         <TableRow key={item.id || item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
-                                            <TableCell className="text-[12px] font-medium text-muted-foreground">{getFullBranchName(item.booking_branch, branchOptions)}</TableCell>
+                                            <TableCell>
+                                                <span className="font-mono text-xs font-semibold text-foreground bg-muted px-2 py-0.5 rounded">
+                                                    {item.booking_branch || '—'}
+                                                </span>
+                                            </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col gap-1 items-start">
                                                     <button
+                                                        type="button"
                                                         onClick={() => {
                                                             setSelectedConsignment(item);
                                                             setIsDetailsOpen(true);
                                                         }}
-                                                        className="font-bold text-primary hover:underline underline-offset-4 decoration-primary/30 flex items-center gap-2"
+                                                        className="font-mono font-bold text-primary text-xs hover:underline underline-offset-4"
                                                     >
                                                         {item.cn_no}
                                                     </button>
@@ -632,29 +891,34 @@ export default function ConsignmentsPage() {
                                                     </div>
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-xs font-medium text-foreground/80">{item.bkg_date}</TableCell>
-                                            <TableCell className="text-xs font-bold text-foreground/90">{item.dest_branch ? getFullBranchName(item.dest_branch, branchOptions) : (item.delivery_point ? item.delivery_point.toUpperCase() : '---')}</TableCell>
-                                            <TableCell className="text-center">
-                                                <Badge variant="outline" className="font-bold bg-background shadow-sm border-muted/50 text-foreground/70">
-                                                    {item.no_of_pkg}
-                                                </Badge>
+                                            <TableCell className="text-xs font-medium">{item.bkg_date || '—'}</TableCell>
+                                            <TableCell className="text-xs font-semibold max-w-[140px] truncate" title={getDestLabel(item)}>
+                                                {item.dest_branch ? getFullBranchName(item.dest_branch, branchOptions) : (item.delivery_point?.toUpperCase() || '—')}
                                             </TableCell>
-                                            <TableCell className="text-right text-xs font-mono font-bold text-foreground/70">
-                                                {item.actual_weight.toLocaleString()} {item.load_unit?.toLowerCase() || 'kg'}
+                                            <TableCell className="text-xs max-w-[140px] truncate" title={item.consignor_name || ''}>
+                                                {item.consignor_name || '—'}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <span className="font-mono text-xs font-bold">{item.no_of_pkg ?? 0}</span>
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-xs font-bold">
+                                                {Number(item.actual_weight || 0).toLocaleString()} {item.load_unit?.toLowerCase() || 'kg'}
                                             </TableCell>
                                             <TableCell>
-                                                <Badge
-                                                    variant="secondary"
-                                                    className="text-[10px] px-2 py-0 border-none bg-indigo-50 text-indigo-700 font-bold tracking-tight"
-                                                >
-                                                    {item.delivery_type}
+                                                <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">
+                                                    {item.delivery_type || '—'}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="text-right font-black text-xs">
-                                                {(item.total_freight || 0) > 0 ? (
-                                                    <span className="bg-primary/5 px-2 py-1 rounded text-primary">₹{(item.total_freight || 0).toLocaleString()}</span>
+                                            <TableCell>
+                                                <Badge variant="outline" className="text-[10px] font-mono">
+                                                    {item.bkg_basis || '—'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {Number(item.total_freight || 0) > 0 ? (
+                                                    <span className="font-mono font-bold text-sm text-primary">₹{fmt(Number(item.total_freight))}</span>
                                                 ) : (
-                                                    <span className="text-muted-foreground/30">---</span>
+                                                    <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">No Freight</span>
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1">
@@ -690,7 +954,7 @@ export default function ConsignmentsPage() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={9} className="h-64 text-center">
+                                        <TableCell colSpan={11} className="h-64 text-center">
                                             <div className="flex flex-col items-center justify-center space-y-3 opacity-40">
                                                 <Package className="h-12 w-12 text-muted-foreground" />
                                                 <div className="text-sm font-medium">No results found matching your criteria.</div>
@@ -702,6 +966,17 @@ export default function ConsignmentsPage() {
                             </TableBody>
                         </Table>
                     </div>
+
+                    {filteredData.length > 0 && (
+                        <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-11 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                            <div className="col-span-4">Total ({filteredData.length} CNS)</div>
+                            <div className="col-span-3" />
+                            <div className="text-right font-mono text-emerald-700">{totals.billedCount} billed</div>
+                            <div className="text-right font-mono text-amber-700">{totals.unbilledCount} unbilled</div>
+                            <div className="text-right font-mono text-primary col-span-2">₹{fmt(totals.totalFreight)}</div>
+                            <div />
+                        </div>
+                    )}
 
                     {/* Enhanced Pagination */}
                     <div className="px-6 py-4 flex items-center justify-between border-t bg-muted/5">

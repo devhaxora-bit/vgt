@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, FileText } from 'lucide-react';
+import { Plus, Search, FileText, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { compareCnNo } from '@/lib/sortLinkedConsignments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -64,6 +65,8 @@ export default function ChallanListPage() {
     // State for Details Dialog
     const [selectedChallan, setSelectedChallan] = useState<Challan | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [sortField, setSortField] = useState<'challan_no' | 'created_at' | 'vehicle_no' | 'total_hire_amount'>('challan_no');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
     const fetchChallans = useCallback(async () => {
         setLoading(true);
@@ -94,6 +97,40 @@ export default function ChallanListPage() {
         setSelectedChallan(challan);
         setIsDetailsOpen(true);
     };
+
+    const toggleSort = (field: typeof sortField) => {
+        if (sortField === field) {
+            setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        } else {
+            setSortField(field);
+            setSortDir(field === 'challan_no' ? 'asc' : 'desc');
+        }
+    };
+
+    const SortIcon = ({ field }: { field: typeof sortField }) => {
+        if (sortField !== field) return <ArrowUpDown className="h-3.5 w-3.5 ml-1 inline text-muted-foreground/50" />;
+        return sortDir === 'asc'
+            ? <ArrowUp className="h-3.5 w-3.5 ml-1 inline text-primary" />
+            : <ArrowDown className="h-3.5 w-3.5 ml-1 inline text-primary" />;
+    };
+
+    const sortedChallans = useMemo(() => {
+        const list = [...challans];
+        list.sort((a, b) => {
+            let cmp = 0;
+            if (sortField === 'challan_no') {
+                cmp = compareCnNo(a.challan_no, b.challan_no);
+            } else if (sortField === 'created_at') {
+                cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            } else if (sortField === 'vehicle_no') {
+                cmp = String(a.vehicle_no || '').localeCompare(String(b.vehicle_no || ''));
+            } else {
+                cmp = Number(a.total_hire_amount || 0) - Number(b.total_hire_amount || 0);
+            }
+            return sortDir === 'asc' ? cmp : -cmp;
+        });
+        return list;
+    }, [challans, sortField, sortDir]);
 
     return (
         <div className="p-6 space-y-6 animate-fadeIn">
@@ -169,13 +206,21 @@ export default function ChallanListPage() {
                     <TableHeader>
                         <TableRow className="bg-slate-50 hover:bg-slate-50">
                             <TableHead className="w-[120px]">Challan Branch</TableHead>
-                            <TableHead>Challan No</TableHead>
-                            <TableHead>Challan Date</TableHead>
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('challan_no')}>
+                                Challan No <SortIcon field="challan_no" />
+                            </TableHead>
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('created_at')}>
+                                Challan Date <SortIcon field="created_at" />
+                            </TableHead>
                             <TableHead>Via</TableHead>
                             <TableHead>Dest Branch</TableHead>
                             <TableHead>Type</TableHead>
-                            <TableHead>Vehicle No</TableHead>
-                            <TableHead className="text-right">Total Hire</TableHead>
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('vehicle_no')}>
+                                Vehicle No <SortIcon field="vehicle_no" />
+                            </TableHead>
+                            <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort('total_hire_amount')}>
+                                Total Hire <SortIcon field="total_hire_amount" />
+                            </TableHead>
                             <TableHead className="text-right">Extra Hire</TableHead>
                             <TableHead className="text-right">Advance Paid</TableHead>
                             <TableHead>Status</TableHead>
@@ -191,8 +236,8 @@ export default function ChallanListPage() {
                                     </div>
                                 </TableCell>
                             </TableRow>
-                        ) : challans.length > 0 ? (
-                            challans.map((challan) => (
+                        ) : sortedChallans.length > 0 ? (
+                            sortedChallans.map((challan) => (
                                 <TableRow key={challan.id} className="hover:bg-slate-50/50">
                                     <TableCell className="font-medium">{challan.origin_branch?.name || 'N/A'}</TableCell>
                                     <TableCell className="font-mono text-primary font-semibold">{challan.challan_no}</TableCell>

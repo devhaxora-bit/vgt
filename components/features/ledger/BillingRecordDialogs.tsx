@@ -23,6 +23,13 @@ import {
     type BillingVehicleCancelDraftItem,
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
+import {
+    formatBillChargeWeight,
+    formatBillRateDisplay,
+    isFixedFreightRate,
+    resolveBillChargeWeightDisplay,
+    resolveBillRateDisplay,
+} from '@/lib/billFreightDisplay';
 import { downloadBillPdfFromDocument, renderBillPdfPages } from '@/lib/billPdf';
 import { formatBillCnNo, isFreightIncludedCn } from '@/lib/formatBillCnNo';
 
@@ -106,6 +113,10 @@ interface BillingConsignmentSnapshotRow {
     loading_station: string | null;
     delivery_station: string | null;
     charge_wt: string | null;
+    load_unit?: string | null;
+    basic_freight?: number;
+    charged_weight?: number;
+    actual_weight?: number;
     freight_rate: number;
     is_fixed_rate?: boolean;
     freight: number;
@@ -220,14 +231,6 @@ const parseMoney = (value: unknown) => {
 };
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
-
-const buildChargeWeight = (consignment: Pick<Consignment, 'charged_weight' | 'actual_weight' | 'load_unit'>) => {
-    const weight = parseMoney(consignment.charged_weight) || parseMoney(consignment.actual_weight);
-    if (weight <= 0) return null;
-
-    const unit = String(consignment.load_unit || '').trim().toUpperCase();
-    return `${weight}${unit ? ` ${unit}` : ''}`.trim();
-};
 
 const getConsignmentExtraCharges = (
     consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
@@ -360,6 +363,10 @@ const normalizeSnapshotRows = (value: unknown): BillingConsignmentSnapshotRow[] 
             loading_station: snapshotRow.loading_station ? String(snapshotRow.loading_station) : null,
             delivery_station: snapshotRow.delivery_station ? String(snapshotRow.delivery_station) : null,
             charge_wt: snapshotRow.charge_wt ? String(snapshotRow.charge_wt) : null,
+            load_unit: snapshotRow.load_unit ? String(snapshotRow.load_unit) : null,
+            basic_freight: roundMoney(parseMoney(snapshotRow.basic_freight)),
+            is_fixed_rate: Boolean(snapshotRow.is_fixed_rate)
+                || isFixedFreightRate(snapshotRow.freight_rate, snapshotRow.basic_freight),
             freight_rate: roundMoney(parseMoney(snapshotRow.freight_rate)),
             freight: roundMoney(parseMoney(snapshotRow.freight)),
             unloading: roundMoney(parseMoney(snapshotRow.unloading)),
@@ -398,9 +405,17 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
             booking_branch: consignment.booking_branch || null,
             loading_station: consignment.loading_point || consignment.booking_branch || null,
             delivery_station: consignment.delivery_point || consignment.dest_branch || null,
-            charge_wt: buildChargeWeight(consignment),
+            charge_wt: formatBillChargeWeight(
+                consignment.charged_weight,
+                consignment.actual_weight,
+                consignment.load_unit,
+            ),
+            load_unit: consignment.load_unit ? String(consignment.load_unit).toUpperCase() : null,
+            basic_freight: roundMoney(parseMoney(consignment.basic_freight)),
+            charged_weight: parseMoney(consignment.charged_weight),
+            actual_weight: parseMoney(consignment.actual_weight),
             freight_rate: roundMoney(parseMoney(consignment.freight_rate)),
-            is_fixed_rate: isFixedFreight(consignment.freight_rate, consignment.basic_freight),
+            is_fixed_rate: isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
             freight: breakdown.freight,
             unloading: breakdown.unloading,
             detention: breakdown.detention,
@@ -415,9 +430,30 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
     });
 };
 
-// Fixed-rate freight: no per-unit rate (freight_rate=0) but has a fixed total (basic_freight>0)
-const isFixedFreight = (freightRate: number | undefined | null, basicFreight: number | undefined | null) =>
-    parseMoney(freightRate) === 0 && parseMoney(basicFreight) > 0;
+const enrichBillRowFromLive = (
+    row: BillingConsignmentSnapshotRow,
+    live?: Consignment,
+): BillingConsignmentSnapshotRow => {
+    if (!live) return row;
+
+    const isFixed = isFixedFreightRate(live.freight_rate, live.basic_freight);
+    const liveRate = roundMoney(parseMoney(live.freight_rate));
+
+    return {
+        ...row,
+        load_unit: live.load_unit ? String(live.load_unit).toUpperCase() : row.load_unit,
+        basic_freight: roundMoney(parseMoney(live.basic_freight)),
+        charged_weight: parseMoney(live.charged_weight),
+        actual_weight: parseMoney(live.actual_weight),
+        is_fixed_rate: isFixed || row.is_fixed_rate,
+        freight_rate: row.freight_rate > 0 ? row.freight_rate : liveRate,
+        charge_wt: formatBillChargeWeight(
+            live.charged_weight,
+            live.actual_weight,
+            live.load_unit,
+        ) ?? row.charge_wt,
+    };
+};
 
 const enrichBillRowIncludeInfo = (
     row: BillingConsignmentSnapshotRow,
@@ -440,14 +476,8 @@ const buildBillDetailRows = (record: BillingRecord, consignments: Consignment[])
     if (snapshotRows.length > 0) {
         const cnLookup = new Map(consignments.map((c) => [c.cn_no, c]));
         return snapshotRows.map((row) => {
-            const enriched = enrichBillRowIncludeInfo(row, consignments);
-            if (enriched.freight_rate > 0) return enriched;
-            const live = cnLookup.get(enriched.cn_no);
-            // Fixed-rate CNS: freight_rate is 0 and basic_freight > 0 on the live record
-            if (isFixedFreight(live?.freight_rate, live?.basic_freight)) return { ...enriched, is_fixed_rate: true };
-            const liveRate = roundMoney(parseMoney(live?.freight_rate));
-            if (liveRate > 0) return { ...enriched, freight_rate: liveRate };
-            return enriched;
+            const withInclude = enrichBillRowIncludeInfo(row, consignments);
+            return enrichBillRowFromLive(withInclude, cnLookup.get(withInclude.cn_no));
         });
     }
     return buildLiveSnapshotRows(record, consignments);
@@ -919,8 +949,13 @@ export function BillingRecordViewDialog({
                 vehicleNo: toUpperText(row.vehicle_no) || '—',
                 loadingStation: toUpperText(row.loading_station || row.booking_branch) || '—',
                 deliveryStation: toUpperText(row.delivery_station) || '—',
-                chargeWt: row.charge_wt || '—',
-                rate: row.freight_rate > 0 ? fmt(row.freight_rate) : row.is_fixed_rate ? 'FIXED' : '',
+                chargeWt: resolveBillChargeWeightDisplay(row),
+                rate: formatBillRateDisplay({
+                    freightRate: row.freight_rate,
+                    basicFreight: row.basic_freight,
+                    loadUnit: row.load_unit,
+                    isFixedRate: row.is_fixed_rate,
+                }),
                 freight: formatTableAmount(row.freight),
                 unloading: formatTableAmount(row.unloading),
                 detention: formatTableAmount(row.detention),
@@ -1141,8 +1176,8 @@ export function BillingRecordViewDialog({
                                                             <td className="p-2 text-xs">{row.vehicle_no || '—'}</td>
                                                             <td className="p-2 text-xs">{row.loading_station || row.booking_branch || '—'}</td>
                                                             <td className="p-2 text-xs">{row.delivery_station || '—'}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{row.charge_wt || '—'}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{row.freight_rate > 0 ? fmt(row.freight_rate) : row.is_fixed_rate ? 'FIXED' : '0.00'}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{resolveBillChargeWeightDisplay(row)}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{resolveBillRateDisplay(row, '0.00')}</td>
                                                             <td className="p-2 text-right text-xs font-mono">₹{fmt(row.freight)}</td>
                                                             <td className="p-2 text-right text-xs font-mono">₹{fmt(row.unloading)}</td>
                                                             <td className="p-2 text-right text-xs font-mono">₹{fmt(row.detention)}</td>
