@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ArrowLeft, Save, RotateCcw, FileText, Truck, Users,
-    Shield, CreditCard, Info, Link2, X, Download, ArrowUpDown
+    Shield, CreditCard, Info, Link2, Download
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,8 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/use-debounce';
-import { sortLinkedConsignments, type LinkedCnSortField } from '@/lib/sortLinkedConsignments';
-import { format } from 'date-fns';
+import { LinkedConsignmentsTable, type LinkedConsignmentRow } from '@/components/features/challans/LinkedConsignmentsTable';
+import { mergeSortedLinkedConsignments, sortLinkedConsignments, type LinkedCnSortField } from '@/lib/sortLinkedConsignments';
 
 // Branch interface
 interface Branch {
@@ -29,23 +29,7 @@ interface Branch {
     city: string;
 }
 
-interface LinkedConsignment {
-    id: string;
-    cn_no: string;
-    bkg_date?: string;
-    consignor_name?: string;
-    packages?: Array<{ method?: string; qty?: number; sr_no?: number }>;
-    no_of_pkg?: number;
-    total_qty?: number;
-    goods_class?: string;
-    goods_desc?: string;
-    actual_weight?: number | string;
-    charged_weight?: number | string;
-    load_unit?: string;
-    dest_branch?: string;
-    delivery_point?: string;
-}
-
+type LinkedConsignment = LinkedConsignmentRow;
 
 function NewChallanPageContent() {
     const router = useRouter();
@@ -76,6 +60,7 @@ function NewChallanPageContent() {
     const vehicleFocusedRef = useRef(false);
     const brokerFocusedRef = useRef(false);
     const linkedConsignmentsRef = useRef<LinkedConsignment[]>([]);
+    const editHireHydratedRef = useRef(false);
     useEffect(() => { linkedConsignmentsRef.current = linkedConsignments; }, [linkedConsignments]);
 
     const sortedLinkedConsignments = useMemo(
@@ -92,13 +77,12 @@ function NewChallanPageContent() {
         }
     };
 
-    const CnSortIcon = ({ field }: { field: LinkedCnSortField }) => {
-        if (cnSortField !== field) {
-            return <ArrowUpDown className="h-3 w-3 ml-1 inline text-muted-foreground/40" />;
-        }
-        return cnSortDir === 'asc'
-            ? <ArrowUpDown className="h-3 w-3 ml-1 inline text-primary" />
-            : <ArrowUpDown className="h-3 w-3 ml-1 inline text-primary rotate-180" />;
+    const appendLinkedConsignment = (cn: LinkedConsignment) => {
+        setLinkedConsignments((prev) => mergeSortedLinkedConsignments(prev, [cn], cnSortField, cnSortDir));
+    };
+
+    const removeLinkedConsignment = (id: string) => {
+        setLinkedConsignments((prev) => prev.filter((item) => item.id !== id));
     };
 
     // Owner/Broker
@@ -181,16 +165,26 @@ function NewChallanPageContent() {
         const totalWt = linkedConsignments.reduce((sum, c) => sum + (Number(c.actual_weight) || 0), 0);
         const totalChargeWt = linkedConsignments.reduce((sum, c) => sum + (Number(c.charged_weight) || 0), 0);
 
-        setHireDetails(prev => {
-            let next = {
+        setHireDetails((prev) => {
+            // Edit mode: linked CNs load after saved hire — keep stored totals, only refresh CN aggregates.
+            if (isEditMode && editHireHydratedRef.current) {
+                return {
+                    ...prev,
+                    noOfCns: count,
+                    noOfPackage: totalPkg,
+                    actualWeight: totalWt,
+                    chargeWeight: totalChargeWt > 0 ? totalChargeWt : prev.chargeWeight,
+                };
+            }
+
+            const next = {
                 ...prev,
                 noOfCns: count,
                 noOfPackage: totalPkg,
                 actualWeight: totalWt,
-                chargeWeight: totalChargeWt
+                chargeWeight: totalChargeWt,
             };
-            
-            // Trigger general update step to ripple effect derived calculations if dependent
+
             next.totalExtra = (next.extraOverWeight || 0) + (next.overLength || 0) + (next.overWidth || 0) + (next.overHeight || 0) + (next.extraKmCharges || 0) + (next.unloadingCharges || 0);
             if (next.rateType === 'mt') {
                 next.hire = Math.round((next.chargeWeight || 0) * (next.rate || 0));
@@ -200,7 +194,7 @@ function NewChallanPageContent() {
             next.balAmount = next.totalHire - (next.advPayment || 0) - next.lessTds;
             return next;
         });
-    }, [linkedConsignments]);
+    }, [linkedConsignments, isEditMode]);
 
     // Load challan data for edit mode
     useEffect(() => {
@@ -219,7 +213,9 @@ function NewChallanPageContent() {
                             if (cnRes.ok) {
                                 const cnData = await cnRes.json();
                                 if (Array.isArray(cnData)) {
-                                    setLinkedConsignments(cnData);
+                                    setCnSortField('cn_no');
+                                    setCnSortDir('asc');
+                                    setLinkedConsignments(sortLinkedConsignments(cnData, 'cn_no', 'asc'));
                                 }
                             }
                         } catch (cnErr) {
@@ -292,14 +288,20 @@ function NewChallanPageContent() {
         setRemarks(data.remarks || '');
         setTripTracking(data.trip_tracking_consent || false);
 
+        const totalHire = Number(data.total_hire_amount) || 0;
+        const advPayment = Number(data.advance_amount) || 0;
+        const lessTds = Number(data.less_tds) || 0;
+        const hireRate = Number(data.hire_rate_per_kg) || 0;
+        const hireAmount = Number(data.hire_amount) || 0;
+
         setHireDetails({
             noOfCns: data.linked_cn_nos?.length || 0,
             noOfPackage: 0,
             actualWeight: 0,
-            chargeWeight: 0,
-            rateType: 'mt',
-            rate: data.hire_rate_per_kg || 0,
-            hire: data.hire_amount || 0,
+            chargeWeight: hireRate > 0 ? hireAmount / hireRate : 0,
+            rateType: hireRate > 0 ? 'mt' : 'fixed',
+            rate: hireRate,
+            hire: hireAmount,
             extraOverWeight: data.extra_over_weight || 0,
             overLength: data.extra_over_length || 0,
             overWidth: data.extra_over_width || 0,
@@ -308,12 +310,13 @@ function NewChallanPageContent() {
             detentCharges: data.detent_charges || 0,
             unloadingCharges: data.unloading_charges || 0,
             totalExtra: data.total_extra_charges || 0,
-            totalHire: data.total_hire_amount || 0,
-            advPayment: data.advance_amount || 0,
+            totalHire,
+            advPayment,
             tdsPercent: data.tds_percent ?? 0,
-            lessTds: data.less_tds || 0,
-            balAmount: 0,
+            lessTds,
+            balAmount: totalHire - advPayment - lessTds,
         });
+        editHireHydratedRef.current = true;
     };
 
     useEffect(() => {
@@ -350,6 +353,7 @@ function NewChallanPageContent() {
     }, [originBranch, isEditMode]);
 
     const handleReset = () => {
+        editHireHydratedRef.current = false;
         setLoadingPoint(''); setDestinationPoint('');
         setLinkedCnInput(''); setLinkedConsignments([]); setCnSuggestions([]); setShowCnSuggestions(false);
         setVehicleNo(''); setVehicleOwnerStatus(''); setVehicleSuggestions([]); setShowVehicleSuggestions(false);
@@ -556,7 +560,7 @@ function NewChallanPageContent() {
             if (exactRes.ok) {
                 const data = await exactRes.json();
                 if (data && data.cn_no) {
-                    setLinkedConsignments((prev) => [...prev, data]);
+                    appendLinkedConsignment(data);
                     setLinkedCnInput('');
                     return;
                 }
@@ -576,7 +580,7 @@ function NewChallanPageContent() {
                     // Prefer exact match, otherwise show suggestions to pick from
                     const exact = available.find((c: any) => String(c.cn_no).toUpperCase() === cnNo);
                     if (exact) {
-                        setLinkedConsignments((prev) => [...prev, exact]);
+                        appendLinkedConsignment(exact);
                         setLinkedCnInput('');
                         return;
                     }
@@ -906,7 +910,7 @@ function NewChallanPageContent() {
                                                                 type="button"
                                                                 className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b last:border-b-0 flex items-center justify-between gap-4"
                                                                 onMouseDown={() => {
-                                                                    setLinkedConsignments(prev => [...prev, cn]);
+                                                                    appendLinkedConsignment(cn);
                                                                     setLinkedCnInput('');
                                                                     setCnSuggestions([]);
                                                                     setShowCnSuggestions(false);
@@ -932,75 +936,13 @@ function NewChallanPageContent() {
                                         </Button>
                                     </div>
 
-                                    <div className="overflow-x-auto rounded-md border">
-                                        <div className="min-w-[1100px]">
-                                            <div className="grid grid-cols-[56px_130px_100px_140px_150px_130px_1fr_100px_140px_48px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase text-muted-foreground border-b">
-                                                <div>Sr No</div>
-                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('cn_no')}>
-                                                    CNS No <CnSortIcon field="cn_no" />
-                                                </button>
-                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('bkg_date')}>
-                                                    CN Date <CnSortIcon field="bkg_date" />
-                                                </button>
-                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('consignor_name')}>
-                                                    Consignor <CnSortIcon field="consignor_name" />
-                                                </button>
-                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('packages')}>
-                                                    Package Details <CnSortIcon field="packages" />
-                                                </button>
-                                                <div>Type Of Package</div>
-                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('goods_desc')}>
-                                                    Material Details <CnSortIcon field="goods_desc" />
-                                                </button>
-                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('weight')}>
-                                                    Weight <CnSortIcon field="weight" />
-                                                </button>
-                                                <button type="button" className="text-left flex items-center cursor-pointer hover:text-foreground" onClick={() => toggleCnSort('destination')}>
-                                                    Destination <CnSortIcon field="destination" />
-                                                </button>
-                                                <div></div>
-                                            </div>
-                                            {sortedLinkedConsignments.length === 0 ? (
-                                                <div className="px-3 py-6 text-sm text-muted-foreground text-center">
-                                                    No CNS numbers linked.
-                                                </div>
-                                            ) : sortedLinkedConsignments.map((cn, index) => {
-                                                const packageSummary = (cn.packages || [])
-                                                    .map((pkg) => `${pkg.qty || 0} ${pkg.method || 'Pkg'}`)
-                                                    .join(', ');
-                                                const packageTypes = Array.from(new Set((cn.packages || []).map((pkg) => pkg.method).filter(Boolean))).join(', ');
-                                                const weight = cn.charged_weight || cn.actual_weight || 0;
-                                                const cnDate = cn.bkg_date
-                                                    ? format(new Date(cn.bkg_date), 'dd/MM/yyyy')
-                                                    : '---';
-
-                                                return (
-                                                    <div key={cn.id} className="grid grid-cols-[56px_130px_100px_140px_150px_130px_1fr_100px_140px_48px] gap-3 px-3 py-2 text-xs border-b last:border-b-0 items-center">
-                                                        <div className="font-mono">{index + 1}</div>
-                                                        <div className="font-mono font-bold text-primary">{cn.cn_no}</div>
-                                                        <div className="font-mono">{cnDate}</div>
-                                                        <div className="truncate" title={cn.consignor_name || ''}>{cn.consignor_name || '---'}</div>
-                                                        <div>{packageSummary || `${cn.no_of_pkg || 0} packages`}</div>
-                                                        <div>{packageTypes || cn.goods_class || '---'}</div>
-                                                        <div className="truncate" title={cn.goods_desc || cn.goods_class || ''}>{cn.goods_desc || cn.goods_class || '---'}</div>
-                                                        <div className="font-mono">{weight} {cn.load_unit || 'KG'}</div>
-                                                        <div className="truncate" title={cn.delivery_point || cn.dest_branch || ''}>{cn.delivery_point || cn.dest_branch || '---'}</div>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-7 w-7 text-destructive"
-                                                            onClick={() => {
-                                                                setLinkedConsignments((prev) => prev.filter((item) => item.id !== cn.id));
-                                                            }}
-                                                        >
-                                                            <X className="h-4 w-4" />
-                                                        </Button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
+                                    <LinkedConsignmentsTable
+                                        items={sortedLinkedConsignments}
+                                        sortField={cnSortField}
+                                        sortDir={cnSortDir}
+                                        onSort={toggleCnSort}
+                                        onRemove={removeLinkedConsignment}
+                                    />
                                 </CardContent>
                             </Card>
 
@@ -1492,8 +1434,20 @@ function NewChallanPageContent() {
                     {/* ===================== CONSIGNMENT LIST TAB ===================== */}
                     <TabsContent value="consignment-list">
                         <Card className="border-none shadow-md bg-white">
-                            <CardContent className="p-6">
-                                <p className="text-sm text-muted-foreground">Consignment list will appear here after saving the challan.</p>
+                            <CardHeader className="bg-primary/5 py-3 px-6 border-b">
+                                <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
+                                    <Link2 className="h-4 w-4" /> Linked Consignments ({sortedLinkedConsignments.length})
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-4 md:p-6">
+                                <LinkedConsignmentsTable
+                                    items={sortedLinkedConsignments}
+                                    sortField={cnSortField}
+                                    sortDir={cnSortDir}
+                                    onSort={toggleCnSort}
+                                    onRemove={removeLinkedConsignment}
+                                    emptyMessage="No consignments linked yet. Add CNS numbers from the Challan Details tab."
+                                />
                             </CardContent>
                         </Card>
                     </TabsContent>

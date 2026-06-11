@@ -1,5 +1,9 @@
 import type { createClient } from '@/utils/supabase/server';
 import {
+    formatBillChargeWeight,
+    isFixedFreightRate,
+} from '@/lib/billFreightDisplay';
+import {
     normalizeVehicleCancelItems,
     sumVehicleCancelCharges,
     type BillingVehicleCancelItem,
@@ -47,6 +51,9 @@ export interface BillingConsignmentSnapshotRow {
     loading_station: string | null;
     delivery_station: string | null;
     charge_wt: string | null;
+    load_unit?: string | null;
+    basic_freight?: number;
+    is_fixed_rate?: boolean;
     freight_rate: number;
     freight: number;
     unloading: number;
@@ -156,14 +163,6 @@ const normalizeCoveredCnNos = (coveredCnNos: unknown) => {
     return Array.from(new Set(normalized));
 };
 
-const buildChargeWeight = (consignment: BillingSnapshotConsignment) => {
-    const weight = parseMoney(consignment.charged_weight) || parseMoney(consignment.actual_weight);
-    if (weight <= 0) return null;
-
-    const unit = String(consignment.load_unit || '').trim().toUpperCase();
-    return `${weight}${unit ? ` ${unit}` : ''}`.trim();
-};
-
 const buildConsignmentSnapshot = (
     consignments: BillingSnapshotConsignment[],
     addedOtherChargesAmount: number
@@ -184,7 +183,14 @@ const buildConsignmentSnapshot = (
             booking_branch: consignment.booking_branch || null,
             loading_station: consignment.loading_point || consignment.booking_branch || null,
             delivery_station: consignment.delivery_point || consignment.dest_branch || null,
-            charge_wt: buildChargeWeight(consignment),
+            charge_wt: formatBillChargeWeight(
+                consignment.charged_weight,
+                consignment.actual_weight,
+                consignment.load_unit,
+            ),
+            load_unit: consignment.load_unit ? String(consignment.load_unit).toUpperCase() : null,
+            basic_freight: roundMoney(parseMoney(consignment.basic_freight)),
+            is_fixed_rate: isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
             freight_rate: roundMoney(parseMoney(consignment.freight_rate)),
             freight: breakdown.freight,
             unloading: breakdown.unloading,

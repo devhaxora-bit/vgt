@@ -7,10 +7,21 @@ export type LinkedCnSortField =
     | 'destination'
     | 'packages';
 
-/** Compare CN numbers sequentially (branch prefix, then numeric suffix). */
+/** Compare document numbers sequentially (branch prefix, then numeric suffix). */
 export function compareCnNo(a: string, b: string): number {
     const na = String(a || '').trim().toUpperCase();
     const nb = String(b || '').trim().toUpperCase();
+
+    if (na === nb) return 0;
+
+    // Pure numeric values (common CN / challan numbers in this app)
+    if (/^\d+$/.test(na) && /^\d+$/.test(nb)) {
+        const lenDiff = na.length - nb.length;
+        if (lenDiff !== 0) return lenDiff;
+        const diff = Number(na) - Number(nb);
+        if (diff !== 0) return diff;
+    }
+
     const numA = na.match(/(\d+)$/);
     const numB = nb.match(/(\d+)$/);
     const prefixA = numA ? na.slice(0, -numA[1].length) : na;
@@ -18,6 +29,8 @@ export function compareCnNo(a: string, b: string): number {
 
     if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
     if (numA && numB) {
+        const lenDiff = numA[1].length - numB[1].length;
+        if (lenDiff !== 0) return lenDiff;
         const diff = Number(numA[1]) - Number(numB[1]);
         if (diff !== 0) return diff;
     }
@@ -48,6 +61,16 @@ function getSortValue(item: Record<string, unknown>, field: LinkedCnSortField): 
         default:
             return '';
     }
+}
+
+/** Append items and return a new array sorted by field/direction. */
+export function mergeSortedLinkedConsignments<T>(
+    existing: T[],
+    incoming: T[],
+    field: LinkedCnSortField = 'cn_no',
+    direction: 'asc' | 'desc' = 'asc'
+): T[] {
+    return sortLinkedConsignments([...existing, ...incoming], field, direction);
 }
 
 export function sortLinkedConsignments<T>(
