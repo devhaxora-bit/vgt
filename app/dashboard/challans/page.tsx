@@ -28,6 +28,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { ChallanDetailsDialog } from '@/components/features/challans/ChallanDetailsDialog';
+import { ChallanLinkedCnsCell, type LinkedCnPreview } from '@/components/features/challans/ChallanLinkedCnsCell';
+import { ConsignmentDetailsDialog } from '@/components/features/consignments/ConsignmentDetailsDialog';
 import { Printer, Pencil } from 'lucide-react';
 
 interface Challan {
@@ -50,6 +52,7 @@ interface Challan {
     advance_amount: number;
     status: string;
     created_at: string;
+    linked_cn_nos?: string[] | null;
 }
 
 export default function ChallanListPage() {
@@ -65,7 +68,10 @@ export default function ChallanListPage() {
     // State for Details Dialog
     const [selectedChallan, setSelectedChallan] = useState<Challan | null>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-    const [sortField, setSortField] = useState<'challan_no' | 'created_at' | 'vehicle_no' | 'total_hire_amount'>('challan_no');
+    const [selectedConsignment, setSelectedConsignment] = useState<LinkedCnPreview | null>(null);
+    const [isCnDetailsOpen, setIsCnDetailsOpen] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [sortField, setSortField] = useState<'challan_no' | 'date_from' | 'vehicle_no' | 'total_hire_amount'>('challan_no');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
     const fetchChallans = useCallback(async () => {
@@ -93,9 +99,28 @@ export default function ChallanListPage() {
         fetchChallans();
     }, [fetchChallans]);
 
+    useEffect(() => {
+        const loadCurrentUser = async () => {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (!res.ok) return;
+                const result = await res.json();
+                setIsAdmin(result?.data?.role === 'admin');
+            } catch {
+                /* ignore */
+            }
+        };
+        void loadCurrentUser();
+    }, []);
+
     const handleViewDetails = (challan: Challan) => {
         setSelectedChallan(challan);
         setIsDetailsOpen(true);
+    };
+
+    const handleOpenCn = (consignment: LinkedCnPreview) => {
+        setSelectedConsignment(consignment);
+        setIsCnDetailsOpen(true);
     };
 
     const toggleSort = (field: typeof sortField) => {
@@ -120,8 +145,8 @@ export default function ChallanListPage() {
             let cmp = 0;
             if (sortField === 'challan_no') {
                 cmp = compareCnNo(a.challan_no, b.challan_no);
-            } else if (sortField === 'created_at') {
-                cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            } else if (sortField === 'date_from') {
+                cmp = new Date(a.date_from || 0).getTime() - new Date(b.date_from || 0).getTime();
             } else if (sortField === 'vehicle_no') {
                 cmp = String(a.vehicle_no || '').localeCompare(String(b.vehicle_no || ''));
             } else {
@@ -209,8 +234,8 @@ export default function ChallanListPage() {
                             <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('challan_no')}>
                                 Challan No <SortIcon field="challan_no" />
                             </TableHead>
-                            <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('created_at')}>
-                                Challan Date <SortIcon field="created_at" />
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('date_from')}>
+                                Challan Date <SortIcon field="date_from" />
                             </TableHead>
                             <TableHead>Via</TableHead>
                             <TableHead>Dest Branch</TableHead>
@@ -218,6 +243,7 @@ export default function ChallanListPage() {
                             <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('vehicle_no')}>
                                 Vehicle No <SortIcon field="vehicle_no" />
                             </TableHead>
+                            <TableHead className="min-w-[140px]">Linked CNS</TableHead>
                             <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort('total_hire_amount')}>
                                 Total Hire <SortIcon field="total_hire_amount" />
                             </TableHead>
@@ -230,7 +256,7 @@ export default function ChallanListPage() {
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={12} className="h-24 text-center">
+                                <TableCell colSpan={13} className="h-24 text-center">
                                     <div className="flex items-center justify-center gap-2 text-muted-foreground">
                                         Loading...
                                     </div>
@@ -241,7 +267,7 @@ export default function ChallanListPage() {
                                 <TableRow key={challan.id} className="hover:bg-slate-50/50">
                                     <TableCell className="font-medium">{challan.origin_branch?.name || 'N/A'}</TableCell>
                                     <TableCell className="font-mono text-primary font-semibold">{challan.challan_no}</TableCell>
-                                    <TableCell>{format(new Date(challan.created_at), 'dd/MM/yyyy')}</TableCell>
+                                    <TableCell>{challan.date_from ? format(new Date(challan.date_from), 'dd/MM/yyyy') : '—'}</TableCell>
                                     <TableCell>
                                         <Badge variant="outline" className={
                                             challan.engagement_type === 'direct'
@@ -256,6 +282,12 @@ export default function ChallanListPage() {
                                         <Badge variant="outline" className="font-mono">{challan.challan_mode || challan.challan_type}</Badge>
                                     </TableCell>
                                     <TableCell className="font-mono font-medium text-[#101828]">{challan.vehicle_no}</TableCell>
+                                    <TableCell>
+                                        <ChallanLinkedCnsCell
+                                            linkedCnNos={challan.linked_cn_nos}
+                                            onOpenCn={handleOpenCn}
+                                        />
+                                    </TableCell>
                                     <TableCell className="text-right font-mono">{challan.total_hire_amount}</TableCell>
                                     <TableCell className="text-right font-mono">{challan.extra_hire_amount}</TableCell>
                                     <TableCell className="text-right font-mono">{challan.advance_amount}</TableCell>
@@ -294,7 +326,7 @@ export default function ChallanListPage() {
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={12} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={13} className="h-24 text-center text-muted-foreground">
                                     No challans found matching your search.
                                 </TableCell>
                             </TableRow>
@@ -310,6 +342,13 @@ export default function ChallanListPage() {
                 isOpen={isDetailsOpen}
                 onClose={() => setIsDetailsOpen(false)}
                 challan={selectedChallan}
+            />
+
+            <ConsignmentDetailsDialog
+                isOpen={isCnDetailsOpen}
+                onClose={() => setIsCnDetailsOpen(false)}
+                consignment={selectedConsignment}
+                isAdmin={isAdmin}
             />
         </div>
     );

@@ -56,11 +56,11 @@ export async function GET(request: Request) {
     }
 
     if (dateFrom) {
-        query = query.gte('created_at', dateFrom);
+        query = query.gte('date_from', dateFrom);
     }
 
     if (dateTo) {
-        query = query.lte('created_at', dateTo);
+        query = query.lte('date_from', dateTo);
     }
 
     const { data, error } = await query;
