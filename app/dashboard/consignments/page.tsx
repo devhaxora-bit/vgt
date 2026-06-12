@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, type ComponentProps } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
     Search,
     Calendar as CalendarIcon,
@@ -53,6 +54,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { ConsignmentDetailsDialog } from '@/components/features/consignments/ConsignmentDetailsDialog';
+import {
+    ConsignmentBillCell,
+    type BillPartyPreview,
+    type BillRecordPreview,
+} from '@/components/features/consignments/ConsignmentBillCell';
+import { BillingRecordViewDialog } from '@/components/features/ledger/BillingRecordDialogs';
 
 const BRANCH_MAP: Record<string, string> = {
     'MRG': 'MRG - VERNA GOA',
@@ -107,8 +114,10 @@ interface ConsignmentRow {
 }
 
 export default function ConsignmentsPage() {
+    const router = useRouter();
     const [consignments, setConsignments] = useState<ConsignmentRow[]>([]);
-    const [billingRecords, setBillingRecords] = useState<any[]>([]);
+    const [billingRecords, setBillingRecords] = useState<BillRecordPreview[]>([]);
+    const [partiesById, setPartiesById] = useState<Record<string, BillPartyPreview>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -120,6 +129,8 @@ export default function ConsignmentsPage() {
     const [cnNoFilter, setCnNoFilter] = useState('');
     const [selectedConsignment, setSelectedConsignment] = useState<any>(null);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [selectedBillingRecord, setSelectedBillingRecord] = useState<BillRecordPreview | null>(null);
+    const [selectedBillParty, setSelectedBillParty] = useState<BillPartyPreview | null>(null);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -131,11 +142,31 @@ export default function ConsignmentsPage() {
             const supabase = createSupabaseClient();
             const { data, error: err } = await supabase
                 .from('party_billing_records')
-                .select('id, bill_ref_no, covered_cn_nos, status')
+                .select('*')
                 .eq('status', 'ACTIVE');
-            if (!err && data) {
-                setBillingRecords(data);
+            if (err || !data) return;
+
+            setBillingRecords(data as BillRecordPreview[]);
+
+            const partyIds = Array.from(
+                new Set(data.map((record) => record.party_id).filter(Boolean))
+            ) as string[];
+
+            if (partyIds.length === 0) {
+                setPartiesById({});
+                return;
             }
+
+            const { data: parties } = await supabase
+                .from('parties')
+                .select('id, name, code, type, phone, gstin, address, branch_code')
+                .in('id', partyIds);
+
+            const nextParties: Record<string, BillPartyPreview> = {};
+            (parties || []).forEach((party) => {
+                nextParties[party.id] = party as BillPartyPreview;
+            });
+            setPartiesById(nextParties);
         } catch (err) {
             console.error('Failed to fetch billing records:', err);
         }
@@ -218,8 +249,16 @@ export default function ConsignmentsPage() {
         dateTo: new Date('2026-12-31')    // Broader range
     });
 
+    const billingRecordsById = useMemo(() => {
+        const map = new Map<string, BillRecordPreview>();
+        (billingRecords || []).forEach((record) => {
+            map.set(record.id, record);
+        });
+        return map;
+    }, [billingRecords]);
+
     const consignmentBillingMap = useMemo(() => {
-        const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();
+        const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string; recordId: string }>();
 
         (billingRecords || []).forEach((record) => {
             (record.covered_cn_nos || []).forEach((cnNo: string) => {
@@ -228,15 +267,20 @@ export default function ConsignmentsPage() {
 
                 const billRef = record.bill_ref_no || record.id.slice(0, 8).toUpperCase();
                 if (record.status === 'ACTIVE') {
-                    recordsByCn.set(normalizedCnNo, { status: 'BILLED', billRef });
+                    recordsByCn.set(normalizedCnNo, { status: 'BILLED', billRef, recordId: record.id });
                 } else if (!recordsByCn.has(normalizedCnNo)) {
-                    recordsByCn.set(normalizedCnNo, { status: 'CANCELLED', billRef });
+                    recordsByCn.set(normalizedCnNo, { status: 'CANCELLED', billRef, recordId: record.id });
                 }
             });
         });
 
         return recordsByCn;
     }, [billingRecords]);
+
+    const handleOpenBill = (record: BillRecordPreview, party: BillPartyPreview | null) => {
+        setSelectedBillingRecord(record);
+        setSelectedBillParty(party);
+    };
 
     const parentMap = useMemo(() => {
         const map = new Map<string, string[]>();
@@ -824,13 +868,14 @@ export default function ConsignmentsPage() {
                                     <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_freight')}>
                                         Freight <SortIcon field="total_freight" />
                                     </TableHead>
+                                    <TableHead className="font-bold py-4 min-w-[100px]">Bill No</TableHead>
                                     <TableHead className="text-right py-4" />
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
+                                        <TableCell colSpan={12} className="h-32 text-center text-muted-foreground">
                                             Loading consignments...
                                         </TableCell>
                                     </TableRow>
@@ -877,17 +922,6 @@ export default function ConsignmentsPage() {
                                                             }
                                                             return null;
                                                         })()}
-                                                        {(() => {
-                                                            const billing = consignmentBillingMap.get(item.cn_no);
-                                                            if (billing?.status === 'BILLED') {
-                                                                return (
-                                                                    <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-800 border-amber-200 px-1.5 py-0 font-bold" title={`Billed in bill number: ${billing.billRef}`}>
-                                                                        Bill: {billing.billRef}
-                                                                    </Badge>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })()}
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -920,6 +954,23 @@ export default function ConsignmentsPage() {
                                                 ) : (
                                                     <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">No Freight</span>
                                                 )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {(() => {
+                                                    const billing = consignmentBillingMap.get(item.cn_no);
+                                                    if (billing?.status !== 'BILLED') {
+                                                        return <span className="text-xs text-muted-foreground">—</span>;
+                                                    }
+                                                    const record = billingRecordsById.get(billing.recordId);
+                                                    const party = record?.party_id ? partiesById[record.party_id] : undefined;
+                                                    return (
+                                                        <ConsignmentBillCell
+                                                            record={record}
+                                                            party={party}
+                                                            onOpenBill={handleOpenBill}
+                                                        />
+                                                    );
+                                                })()}
                                             </TableCell>
                                             <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1">
                                                 <Button 
@@ -954,7 +1005,7 @@ export default function ConsignmentsPage() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={11} className="h-64 text-center">
+                                        <TableCell colSpan={12} className="h-64 text-center">
                                             <div className="flex flex-col items-center justify-center space-y-3 opacity-40">
                                                 <Package className="h-12 w-12 text-muted-foreground" />
                                                 <div className="text-sm font-medium">No results found matching your criteria.</div>
@@ -968,13 +1019,13 @@ export default function ConsignmentsPage() {
                     </div>
 
                     {filteredData.length > 0 && (
-                        <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-11 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                        <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-12 gap-2 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                             <div className="col-span-4">Total ({filteredData.length} CNS)</div>
                             <div className="col-span-3" />
                             <div className="text-right font-mono text-emerald-700">{totals.billedCount} billed</div>
                             <div className="text-right font-mono text-amber-700">{totals.unbilledCount} unbilled</div>
                             <div className="text-right font-mono text-primary col-span-2">₹{fmt(totals.totalFreight)}</div>
-                            <div />
+                            <div className="col-span-2" />
                         </div>
                     )}
 
@@ -1056,6 +1107,25 @@ export default function ConsignmentsPage() {
                 onClose={() => setIsDetailsOpen(false)}
                 consignment={selectedConsignment}
                 isAdmin={isAdmin}
+            />
+
+            <BillingRecordViewDialog
+                open={!!selectedBillingRecord}
+                onClose={() => {
+                    setSelectedBillingRecord(null);
+                    setSelectedBillParty(null);
+                }}
+                party={selectedBillParty as ComponentProps<typeof BillingRecordViewDialog>['party']}
+                record={selectedBillingRecord as ComponentProps<typeof BillingRecordViewDialog>['record']}
+                consignments={consignments as ComponentProps<typeof BillingRecordViewDialog>['consignments']}
+                isAdmin={isAdmin}
+                onEdit={() => {
+                    if (!selectedBillParty?.id) return;
+                    const partyId = selectedBillParty.id;
+                    setSelectedBillingRecord(null);
+                    setSelectedBillParty(null);
+                    router.push(`/dashboard/ledger/${partyId}`);
+                }}
             />
         </div>
     );

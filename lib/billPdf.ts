@@ -182,8 +182,10 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .bill-cell:last-child { border-right: none; }
 .bill-cell.center { text-align: center; justify-content: center; }
 .bill-cell.value { font-size: 13px; font-weight: 800; }
-.table-wrap { min-height: 0; flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
+.table-wrap { min-height: 0; flex: 1 1 auto; overflow: visible; display: flex; flex-direction: column; }
+.table-total-wrap { flex-shrink: 0; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-top: 1.2px solid #1d2f7a; }
+.items-table--total { border-top: none; margin-top: -1px; }
 .page--first .items-table { margin-top: 20px; }
 .page--continuation .items-table { margin-top: 0; border-top: none; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
@@ -371,6 +373,15 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
         layout.contSheetHeight - layout.theadHeight - PAGE_LAYOUT_BUFFER_PX,
     );
 
+    const contLastPageTbodyBudget = Math.max(
+        blankRowHeight,
+        layout.contSheetHeight
+            - layout.theadHeight
+            - layout.footerHeight
+            - totalRowHeight
+            - PAGE_LAYOUT_BUFFER_PX,
+    );
+
     const dataHeight = sumRowHeights(rowHeights);
     const singlePageContentHeight = dataHeight + totalRowHeight;
 
@@ -393,14 +404,13 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
 
     while (rowIndex < rows.length) {
         const isFirst = pages.length === 0;
-        const budget = isFirst ? firstPageTbodyBudget : contPageTbodyBudget;
         const remainingDataHeight = sumRowHeights(rowHeights, rowIndex);
-        const remainingWithEnd = remainingDataHeight + totalRowHeight + layout.footerHeight;
+        const lastPageBudget = isFirst ? singlePageTbodyBudget : contLastPageTbodyBudget;
 
-        if (remainingWithEnd <= budget) {
+        if (remainingDataHeight + totalRowHeight <= lastPageBudget) {
             const blankCount = Math.max(
                 0,
-                Math.floor((budget - remainingDataHeight - totalRowHeight) / blankRowHeight),
+                Math.floor((lastPageBudget - remainingDataHeight - totalRowHeight) / blankRowHeight),
             );
             pages.push({
                 rows: rows.slice(rowIndex),
@@ -411,12 +421,13 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
             break;
         }
 
+        const bodyBudget = isFirst ? firstPageTbodyBudget : contPageTbodyBudget;
         const pageRows: BillPrintableRow[] = [];
         let usedHeight = 0;
 
         while (rowIndex < rows.length) {
             const rowHeight = rowHeights[rowIndex] ?? blankRowHeight;
-            if (pageRows.length > 0 && usedHeight + rowHeight > budget) {
+            if (pageRows.length > 0 && usedHeight + rowHeight > bodyBudget) {
                 break;
             }
 
@@ -427,29 +438,49 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
 
         if (pageRows.length === 0 && rowIndex < rows.length) {
             pageRows.push(rows[rowIndex]);
+            usedHeight += rowHeights[rowIndex] ?? blankRowHeight;
             rowIndex += 1;
         }
+
+        const isLast = rowIndex >= rows.length;
+        const blankCount = isLast
+            ? Math.max(0, Math.floor((lastPageBudget - usedHeight - totalRowHeight) / blankRowHeight))
+            : 0;
 
         pages.push({
             rows: pageRows,
             isFirst,
-            isLast: false,
-            blankCount: 0,
+            isLast,
+            blankCount,
         });
+    }
+
+    if (pages.length > 0 && !pages.some((page) => page.isLast)) {
+        const lastPage = pages[pages.length - 1];
+        lastPage.isLast = true;
     }
 
     return pages;
 };
 
-const billTableHtml = (slice: BillPageSlice, displayTotal: number) => `
+const billTableHtml = (slice: BillPageSlice) => `
     <table class="items-table">
         ${billTableHeadHtml()}
         <tbody>
             ${slice.rows.map(printableRowHtml).join('')}
             ${blankRowsHtml(slice.blankCount)}
-            ${slice.isLast ? totalRowHtml(displayTotal) : ''}
         </tbody>
     </table>
+`;
+
+const billTotalTableHtml = (displayTotal: number) => `
+    <div class="table-total-wrap">
+        <table class="items-table items-table--total">
+            <tbody>
+                ${totalRowHtml(displayTotal)}
+            </tbody>
+        </table>
+    </div>
 `;
 
 const billPageHtml = (payload: BillPdfPayload, slice: BillPageSlice) => `
@@ -457,8 +488,9 @@ const billPageHtml = (payload: BillPdfPayload, slice: BillPageSlice) => `
         <div class="sheet">
             ${slice.isFirst ? `${headerBandHtml(payload.logoUrl)}${detailGridHtml(payload)}` : ''}
             <div class="table-wrap">
-                ${billTableHtml(slice, payload.displayTotal)}
+                ${billTableHtml(slice)}
             </div>
+            ${slice.isLast ? billTotalTableHtml(payload.displayTotal) : ''}
             ${slice.isLast ? billFooterHtml(payload) : ''}
         </div>
     </div>
