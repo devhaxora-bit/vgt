@@ -1,4 +1,5 @@
 import { formatBranchLabel } from '@/lib/formatBranchLabel';
+import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
 
 export type ChallanLedgerSummaryBrokerRow = {
     broker_code: string;
@@ -34,20 +35,7 @@ const safe = (value: string | number | null | undefined) => String(value ?? '')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const loadLogo = async (): Promise<string> => {
-    try {
-        const res = await fetch('/vgt_logo.png');
-        const blob = await res.blob();
-        return await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => typeof reader.result === 'string' ? resolve(reader.result) : reject();
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch {
-        return `${window.location.origin}/vgt_logo.png`;
-    }
-};
+const loadLogo = loadPdfLogo;
 
 const splitRows = (rows: ChallanLedgerSummaryBrokerRow[]) => {
     const pages: ChallanLedgerSummaryBrokerRow[][] = [];
@@ -171,7 +159,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .page:last-child { page-break-after: auto; }
 .sheet { border: 1.2px solid #1d2f7a; min-height: 186mm; display: flex; flex-direction: column; overflow: hidden; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
-.header-logo img { width: 102px; max-width: 100%; object-fit: contain; }
+.header-logo img { ${PDF_HEADER_LOGO_IMG_CSS} }
 .header-copy { text-align: center; }
 .header-title { font-size: 17px; font-weight: 800; color: #17308b; }
 .header-line { font-size: 12px; font-weight: 700; margin-top: 3px; }

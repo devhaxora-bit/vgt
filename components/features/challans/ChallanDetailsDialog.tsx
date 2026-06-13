@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { formatLoadWeightDisplay, normalizeLoadUnit } from '@/lib/loadWeightDisplay';
 import { sortLinkedConsignments } from '@/lib/sortLinkedConsignments';
+import { loadPdfLogo, PDF_LOGO_BOX_IMG_CSS, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 
 interface ChallanDetails {
     id: string;
@@ -113,13 +114,8 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
         let isMounted = true;
         const loadLogo = async () => {
             try {
-                const res = await fetch('/vgt_logo.png');
-                const blob = await res.blob();
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    if (isMounted) setLogoBase64(String(reader.result));
-                };
-                reader.readAsDataURL(blob);
+                const logoDataUrl = await loadPdfLogo();
+                if (isMounted) setLogoBase64(logoDataUrl);
             } catch (err) {
                 console.error('Failed to load logo base64:', err);
             }
@@ -171,7 +167,7 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
 
             const formatNumber = (val: any) => Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const toUpperValue = (value: any) => String(value ?? '').trim() ? String(value).toUpperCase() : '---';
-            const logoUrl = logoBase64 || `${window.location.origin}/vgt_logo.png`;
+            const logoUrl = logoBase64 || `${window.location.origin}${VGT_LOGO_PATH}`;
 
             const html = `<!DOCTYPE html>
 <html>
@@ -191,7 +187,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 20px; letter-spacing: 1px; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 8px; }
 .logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; }
-.logo-box img { width: 100%; height: 100%; object-fit: contain; }
+.logo-box img { ${PDF_LOGO_BOX_IMG_CSS} }
 .top-grid { display: grid; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
 .mid-grid { display:grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
 .right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }

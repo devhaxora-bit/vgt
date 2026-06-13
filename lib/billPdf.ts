@@ -1,4 +1,5 @@
 import type { BillingVehicleCancelItem } from '@/lib/billingVehicleCancel';
+import { PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
 
 export type BillPdfDetailRow = {
     cnNo: string;
@@ -54,8 +55,9 @@ const PAGE_LAYOUT_BUFFER_PX = 16;
 const MIN_SINGLE_PAGE_DETAIL_ROWS = 12;
 /** Company title / label blue — matches Bill No., GSTIN, Date labels */
 const BILL_HEADER_TITLE_COLOR = '#1d2f7a';
-/** Table header background */
+/** Table header — light sky blue background, black text (separate from company title) */
 const BILL_TABLE_HEADER_BG = '#90caf9';
+const BILL_TABLE_HEADER_TEXT_COLOR = '#000000';
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -166,7 +168,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; flex-shrink: 0; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
-.header-logo img { width: 102px; max-width: 100%; object-fit: contain; }
+.header-logo img { ${PDF_HEADER_LOGO_IMG_CSS} }
 .header-copy { text-align: center; }
 .header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: ${BILL_HEADER_TITLE_COLOR}; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
@@ -190,7 +192,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .page--continuation .items-table { margin-top: 0; border-top: none; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: #000; background: ${BILL_TABLE_HEADER_BG}; }
+.items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: ${BILL_TABLE_HEADER_TEXT_COLOR}; background: ${BILL_TABLE_HEADER_BG}; }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .invoice-cell, .name-cell, .cn-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .invoice-cell { word-break: break-all !important; }

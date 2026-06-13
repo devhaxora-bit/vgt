@@ -1,4 +1,5 @@
 import { formatBranchLabel as formatBranch } from '@/lib/formatBranchLabel';
+import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
 
 export type LedgerParty = {
     name: string;
@@ -194,20 +195,7 @@ const titleText = (value: string | null | undefined) => safe(String(value ?? '')
 const partyBranchLabel = (party: LedgerParty) =>
     formatBranch(party.branch_code, party.branch_name);
 
-const loadLogo = async (): Promise<string> => {
-    try {
-        const res = await fetch('/vgt_logo.png');
-        const blob = await res.blob();
-        return await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => typeof reader.result === 'string' ? resolve(reader.result) : reject();
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch {
-        return `${window.location.origin}/vgt_logo.png`;
-    }
-};
+const loadLogo = loadPdfLogo;
 
 /** Parse a row's date for chronological sorting. Prefers the ISO `bkgDateIso`
  *  field; falls back to parsing the dd/MM/yyyy `date` string for older payloads.
@@ -614,7 +602,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .page--continuation .section-head { margin-top: 0; }
 .header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
-.header-logo img { width: 102px; max-width: 100%; object-fit: contain; }
+.header-logo img { ${PDF_HEADER_LOGO_IMG_CSS} }
 .header-copy { text-align: center; }
 .header-title { font-size: 17px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 12px; font-weight: 700; margin-top: 3px; line-height: 1.3; }

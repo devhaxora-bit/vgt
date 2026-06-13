@@ -32,6 +32,7 @@ import {
 } from '@/lib/billFreightDisplay';
 import { downloadBillPdfFromDocument, renderBillPdfPages } from '@/lib/billPdf';
 import { formatBillCnNo, isFreightIncludedCn, shouldBlankIncludedCnAmounts } from '@/lib/formatBillCnNo';
+import { loadPdfLogo, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 
 interface PartyInfo {
     id: string;
@@ -888,13 +889,8 @@ export function BillingRecordViewDialog({
         let active = true;
         const loadLogo = async () => {
             try {
-                const res = await fetch('/vgt_logo.png');
-                const blob = await res.blob();
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    if (active) setLogoBase64(typeof reader.result === 'string' ? reader.result : null);
-                };
-                reader.readAsDataURL(blob);
+                const logoDataUrl = await loadPdfLogo();
+                if (active) setLogoBase64(logoDataUrl);
             } catch {
                 if (active) setLogoBase64(null);
             }
@@ -930,7 +926,7 @@ export function BillingRecordViewDialog({
     const handlePrint = async (mode: 'print' | 'download') => {
         if (!party || !record) return;
 
-        const logoUrl = logoBase64 || `${window.location.origin}/vgt_logo.png`;
+        const logoUrl = logoBase64 || `${window.location.origin}${VGT_LOGO_PATH}`;
         const displayTotal = roundMoney(parseMoney(record.amount));
         const branchDisplay = (() => {
             const normalized = toUpperText(issuingBranch);
