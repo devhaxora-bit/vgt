@@ -31,7 +31,7 @@ import {
     resolveBillRateDisplay,
 } from '@/lib/billFreightDisplay';
 import { downloadBillPdfFromDocument, renderBillPdfPages } from '@/lib/billPdf';
-import { formatBillCnNo, isFreightIncludedCn } from '@/lib/formatBillCnNo';
+import { formatBillCnNo, isFreightIncludedCn, shouldBlankIncludedCnAmounts } from '@/lib/formatBillCnNo';
 
 interface PartyInfo {
     id: string;
@@ -389,11 +389,20 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
     const liveBreakup = buildConsignmentBreakup(coveredConsignments);
     const addedOtherChargesAmount = getSavedAddedOtherChargesAmount(record, liveBreakup.cnChargeTotal);
 
+    const lastBillableIndex = coveredConsignments.reduce((lastIndex, consignment, index) => (
+        consignment.freight_included && consignment.parent_cn_id ? lastIndex : index
+    ), -1);
+
     return coveredConsignments.map((consignment, index) => {
         const breakdown = getConsignmentChargeBreakdown(consignment);
-        const isLastRow = index === coveredConsignments.length - 1;
-        const mergedOtherCharges = roundMoney(breakdown.other + (isLastRow ? addedOtherChargesAmount : 0));
-        const mergedTotalAmount = roundMoney(breakdown.total + (isLastRow ? addedOtherChargesAmount : 0));
+        const isIncluded = Boolean(consignment.freight_included && consignment.parent_cn_id);
+        const receivesAddedCharges = index === lastBillableIndex;
+        const mergedOtherCharges = isIncluded
+            ? 0
+            : roundMoney(breakdown.other + (receivesAddedCharges ? addedOtherChargesAmount : 0));
+        const mergedTotalAmount = isIncluded
+            ? 0
+            : roundMoney(breakdown.total + (receivesAddedCharges ? addedOtherChargesAmount : 0));
 
         return {
             cn_no: consignment.cn_no,
@@ -411,19 +420,19 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
                 consignment.load_unit,
             ),
             load_unit: consignment.load_unit ? String(consignment.load_unit).toUpperCase() : null,
-            basic_freight: roundMoney(parseMoney(consignment.basic_freight)),
+            basic_freight: isIncluded ? 0 : roundMoney(parseMoney(consignment.basic_freight)),
             charged_weight: parseMoney(consignment.charged_weight),
             actual_weight: parseMoney(consignment.actual_weight),
-            freight_rate: roundMoney(parseMoney(consignment.freight_rate)),
-            is_fixed_rate: isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
-            freight: breakdown.freight,
-            unloading: breakdown.unloading,
-            detention: breakdown.detention,
-            extra_km: breakdown.extraKm,
-            loading: breakdown.loading,
-            door_collection: breakdown.doorCollection,
-            door_delivery: breakdown.doorDelivery,
-            traffic_challan: breakdown.trafficChallan,
+            freight_rate: isIncluded ? 0 : roundMoney(parseMoney(consignment.freight_rate)),
+            is_fixed_rate: isIncluded ? false : isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
+            freight: isIncluded ? 0 : breakdown.freight,
+            unloading: isIncluded ? 0 : breakdown.unloading,
+            detention: isIncluded ? 0 : breakdown.detention,
+            extra_km: isIncluded ? 0 : breakdown.extraKm,
+            loading: isIncluded ? 0 : breakdown.loading,
+            door_collection: isIncluded ? 0 : breakdown.doorCollection,
+            door_delivery: isIncluded ? 0 : breakdown.doorDelivery,
+            traffic_challan: isIncluded ? 0 : breakdown.trafficChallan,
             other_charges: mergedOtherCharges,
             total_amount: mergedTotalAmount,
         };
@@ -508,6 +517,7 @@ const buildSnapshotBreakup = (
     }
 
     const totals = rows.reduce((summary, row) => {
+        if (isFreightIncludedCn(row)) return summary;
         summary.freightTotal += row.freight;
         summary.unloadingTotal += row.unloading;
         summary.detentionTotal += row.detention;
@@ -941,7 +951,9 @@ export function BillingRecordViewDialog({
         const narrationValue = !isDefaultNarration && record.narration ? record.narration : '&nbsp;';
         const narrationHtml = `<div class="remark-title">Remarks :</div><div>${narrationValue}</div>`;
         const detailRows = billDetailRows.length > 0
-            ? billDetailRows.map((row) => ({
+            ? billDetailRows.map((row) => {
+                const blankAmounts = shouldBlankIncludedCnAmounts(row);
+                return {
                 cnNo: formatBillCnNo(row.cn_no, row),
                 isFreightIncluded: isFreightIncludedCn(row),
                 date: fmtDotDate(row.bkg_date),
@@ -950,22 +962,23 @@ export function BillingRecordViewDialog({
                 loadingStation: toUpperText(row.loading_station || row.booking_branch) || '—',
                 deliveryStation: toUpperText(row.delivery_station) || '—',
                 chargeWt: resolveBillChargeWeightDisplay(row),
-                rate: formatBillRateDisplay({
+                rate: blankAmounts ? '' : formatBillRateDisplay({
                     freightRate: row.freight_rate,
                     basicFreight: row.basic_freight,
                     loadUnit: row.load_unit,
                     isFixedRate: row.is_fixed_rate,
                 }),
-                freight: formatTableAmount(row.freight),
-                unloading: formatTableAmount(row.unloading),
-                detention: formatTableAmount(row.detention),
-                extraKm: formatTableAmount(row.extra_km),
-                loading: formatTableAmount(row.loading),
-                otherCharges: formatSignedTableAmount(
+                freight: blankAmounts ? '' : formatTableAmount(row.freight),
+                unloading: blankAmounts ? '' : formatTableAmount(row.unloading),
+                detention: blankAmounts ? '' : formatTableAmount(row.detention),
+                extraKm: blankAmounts ? '' : formatTableAmount(row.extra_km),
+                loading: blankAmounts ? '' : formatTableAmount(row.loading),
+                otherCharges: blankAmounts ? '' : formatSignedTableAmount(
                     row.other_charges + row.door_collection + row.door_delivery + row.traffic_challan,
                 ),
-                totalAmount: formatSignedTableAmount(row.total_amount),
-            }))
+                totalAmount: blankAmounts ? '' : formatSignedTableAmount(row.total_amount),
+            };
+            })
             : [{
                 cnNo: record.bill_ref_no || '—',
                 date: fmtDotDate(record.billing_date),
@@ -1165,6 +1178,7 @@ export function BillingRecordViewDialog({
                                         {billDetailRows.length > 0 ? (
                                             <>
                                                 {billDetailRows.map((row, index) => {
+                                                    const blankAmounts = shouldBlankIncludedCnAmounts(row);
                                                     return (
                                                         <tr key={`${row.cn_no}-${index}`} className="border-b last:border-0">
                                                             <td className="p-2 text-xs">{index + 1}</td>
@@ -1177,19 +1191,19 @@ export function BillingRecordViewDialog({
                                                             <td className="p-2 text-xs">{row.loading_station || row.booking_branch || '—'}</td>
                                                             <td className="p-2 text-xs">{row.delivery_station || '—'}</td>
                                                             <td className="p-2 text-right text-xs font-mono">{resolveBillChargeWeightDisplay(row)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{resolveBillRateDisplay(row, '0.00')}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">₹{fmt(row.freight)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">₹{fmt(row.unloading)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">₹{fmt(row.detention)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">₹{fmt(row.extra_km)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">₹{fmt(row.loading)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">₹{fmt(row.door_collection)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">₹{fmt(row.door_delivery)}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : resolveBillRateDisplay(row, '0.00')}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.freight)}`}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.unloading)}`}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.detention)}`}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.extra_km)}`}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.loading)}`}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.door_collection)}`}</td>
+                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.door_delivery)}`}</td>
                                                             <td className="p-2 text-right text-xs font-mono">
-                                                                {row.other_charges < 0 ? '-' : ''}₹{fmt(Math.abs(row.other_charges))}
+                                                                {blankAmounts ? '—' : `${row.other_charges < 0 ? '-' : ''}₹${fmt(Math.abs(row.other_charges))}`}
                                                             </td>
                                                             <td className="p-2 text-right text-xs font-mono">
-                                                                {row.total_amount < 0 ? '-' : ''}₹{fmt(Math.abs(row.total_amount))}
+                                                                {blankAmounts ? '—' : `${row.total_amount < 0 ? '-' : ''}₹${fmt(Math.abs(row.total_amount))}`}
                                                             </td>
                                                         </tr>
                                                     );

@@ -52,8 +52,10 @@ const BILL_TABLE_COLUMNS = 15;
 const PAGE_LAYOUT_BUFFER_PX = 16;
 /** Match the old single-page bill layout: pad short bills up to this many detail rows. */
 const MIN_SINGLE_PAGE_DETAIL_ROWS = 12;
-/** Website primary button color: hsl(221.2 83.2% 53.3%) */
-const BILL_TABLE_HEADER_BG = '#2563eb';
+/** Company title / label blue — matches Bill No., GSTIN, Date labels */
+const BILL_HEADER_TITLE_COLOR = '#1d2f7a';
+/** Table header background */
+const BILL_TABLE_HEADER_BG = '#90caf9';
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -166,7 +168,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
 .header-logo img { width: 102px; max-width: 100%; object-fit: contain; }
 .header-copy { text-align: center; }
-.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
+.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: ${BILL_HEADER_TITLE_COLOR}; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 .header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
 .detail-grid { display: grid; grid-template-columns: 56% 44%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; flex-shrink: 0; }
@@ -183,14 +185,12 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .bill-cell.center { text-align: center; justify-content: center; }
 .bill-cell.value { font-size: 13px; font-weight: 800; }
 .table-wrap { min-height: 0; flex: 1 1 auto; overflow: visible; display: flex; flex-direction: column; }
-.table-total-wrap { flex-shrink: 0; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-top: 1.2px solid #1d2f7a; }
-.items-table--total { border-top: none; margin-top: -1px; }
-.page--first .items-table { margin-top: 20px; }
+.page--first .items-table { margin-top: 5px; }
 .page--continuation .items-table { margin-top: 0; border-top: none; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 10.8px; font-weight: 800; line-height: 1.35; padding: 8px 3px 10px; vertical-align: bottom; color: #ffffff; background: ${BILL_TABLE_HEADER_BG}; }
+.items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: #000; background: ${BILL_TABLE_HEADER_BG}; }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .invoice-cell, .name-cell, .cn-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .invoice-cell { word-break: break-all !important; }
@@ -201,9 +201,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .vehicle-cancel-row td { font-size: 10.8px; }
 .vehicle-cancel-label { font-size: 10.8px; font-weight: 800; color: #1d2f7a; letter-spacing: 0.1px; white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; }
 .vehicle-cancel-amount { font-size: 10.8px; }
-.total-row td { height: 28px; font-size: 12px; font-weight: 800; padding-top: 5px; padding-bottom: 6px; overflow: visible !important; text-overflow: clip !important; }
-.total-label { text-align: right; padding-right: 12px; color: #1d2f7a; font-size: 11px; white-space: nowrap !important; }
-.total-row .amount { font-size: 12px; }
+.total-row td { height: 24px; max-height: 24px; min-height: 24px; font-size: 10.8px; font-weight: 800; padding: 5px 3px 6px; line-height: 1.15; vertical-align: middle; overflow: visible !important; text-overflow: clip !important; }
+.total-label { text-align: right; padding-right: 8px; color: #1d2f7a; font-size: 10.8px; white-space: nowrap !important; }
+.total-row .amount { font-size: 10.8px; }
 .bill-footer { flex-shrink: 0; }
 .words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
 .notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
@@ -327,7 +327,7 @@ const readLayoutHeights = (doc: Document): BillLayoutHeights => {
         headerHeight: header?.offsetHeight || 88,
         detailHeight: detail?.offsetHeight || 98,
         footerHeight: footer?.offsetHeight || 118,
-        theadHeight: thead?.offsetHeight || 44,
+        theadHeight: thead?.offsetHeight || 30,
         contSheetHeight: contSheet?.offsetHeight || 700,
     };
 };
@@ -346,7 +346,7 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
     const blankRowEl = doc.querySelector<HTMLTableRowElement>('#measure-blank-row');
     const totalRowEl = doc.querySelector<HTMLTableRowElement>('#measure-total-row');
     const blankRowHeight = Math.max(blankRowEl?.offsetHeight || 24, 1);
-    const totalRowHeight = totalRowEl?.offsetHeight || 28;
+    const totalRowHeight = totalRowEl?.offsetHeight || 24;
 
     const singlePageTbodyBudget = Math.max(
         blankRowHeight,
@@ -463,24 +463,15 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
     return pages;
 };
 
-const billTableHtml = (slice: BillPageSlice) => `
+const billTableHtml = (slice: BillPageSlice, displayTotal: number) => `
     <table class="items-table">
         ${billTableHeadHtml()}
         <tbody>
             ${slice.rows.map(printableRowHtml).join('')}
             ${blankRowsHtml(slice.blankCount)}
+            ${slice.isLast ? totalRowHtml(displayTotal) : ''}
         </tbody>
     </table>
-`;
-
-const billTotalTableHtml = (displayTotal: number) => `
-    <div class="table-total-wrap">
-        <table class="items-table items-table--total">
-            <tbody>
-                ${totalRowHtml(displayTotal)}
-            </tbody>
-        </table>
-    </div>
 `;
 
 const billPageHtml = (payload: BillPdfPayload, slice: BillPageSlice) => `
@@ -488,9 +479,8 @@ const billPageHtml = (payload: BillPdfPayload, slice: BillPageSlice) => `
         <div class="sheet">
             ${slice.isFirst ? `${headerBandHtml(payload.logoUrl)}${detailGridHtml(payload)}` : ''}
             <div class="table-wrap">
-                ${billTableHtml(slice)}
+                ${billTableHtml(slice, payload.displayTotal)}
             </div>
-            ${slice.isLast ? billTotalTableHtml(payload.displayTotal) : ''}
             ${slice.isLast ? billFooterHtml(payload) : ''}
         </div>
     </div>

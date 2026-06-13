@@ -167,11 +167,20 @@ const buildConsignmentSnapshot = (
     consignments: BillingSnapshotConsignment[],
     addedOtherChargesAmount: number
 ) => {
+    const lastBillableIndex = consignments.reduce((lastIndex, consignment, index) => (
+        consignment.freight_included && consignment.parent_cn_id ? lastIndex : index
+    ), -1);
+
     const rows = consignments.map((consignment, index) => {
         const breakdown = getConsignmentChargeBreakdown(consignment);
-        const isLastRow = index === consignments.length - 1;
-        const mergedOtherCharges = roundMoney(breakdown.other + (isLastRow ? addedOtherChargesAmount : 0));
-        const mergedTotalAmount = roundMoney(breakdown.total + (isLastRow ? addedOtherChargesAmount : 0));
+        const isIncluded = Boolean(consignment.freight_included && consignment.parent_cn_id);
+        const receivesAddedCharges = index === lastBillableIndex;
+        const mergedOtherCharges = isIncluded
+            ? 0
+            : roundMoney(breakdown.other + (receivesAddedCharges ? addedOtherChargesAmount : 0));
+        const mergedTotalAmount = isIncluded
+            ? 0
+            : roundMoney(breakdown.total + (receivesAddedCharges ? addedOtherChargesAmount : 0));
 
         return {
             cn_no: consignment.cn_no,
@@ -189,25 +198,26 @@ const buildConsignmentSnapshot = (
                 consignment.load_unit,
             ),
             load_unit: consignment.load_unit ? String(consignment.load_unit).toUpperCase() : null,
-            basic_freight: roundMoney(parseMoney(consignment.basic_freight)),
-            is_fixed_rate: isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
-            freight_rate: roundMoney(parseMoney(consignment.freight_rate)),
-            freight: breakdown.freight,
-            unloading: breakdown.unloading,
-            detention: breakdown.detention,
-            extra_km: breakdown.extraKm,
-            loading: breakdown.loading,
-            door_collection: breakdown.doorCollection,
-            door_delivery: breakdown.doorDelivery,
-            traffic_challan: breakdown.trafficChallan,
+            basic_freight: isIncluded ? 0 : roundMoney(parseMoney(consignment.basic_freight)),
+            is_fixed_rate: isIncluded ? false : isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
+            freight_rate: isIncluded ? 0 : roundMoney(parseMoney(consignment.freight_rate)),
+            freight: isIncluded ? 0 : breakdown.freight,
+            unloading: isIncluded ? 0 : breakdown.unloading,
+            detention: isIncluded ? 0 : breakdown.detention,
+            extra_km: isIncluded ? 0 : breakdown.extraKm,
+            loading: isIncluded ? 0 : breakdown.loading,
+            door_collection: isIncluded ? 0 : breakdown.doorCollection,
+            door_delivery: isIncluded ? 0 : breakdown.doorDelivery,
+            traffic_challan: isIncluded ? 0 : breakdown.trafficChallan,
             other_charges: mergedOtherCharges,
             total_amount: mergedTotalAmount,
         };
     });
 
-    const cnTotalAmount = roundMoney(consignments.reduce((sum, consignment) => (
-        sum + getConsignmentChargeBreakdown(consignment).total
-    ), 0));
+    const cnTotalAmount = roundMoney(consignments.reduce((sum, consignment) => {
+        if (consignment.freight_included && consignment.parent_cn_no) return sum;
+        return sum + getConsignmentChargeBreakdown(consignment).total;
+    }, 0));
 
     return {
         rows,
