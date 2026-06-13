@@ -14,3 +14,7 @@ export const formatBillCnNo = (cnNo: string, include?: BillCnIncludeInfo | null)
 
 export const isFreightIncludedCn = (include?: BillCnIncludeInfo | null): boolean =>
     Boolean(include?.freight_included && include.parent_cn_no);
+
+/** Included CNs bill through the parent — hide charge columns so row totals match bill TOTAL. */
+export const shouldBlankIncludedCnAmounts = (include?: BillCnIncludeInfo | null): boolean =>
+    isFreightIncludedCn(include);

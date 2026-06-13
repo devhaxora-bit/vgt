@@ -32,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatLoadWeightDisplay, normalizeLoadUnit, resolveLoadWeight } from '@/lib/loadWeightDisplay';
+import { loadPdfLogo, PDF_LOGO_BOX_IMG_CSS, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 
 interface ConsignmentDetailsDialogProps {
     isOpen: boolean;
@@ -89,13 +90,8 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
 
         const loadLogo = async () => {
             try {
-                const res = await fetch('/vgt_logo.png');
-                const blob = await res.blob();
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    if (isMounted) setLogoBase64(String(reader.result));
-                };
-                reader.readAsDataURL(blob);
+                const logoDataUrl = await loadPdfLogo();
+                if (isMounted) setLogoBase64(logoDataUrl);
             } catch (err) {
                 console.error('Failed to load logo base64:', err);
             }
@@ -208,7 +204,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const truckNo = c.vehicle_no || c.truck_no || '---';
         const issuingOffice = getFullBranchName(c.booking_branch || c.bkg_branch);
         const officerName = toUpperValue(issuingOfficerName);
-        const logoUrl = logoBase64 || `${window.location.origin}/vgt_logo.png`;
+        const logoUrl = logoBase64 || `${window.location.origin}${VGT_LOGO_PATH}`;
         const consignorName = toUpperValue(consignor.name);
         const consignorAddress = toUpperValue(`${consignor.address}${consignor.pincode ? ', ' + consignor.pincode : ''}`);
         const consigneeName = toUpperValue(consignee.name);
@@ -262,7 +258,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
 .logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:transparent; }
-.logo-box img { width: 100%; height: 100%; object-fit: contain; display:block; }
+.logo-box img { ${PDF_LOGO_BOX_IMG_CSS} }
 .top-grid { display: grid; grid-template-columns: 1.22fr 1.1fr 1.02fr 0.72fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
 .mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
 .right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }
