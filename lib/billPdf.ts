@@ -1,5 +1,5 @@
 import type { BillingVehicleCancelItem } from '@/lib/billingVehicleCancel';
-import { PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
+import { PDF_HEADER_LOGO_IMG_CSS, PDF_HEADER_TITLE_COLOR, PDF_TABLE_HEADER_BG, PDF_TABLE_HEADER_TEXT_COLOR } from '@/lib/pdfLogo';
 
 export type BillPdfDetailRow = {
     cnNo: string;
@@ -53,11 +53,6 @@ const BILL_TABLE_COLUMNS = 15;
 const PAGE_LAYOUT_BUFFER_PX = 16;
 /** Match the old single-page bill layout: pad short bills up to this many detail rows. */
 const MIN_SINGLE_PAGE_DETAIL_ROWS = 12;
-/** Company title / label blue — matches Bill No., GSTIN, Date labels */
-const BILL_HEADER_TITLE_COLOR = '#1d2f7a';
-/** Table header — light sky blue background, black text (separate from company title) */
-const BILL_TABLE_HEADER_BG = '#90caf9';
-const BILL_TABLE_HEADER_TEXT_COLOR = '#000000';
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -155,7 +150,7 @@ const blankRowsHtml = (count: number) => Array.from({ length: count }, () => `
 const totalRowHtml = (displayTotal: number) => `
     <tr class="total-row">
         <td colspan="14" class="total-label">TOTAL</td>
-        <td class="amount" style="color: #111;">${fmt(displayTotal)}</td>
+        <td class="amount" style="color: #111; font-weight: 900;">${fmt(displayTotal)}</td>
     </tr>
 `;
 
@@ -170,7 +165,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .header-logo { display: flex; align-items: center; justify-content: flex-start; }
 .header-logo img { ${PDF_HEADER_LOGO_IMG_CSS} }
 .header-copy { text-align: center; }
-.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: ${BILL_HEADER_TITLE_COLOR}; }
+.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: ${PDF_HEADER_TITLE_COLOR}; }
 .header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 .header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
 .detail-grid { display: grid; grid-template-columns: 56% 44%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; flex-shrink: 0; }
@@ -192,7 +187,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .page--continuation .items-table { margin-top: 0; border-top: none; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: ${BILL_TABLE_HEADER_TEXT_COLOR}; background: ${BILL_TABLE_HEADER_BG}; }
+.items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .invoice-cell, .name-cell, .cn-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .invoice-cell { word-break: break-all !important; }
@@ -205,7 +200,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .vehicle-cancel-amount { font-size: 10.8px; }
 .total-row td { height: 24px; max-height: 24px; min-height: 24px; font-size: 10.8px; font-weight: 800; padding: 5px 3px 6px; line-height: 1.15; vertical-align: middle; overflow: visible !important; text-overflow: clip !important; }
 .total-label { text-align: right; padding-right: 8px; color: #1d2f7a; font-size: 10.8px; white-space: nowrap !important; }
-.total-row .amount { font-size: 10.8px; }
+.total-row .amount { font-size: 10.8px; font-weight: 900; }
 .bill-footer { flex-shrink: 0; }
 .words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 800; line-height: 1.25; }
 .notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }

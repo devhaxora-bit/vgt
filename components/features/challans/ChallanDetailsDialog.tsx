@@ -23,7 +23,15 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { formatLoadWeightDisplay, normalizeLoadUnit } from '@/lib/loadWeightDisplay';
 import { sortLinkedConsignments } from '@/lib/sortLinkedConsignments';
-import { loadPdfLogo, PDF_LOGO_BOX_IMG_CSS, VGT_LOGO_PATH } from '@/lib/pdfLogo';
+import {
+    loadPdfLogo,
+    PDF_HEADER_LOGO_IMG_CSS,
+    PDF_HEADER_TITLE_COLOR,
+    PDF_LOGO_BOX_IMG_CSS,
+    PDF_TABLE_HEADER_BG,
+    PDF_TABLE_HEADER_TEXT_COLOR,
+    VGT_LOGO_PATH,
+} from '@/lib/pdfLogo';
 
 interface ChallanDetails {
     id: string;
@@ -183,7 +191,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .tiny { font-size: 11px; line-height: 1.25; }
 .lbl { font-size: 11px; font-weight: 700; color: #1d2f7a; }
 .strong { font-weight: 700; }
-.head-blue { color: #17308b; font-weight: 800; }
+.head-blue { color: ${PDF_HEADER_TITLE_COLOR}; font-weight: 800; }
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 20px; letter-spacing: 1px; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 8px; }
 .logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; }
@@ -194,8 +202,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .right-stack > div:last-child { border-bottom: none; }
 .main-table { width:100%; border-collapse: collapse; }
 .main-table th, .main-table td { border:1px solid #1d2f7a; padding: 10px 8px; vertical-align: middle; line-height:1.4; }
-.main-table th { background: rgba(255,255,255,0.65); color:#122d7a; font-size: 13px; font-weight: 700; text-align: left; }
+.main-table th { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-size: 10px; font-weight: 800; text-align: center; }
 .ink { font-family: Arial, Helvetica, sans-serif; color: #111; font-weight: 700; letter-spacing: 0.2px; }
+.hire-table th { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 800; }
 .hire-table th, .hire-table td { vertical-align: middle !important; padding-top: 8px !important; padding-bottom: 8px !important; }
 .note-section { border-top: 1px solid #1d2f7a; padding: 10px; }
 .note-box { border: 1px solid #1d2f7a; padding: 8px; font-size: 12px; line-height: 1.5; }
@@ -218,7 +227,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             </div>
             <!-- CENTER: Logo + Company -->
             <div style="text-align:center;">
-                <img src="${logoUrl}" alt="VGT Logo" style="height:36px; object-fit:contain; display:block; margin:0 auto 8px;" />
+                <img src="${logoUrl}" alt="VGT Logo" style="${PDF_HEADER_LOGO_IMG_CSS}; display:block; margin:0 auto 8px;" />
                 <div class="head-blue" style="font-size:22px; line-height:1; font-weight:900; margin-bottom:12px; white-space:nowrap;">Visakha Golden Transport</div>
             </div>
             <!-- RIGHT: Address + Contact -->
@@ -281,7 +290,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div style="font-size:13px; font-weight:900; color:#1d2f7a; text-transform:uppercase; margin-bottom:10px;">Consignment Details</div>
         <table class="main-table" style="margin-bottom:6px;">
             <thead>
-                <tr style="font-size:10px; background:#f7f9fc;">
+                <tr style="font-size:10px;">
                     <th style="width:12%; padding:6px 6px 8px;">CN Number</th>
                     <th style="width:16%; padding:6px 6px 8px;">Loading Point</th>
                     <th style="width:16%; padding:6px 6px 8px;">Unloading Point</th>
@@ -335,7 +344,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </div>
         <table class="main-table">
             <thead>
-                <tr style="font-size:10px; background:#f7f9fc;">
+                <tr style="font-size:10px;">
                     <th style="width:12%; padding:6px 4px;">CN Number</th>
                     <th style="width:16%; padding:6px 4px;">Loading Point</th>
                     <th style="width:16%; padding:6px 4px;">Unloading Point</th>
@@ -368,9 +377,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <!-- LEFT: individual line items -->
             <table class="hire-table" style="width:100%; border-collapse:collapse; font-size:10px;">
                 <thead>
-                    <tr style="background:#f0f4ff;">
-                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:left; color:#1d2f7a;">Particulars</th>
-                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:right; color:#1d2f7a; width:30%;">Amount (₹)</th>
+                    <tr>
+                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:left;">Particulars</th>
+                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:right; width:30%;">Amount (₹)</th>
                     </tr>
                 </thead>
                 <tbody>
