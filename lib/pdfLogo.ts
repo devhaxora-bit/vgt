@@ -1,6 +1,12 @@
 /** Public logo asset for all PDF exports (maps to public/vgt_logo.png). */
 export const VGT_LOGO_PATH = '/vgt_logo.png';
 
+/** Company title / label blue — matches Bill No., GSTIN, Date labels */
+export const PDF_HEADER_TITLE_COLOR = '#1d2f7a';
+/** Table header — light sky blue background, black text */
+export const PDF_TABLE_HEADER_BG = '#90caf9';
+export const PDF_TABLE_HEADER_TEXT_COLOR = '#000000';
+
 /** Header logo styles — natural image colors only; never add CSS filters here. */
 export const PDF_HEADER_LOGO_IMG_CSS = 'width: 102px; max-width: 100%; object-fit: contain;';
 
