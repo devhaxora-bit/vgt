@@ -32,7 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatLoadWeightDisplay, normalizeLoadUnit, resolveLoadWeight } from '@/lib/loadWeightDisplay';
-import { loadPdfLogo, PDF_LOGO_BOX_IMG_CSS, VGT_LOGO_PATH } from '@/lib/pdfLogo';
+import { loadPdfLogo, PDF_HEADER_TITLE_COLOR, PDF_LOGO_BOX_IMG_CSS, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 
 interface ConsignmentDetailsDialogProps {
     isOpen: boolean;
@@ -251,9 +251,10 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
 .tiny { font-size: 11px; line-height: 1.25; }
 .mini { font-size: 10px; line-height: 1.2; }
-.lbl { font-size: 11px; font-weight: 700; color: #1d2f7a; }
-.strong { font-weight: 700; }
-.head-blue { color: #17308b; font-weight: 800; }
+.lbl { font-size: 11px; font-weight: 700; color: ${PDF_HEADER_TITLE_COLOR}; }
+.strong { font-weight: 700; color: #111; }
+.val, .ink, .address-value { font-family: Arial, Helvetica, sans-serif; color: #111; font-weight: 700; letter-spacing: 0.2px; }
+.head-blue { color: ${PDF_HEADER_TITLE_COLOR}; font-weight: 800; }
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 20px; letter-spacing: 1px; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
@@ -264,18 +265,22 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }
 .right-stack > div:last-child { border-bottom: none; }
 .main-table { width:100%; border-collapse: collapse; }
-.main-table th, .main-table td { border:1px solid #1d2f7a; padding: 4px 6px; vertical-align: top; }
-.main-table th { background: rgba(255,255,255,0.65); color:#122d7a; font-size: 12px; }
+.main-table th, .main-table td { border:1px solid #1d2f7a; }
+.main-table td { padding: 4px 6px; vertical-align: top; }
+.main-table thead th { background: rgba(255,255,255,0.65); color: ${PDF_HEADER_TITLE_COLOR}; font-size: 12px; font-weight: 700; text-align: center; vertical-align: middle; padding: 6px 6px 16px 6px; line-height: 1.1; }
+.main-table thead .subhead-cell { font-size: 11px; height: 24px; padding: 0 4px; line-height: 24px; vertical-align: middle; box-sizing: border-box; }
 .main-table th:last-child, .main-table td:last-child { border-right: 1px solid #1d2f7a !important; }
 .charges-list { font-size: 12px; line-height: 1.4; }
+.charge-label { color: ${PDF_HEADER_TITLE_COLOR}; font-weight: 700; }
+.charge-val { color: #111; font-weight: 700; }
 .footer { display:flex; justify-content:space-between; padding:10px 12px; align-items:flex-end; }
 .copy-title { text-align:center; font-size: 24px; font-weight: 800; color:#163082; letter-spacing: 1px; border-bottom: 1px solid #1d2f7a; padding: 0 0 6px; margin: -4px -6px 6px; }
 .address-wrap { padding-top: 2px; }
 .address-line { border-bottom: 1px solid #1d2f7a; min-height: 40px; padding: 5px 8px 10px; display:flex; align-items:flex-end; flex-wrap:wrap; line-height: 1.12; overflow: visible; }
 .address-line.tall { min-height: 50px; padding-top: 7px; padding-bottom: 12px; align-items:center; }
-.address-label { font-size: 13px; color: #1d2f7a; margin-right: 8px; flex: 0 0 auto; }
-.address-value { font-size: 21px; font-weight: 700; letter-spacing: 0.2px; white-space: normal; word-break: break-word; flex: 1; color: #132b94; }
-.address-value.small { font-size: 17px; color: #132b94; }
+.address-label { font-size: 13px; color: ${PDF_HEADER_TITLE_COLOR}; margin-right: 8px; flex: 0 0 auto; font-weight: 700; }
+.address-value { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; white-space: normal; word-break: break-word; flex: 1; color: #111; }
+.address-value.small { font-size: 13px; color: #111; }
 .payable-cell { padding-bottom: 8px !important; min-height: 40px; }
 .payable-line { display:flex; gap:8px; align-items:baseline; justify-content:flex-start; flex-wrap:nowrap; margin-top: 7px; }
 .payable-option { display:inline-flex; align-items:baseline; gap:3px; font-size: 11px; line-height: 1; white-space: nowrap; }
@@ -284,19 +289,17 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .payable-box.checked::before { content: "✓"; position: relative; top: -0.5px; }
 .route-box .line { min-height: 54px; padding: 6px; font-size: 18px; font-weight: 700; align-items: center; }
 .consignment-note-box { padding: 0; overflow: hidden; }
-.consignment-note-box .note-head { text-align:center; font-size: 15px; font-weight: 700; color:#17308b; padding: 4px 0; border-bottom: 1px solid #1d2f7a; }
+.consignment-note-box .note-head { text-align:center; font-size: 15px; font-weight: 700; color:${PDF_HEADER_TITLE_COLOR}; padding: 4px 0; border-bottom: 1px solid #1d2f7a; }
 .consignment-note-box .note-row { display:flex; align-items:flex-end; gap:8px; padding: 8px 8px 4px; min-height: 58px; }
 .consignment-note-box .note-date { border-top: 1px dotted #1d2f7a; margin: 4px 8px 8px; padding-top: 6px; font-size: 16px; }
-.top-label { font-size: 10px; color:#1d2f7a; }
-.subhead-cell { text-align:center; font-size: 11px; padding-bottom:10px; }
+.top-label { font-size: 10px; color:${PDF_HEADER_TITLE_COLOR}; font-weight: 700; }
 .amount-box { text-align:center; }
 .amount-total { margin-top: 18px; font-weight: 700; }
 .top-grid .right-stack .lbl { font-size: 8.5px; line-height: 1.05; }
-.top-grid .right-stack .strong { font-size: 9.5px; line-height: 1.1; }
+.top-grid .right-stack .val { font-size: 9.5px; line-height: 1.1; color: #111; }
 .eway-entry-box { margin-top: 4px; padding: 4px 6px; }
 .eway-entry-box .strong { font-size: 15px !important; }
-.eway-valid { font-size: 17px !important; }
-.ink { font-family: Arial, Helvetica, sans-serif; color: #132b94; font-weight: 700; letter-spacing: 0.2px; }
+.eway-valid { font-size: 17px !important; color: #111 !important; }
 </style>
 </head>
 <body>
@@ -348,25 +351,25 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <div class="box tiny consignment-note-box">
                 <div class="note-head">CONSIGNMENT NOTE</div>
                 <div class="note-row">
-                    <span class="strong" style="font-size:16px;">No.</span>
+                    <span class="lbl" style="font-size:16px;">No.</span>
                     <span class="lr-red">${c.cn_no || '---'}</span>
                 </div>
-                <div class="note-date"><span class="strong">Date</span>&nbsp;&nbsp;<span class="ink" style="font-size:18px;">${cnDate}</span></div>
+                <div class="note-date"><span class="lbl">Date</span>&nbsp;&nbsp;<span class="val ink" style="font-size:18px;">${cnDate}</span></div>
             </div>
         </div>
 
         <div class="box right-stack tiny">
-            <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">PAN NO : </span><span class="strong" style="font-size:15px;" >AAWFV7670H</span></div>
-            <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">GSTIN : </span><span class="strong" style="font-size:15px;">37AAWFV7670H1Z8</span></div>
+            <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">PAN NO : </span><span class="val" style="font-size:15px;">AAWFV7670H</span></div>
+            <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">GSTIN : </span><span class="val" style="font-size:15px;">37AAWFV7670H1Z8</span></div>
             <div style="font-size:15px;">
                 <span class="lbl" style="font-size:15px;">E-Way Bill No. : </span>
                 <div class="eway-entry-box">
-                    <span class="strong">${ewayNo}</span><br/>
-                    <span class="lbl" style="font-size:13px;">valid upto : </span><span class="strong eway-valid">${ewayValidUpto}</span>
+                    <span class="val">${ewayNo}</span><br/>
+                    <span class="lbl" style="font-size:13px;">valid upto : </span><span class="val eway-valid">${ewayValidUpto}</span>
                 </div>
             </div>
-            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">HSN Desc : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(goodsDescription)}</span></div>
-            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">Vehicle No. : </span><span class="strong ink" style="font-size:15px;">${toUpperValue(c.vehicle_no || truckNo)}</span></div>
+            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">HSN Desc : </span><span class="val ink" style="font-size:15px;">${toUpperValue(goodsDescription)}</span></div>
+            <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">Vehicle No. : </span><span class="val ink" style="font-size:15px;">${toUpperValue(c.vehicle_no || truckNo)}</span></div>
         </div>
     </div>
 
@@ -400,9 +403,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </div>
 
         <div class="box right-stack tiny">
-            <div><span class="lbl">Address of issuing office or name and address of agenta</span><br/><span class="strong ink">${toUpperValue(issuingOffice)}</span></div>
-            <div><span class="lbl">GST No. of Consignor</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignor.gst || '---')}</span></div>
-            <div><span class="lbl">GST No. of Consignee</span><br/><span class="strong ink" style="font-size:18px;">${toUpperValue(consignee.gst || '---')}</span></div>
+            <div><span class="lbl">Address of issuing office or name and address of agenta</span><br/><span class="val ink">${toUpperValue(issuingOffice)}</span></div>
+            <div><span class="lbl">GST No. of Consignor</span><br/><span class="val ink" style="font-size:18px;">${toUpperValue(consignor.gst || '---')}</span></div>
+            <div><span class="lbl">GST No. of Consignee</span><br/><span class="val ink" style="font-size:18px;">${toUpperValue(consignee.gst || '---')}</span></div>
             <div class="payable-cell">
                 <span class="lbl">GST payable by</span><br/>
                 <div class="strong payable-line">
@@ -437,41 +440,41 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </thead>
         <tbody>
             <tr style="height:162px;">
-                <td class="strong ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}<br/><span style="display:block; margin-top:10px; font-size:15px;">Nos: ${totalPackageNos}</span></td>
+                <td class="val ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}<br/><span style="display:block; margin-top:10px; font-size:15px;"><span class="lbl">Nos:</span> ${totalPackageNos}</span></td>
                 <td>
-                    ${invoiceDescription ? `<div class="strong ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
-                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;">Invoice No. <span class="strong ink" style="color:#cc1a1a; font-size:15px;">${invoiceNo}</span></div>
-                    <div style="margin-top:8px; font-size:16px;">Invoice Date . <span class="strong ink">${invoiceDate}</span></div>
-                    ${remarks ? `<div style="margin-top:8px; font-size:16px;">Remarks . <span class="strong ink">${toUpperValue(remarks)}</span></div>` : ''}
+                    ${invoiceDescription ? `<div class="val ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
+                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;"><span class="lbl">Invoice No.</span> <span class="val ink" style="font-size:15px;">${invoiceNo}</span></div>
+                    <div style="margin-top:8px; font-size:16px;"><span class="lbl">Invoice Date .</span> <span class="val ink">${invoiceDate}</span></div>
+                    ${remarks ? `<div style="margin-top:8px; font-size:16px;"><span class="lbl">Remarks .</span> <span class="val ink">${toUpperValue(remarks)}</span></div>` : ''}
                 </td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(actualWeight, loadUnitDisplay, 'cn')}</td>
-                <td class="strong ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(chargedWeight, loadUnitDisplay, 'cn')}</td>
+                <td class="val ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(actualWeight, loadUnitDisplay, 'cn')}</td>
+                <td class="val ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(chargedWeight, loadUnitDisplay, 'cn')}</td>
                 <td class="charges-list">
-                    <span style="font-size:16px;">${rateLabel}</span><br/>
-                    <span style="font-size:16px; display:block; margin-bottom:8px;">${rateValue}</span>
-                    <span style="font-size:16px;">Basic Freight</span><br/>
-                    ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
-                    ${Number(c.retention_charges || 0) > 0 ? `<span style="font-size:16px;">Detention Ch.</span><br/>` : ''}
-                    ${Number(c.extra_km_charges || 0) > 0 ? `<span style="font-size:16px;">Extra KM Ch.</span><br/>` : ''}
-                    ${Number(c.mhc_charges || 0) > 0 ? `<span style="font-size:16px;">Loading Ch.</span><br/>` : ''}
-                    ${Number(c.door_coll_charges || 0) > 0 ? `<span style="font-size:16px;">Door Coll. Ch.</span><br/>` : ''}
-                    ${Number(c.door_del_charges || 0) > 0 ? `<span style="font-size:16px;">Door Del. Ch.</span><br/>` : ''}
-                    ${Number(c.traffic_challan_charges || 0) > 0 ? `<span style="font-size:16px;">Traffic Challan Ch.</span><br/>` : ''}
-                    ${Number(c.other_charges || 0) > 0 ? `<span style="font-size:16px;">Other Ch. ${topayLabel}</span><br/>` : ''}
-                    <br/><span class="strong" style="font-size:16px;">TOTAL</span>
+                    <span class="charge-label" style="font-size:16px;">${rateLabel}</span><br/>
+                    <span class="charge-val" style="font-size:16px; display:block; margin-bottom:8px;">${rateValue}</span>
+                    <span class="charge-label" style="font-size:16px;">Basic Freight</span><br/>
+                    ${Number(c.unload_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Unloading Ch.</span><br/>` : ''}
+                    ${Number(c.retention_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Detention Ch.</span><br/>` : ''}
+                    ${Number(c.extra_km_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Extra KM Ch.</span><br/>` : ''}
+                    ${Number(c.mhc_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Loading Ch.</span><br/>` : ''}
+                    ${Number(c.door_coll_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Door Coll. Ch.</span><br/>` : ''}
+                    ${Number(c.door_del_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Door Del. Ch.</span><br/>` : ''}
+                    ${Number(c.traffic_challan_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Traffic Challan Ch.</span><br/>` : ''}
+                    ${Number(c.other_charges || 0) > 0 ? `<span class="charge-label" style="font-size:16px;">Other Ch. ${topayLabel}</span><br/>` : ''}
+                    <br/><span class="charge-label" style="font-size:16px;">TOTAL</span>
                 </td>
-                <td class="charges-list amount-box ink">
+                <td class="charges-list amount-box">
                     <span style="display:block; height:42px;"></span>
-                    <span style="font-size:16px;">Rs. ${Number(c.basic_freight || 0).toFixed(2)}</span><br/>
-                    ${Number(c.unload_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.unload_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.retention_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.retention_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.extra_km_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.extra_km_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.mhc_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.mhc_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.door_coll_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_coll_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.door_del_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.door_del_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.traffic_challan_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.traffic_challan_charges).toFixed(2)}</span><br/>` : ''}
-                    ${Number(c.other_charges || 0) > 0 ? `<span style="font-size:16px;">Rs. ${Number(c.other_charges).toFixed(2)}</span><br/>` : ''}
-                    <br/><span class="strong amount-total ink" style="font-size:16px;">Rs. ${totalFreight.toFixed(2)}</span>
+                    <span class="charge-val" style="font-size:16px;">Rs. ${Number(c.basic_freight || 0).toFixed(2)}</span><br/>
+                    ${Number(c.unload_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.unload_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.retention_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.retention_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.extra_km_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.extra_km_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.mhc_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.mhc_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.door_coll_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.door_coll_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.door_del_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.door_del_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.traffic_challan_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.traffic_challan_charges).toFixed(2)}</span><br/>` : ''}
+                    ${Number(c.other_charges || 0) > 0 ? `<span class="charge-val" style="font-size:16px;">Rs. ${Number(c.other_charges).toFixed(2)}</span><br/>` : ''}
+                    <br/><span class="charge-val amount-total" style="font-size:16px;">Rs. ${totalFreight.toFixed(2)}</span>
                 </td>
                 <td class="charges-list amount-box">&nbsp;</td>
             </tr>
@@ -479,10 +482,10 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
     </table>
 
     <div class="footer">
-        <div style="font-size:19px; font-weight:700;">Value . <span class="ink">${Number(invoiceAmountValue).toFixed(2)}</span></div>
+        <div style="font-size:19px; font-weight:700;"><span class="lbl" style="font-size:19px;">Value .</span> <span class="val ink">${Number(invoiceAmountValue).toFixed(2)}</span></div>
         <div style="font-size:19px; font-weight:700; margin-left:auto; text-align:right;">
-            <div class="ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
-            <div>Signature of the Issuing Officer .......................................</div>
+            <div class="val ink" style="font-size:16px; margin-bottom:3px;">${officerName}</div>
+            <div><span class="lbl" style="font-size:19px;">Signature of the Issuing Officer</span> .......................................</div>
         </div>
     </div>
 </div>
