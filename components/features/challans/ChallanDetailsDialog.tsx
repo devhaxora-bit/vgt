@@ -204,12 +204,19 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .main-table th, .main-table td { border:1px solid #1d2f7a; padding: 10px 8px; vertical-align: middle; line-height:1.4; }
 .main-table th { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-size: 10px; font-weight: 800; text-align: center; }
 .panel-heading { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; text-align: center; padding: 4px 6px; font-weight: 900; letter-spacing: 0.5px; font-size: 11px; }
-.section-heading { display: block; font-size: 12px; font-weight: 900; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; text-transform: uppercase; margin-bottom: 10px; padding: 5px 8px; }
+.section-heading { display: block; font-size: 12px; font-weight: 900; color: ${PDF_HEADER_TITLE_COLOR}; text-transform: uppercase; text-align: left; margin-bottom: 10px; padding: 5px 0; }
+.main-table tbody td { text-align: center; }
 .summary-heading { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 900; }
-.summary-heading td { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 900; }
+.hire-table .summary-heading td { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 900; vertical-align: middle !important; padding: 10px 8px !important; line-height: 1 !important; }
+.gross-hire-label { font-size: 12px; }
+.gross-hire-amount { font-size: 16px; color: #111 !important; font-weight: 900; }
+.hire-table .net-balance-row td { padding: 10px 8px !important; vertical-align: middle !important; line-height: 1 !important; }
+.net-balance-label { font-size: 13px; }
+.net-balance-amount { font-size: 16px; color: #111 !important; font-weight: 900; }
 .ink { font-family: Arial, Helvetica, sans-serif; color: #111; font-weight: 700; letter-spacing: 0.2px; }
+.hire-table { width: 100%; border-collapse: collapse; }
 .hire-table th { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 800; }
-.hire-table th, .hire-table td { vertical-align: middle !important; padding-top: 8px !important; padding-bottom: 8px !important; }
+.hire-table th, .hire-table td { border: 1px solid #1d2f7a; vertical-align: middle !important; padding: 6px 8px !important; }
 .note-section { border-top: 1px solid #1d2f7a; padding: 10px; }
 .note-box { border: 1px solid #1d2f7a; padding: 8px; font-size: 12px; line-height: 1.5; }
 .footer-signs { display:flex; justify-content:space-between; padding:20px 20px 5px; font-size: 14px; font-weight: bold; }
@@ -300,8 +307,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     <th style="width:16%; padding:6px 6px 8px;">Unloading Point</th>
                     <th style="width:24%; padding:6px 6px 8px;">Goods Description</th>
                     <th style="width:10%; padding:6px 6px 8px; text-align:center;">Pkg</th>
-                    <th style="width:11%; padding:6px 6px 8px; text-align:right;">Actual Wt</th>
-                    <th style="width:11%; padding:6px 6px 8px; text-align:right;">Charged Wt</th>
+                    <th style="width:11%; padding:6px 6px 8px; text-align:center;">Actual Wt</th>
+                    <th style="width:11%; padding:6px 6px 8px; text-align:center;">Charged Wt</th>
                 </tr>
             </thead>
             <tbody style="font-size:11px;">
@@ -310,13 +317,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     const renderRow = (item: any) => {
                         const qty = Number(item.total_qty) || Number(item.no_of_pkg) || 0;
                         return `<tr style="height:28px;">
-                            <td style="font-weight:700; padding:6px 6px 8px;" class="ink">${item.cn_no}</td>
-                            <td style="font-size:10px; padding:6px 6px 8px;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
-                            <td style="font-size:10px; padding:6px 6px 8px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
-                            <td style="font-size:10px; padding:6px 6px 8px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
+                            <td style="font-weight:700; padding:6px 6px 8px; text-align:center;" class="ink">${item.cn_no}</td>
+                            <td style="font-size:10px; padding:6px 6px 8px; text-align:center;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
+                            <td style="font-size:10px; padding:6px 6px 8px; text-align:center;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
+                            <td style="font-size:10px; padding:6px 6px 8px; text-align:center;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
                             <td style="text-align:center; padding:6px 6px 8px;">${qty || '0'}</td>
-                            <td style="text-align:right; padding:6px 6px 8px;">${formatChallanWeight(item.actual_weight, item.load_unit)}</td>
-                            <td style="text-align:right; font-weight:bold; color:#111; padding:6px 6px 8px;">${formatChallanWeight(item.charged_weight, item.load_unit)}</td>
+                            <td style="text-align:center; padding:6px 6px 8px;">${formatChallanWeight(item.actual_weight, item.load_unit)}</td>
+                            <td style="text-align:center; font-weight:bold; color:#111; padding:6px 6px 8px;">${formatChallanWeight(item.charged_weight, item.load_unit)}</td>
                         </tr>`;
                     };
                     const firstPage = resolvedLinkedDetails.slice(0, FIXED_ROWS).map(renderRow);
@@ -330,12 +337,12 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     <td colspan="4" style="padding:6px 6px 8px; font-weight:600; font-size:10px; background:#fff; color:#111;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <span>Remarks: <span style="font-weight:400;">${c.remarks ? String(c.remarks).toUpperCase() : ''}</span></span>
-                            <span class="summary-heading" style="display:inline-block; padding:2px 8px;">GRAND TOTAL</span>
+                            <span style="font-weight:900; color:#1d2f7a;">GRAND TOTAL</span>
                         </div>
                     </td>
-                    <td class="summary-heading" style="padding:6px 6px 8px; text-align:center;">${totalPkg} Pkg</td>
-                    <td class="summary-heading" style="padding:6px 6px 8px; text-align:right;">${formatChallanWeight(totalActualWeight, weightUnit)}</td>
-                    <td class="summary-heading" style="padding:6px 6px 8px; text-align:right; color:#111;">${formatChallanWeight(totalChargedWeight, weightUnit)}</td>
+                    <td style="padding:6px 6px 8px; text-align:center; font-weight:900; color:#1d2f7a;">${totalPkg} Pkg</td>
+                    <td style="padding:6px 6px 8px; text-align:center; font-weight:900; color:#1d2f7a;">${formatChallanWeight(totalActualWeight, weightUnit)}</td>
+                    <td style="padding:6px 6px 8px; text-align:center; font-weight:900; color:#111;">${formatChallanWeight(totalChargedWeight, weightUnit)}</td>
                 </tr>
             </tfoot>
         </table>
@@ -352,21 +359,21 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     <th style="width:16%; padding:6px 4px;">Unloading Point</th>
                     <th style="width:24%; padding:6px 4px;">Goods Description</th>
                     <th style="width:10%; padding:6px 4px; text-align:center;">Qty</th>
-                    <th style="width:11%; padding:6px 4px; text-align:right;">Actual Wt</th>
-                    <th style="width:11%; padding:6px 4px; text-align:right;">Charged Wt</th>
+                    <th style="width:11%; padding:6px 4px; text-align:center;">Actual Wt</th>
+                    <th style="width:11%; padding:6px 4px; text-align:center;">Charged Wt</th>
                 </tr>
             </thead>
             <tbody style="font-size:11px;">
                 ${resolvedLinkedDetails.slice(5).map(item => {
                     const qty = Number(item.total_qty) || Number(item.no_of_pkg) || 0;
                     return `<tr style="height:30px;">
-                        <td style="font-weight:700; padding:6px 4px;" class="ink">${item.cn_no}</td>
-                        <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
-                        <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
-                        <td style="font-size:10px; padding:6px 4px;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
+                        <td style="font-weight:700; padding:6px 4px; text-align:center;" class="ink">${item.cn_no}</td>
+                        <td style="font-size:10px; padding:6px 4px; text-align:center;">${toUpperValue(item.loading_point || item.booking_branch || item.bkg_branch)}</td>
+                        <td style="font-size:10px; padding:6px 4px; text-align:center;">${toUpperValue(item.delivery_point || item.dest_branch)}</td>
+                        <td style="font-size:10px; padding:6px 4px; text-align:center;">${toUpperValue(item.goods_class || item.goods_desc || 'GENERAL GOODS')}</td>
                         <td style="text-align:center; padding:6px 4px;">${qty || '0'}</td>
-                        <td style="text-align:right; padding:6px 4px;">${formatChallanWeight(item.actual_weight, item.load_unit)}</td>
-                        <td style="text-align:right; font-weight:bold; color:#111; padding:6px 4px;">${formatChallanWeight(item.charged_weight, item.load_unit)}</td>
+                        <td style="text-align:center; padding:6px 4px;">${formatChallanWeight(item.actual_weight, item.load_unit)}</td>
+                        <td style="text-align:center; font-weight:bold; color:#111; padding:6px 4px;">${formatChallanWeight(item.charged_weight, item.load_unit)}</td>
                     </tr>`;
                 }).join('')}
             </tbody>
@@ -377,66 +384,66 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="section-heading">Lorry Hire Details</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
             <!-- LEFT: individual line items -->
-            <table class="hire-table" style="width:100%; border-collapse:collapse; font-size:10px;">
+            <table class="hire-table" style="font-size:10px;">
                 <thead>
                     <tr>
-                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:left;">Particulars</th>
-                        <th style="border:1px solid #1d2f7a; padding:6px 7px; text-align:right; width:30%;">Amount (₹)</th>
+                        <th style="text-align:left;">Particulars</th>
+                        <th style="text-align:right; width:30%;">Amount (₹)</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Basic Lorry Hire <span style="color:#555;">(Rate: ${c.hire_rate_per_kg || '---'} * ${totalChargedWeight} ${weightUnit})</span></td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.hire_amount) > 0 ? formatNumber(c.hire_amount) : ''}</td>
+                        <td>Basic Lorry Hire <span style="color:#555;">(Rate: ${c.hire_rate_per_kg || '---'} * ${totalChargedWeight} ${weightUnit})</span></td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.hire_amount) > 0 ? formatNumber(c.hire_amount) : ''}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Detention Charges</td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.detent_charges) > 0 ? formatNumber(c.detent_charges) : ''}</td>
+                        <td>Detention Charges</td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.detent_charges) > 0 ? formatNumber(c.detent_charges) : ''}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Unloading Charges</td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.unloading_charges) > 0 ? formatNumber(c.unloading_charges) : ''}</td>
+                        <td>Unloading Charges</td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.unloading_charges) > 0 ? formatNumber(c.unloading_charges) : ''}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Weight</td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_weight) > 0 ? formatNumber(c.extra_over_weight) : ''}</td>
+                        <td>Extra Over Weight</td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_weight) > 0 ? formatNumber(c.extra_over_weight) : ''}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Length</td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_length) > 0 ? formatNumber(c.extra_over_length) : ''}</td>
+                        <td>Extra Over Length</td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_length) > 0 ? formatNumber(c.extra_over_length) : ''}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Width</td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_width) > 0 ? formatNumber(c.extra_over_width) : ''}</td>
+                        <td>Extra Over Width</td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_width) > 0 ? formatNumber(c.extra_over_width) : ''}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Extra Over Height</td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_height) > 0 ? formatNumber(c.extra_over_height) : ''}</td>
+                        <td>Extra Over Height</td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.extra_over_height) > 0 ? formatNumber(c.extra_over_height) : ''}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 7px;">Extra KM Charges</td>
-                        <td style="border:1px solid #dde; padding:6px 7px; text-align:right; font-weight:700; color:#111;">${Number(c.extra_km_charges) > 0 ? formatNumber(c.extra_km_charges) : ''}</td>
+                        <td>Extra KM Charges</td>
+                        <td style="text-align:right; font-weight:700; color:#111;">${Number(c.extra_km_charges) > 0 ? formatNumber(c.extra_km_charges) : ''}</td>
                     </tr>
                 </tbody>
             </table>
             <!-- RIGHT: totals and deductions -->
-            <table class="hire-table" style="width:100%; border-collapse:collapse; font-size:10px; align-self:start;">
+            <table class="hire-table" style="font-size:10px; align-self:start;">
                 <tbody>
                     <tr class="summary-heading">
-                        <td style="border:1px solid #1d2f7a; padding:5px 8px; font-size:12px;">TOTAL GROSS HIRE</td>
-                        <td style="border:1px solid #1d2f7a; padding:5px 8px; text-align:right; font-size:14px; color:#111;">₹ ${formatNumber(totalHireAmount)}</td>
+                        <td class="gross-hire-label">TOTAL GROSS HIRE</td>
+                        <td class="gross-hire-amount" style="text-align:right;">₹ ${formatNumber(totalHireAmount)}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: TDS (${c.tds_percent || 0}%)</td>
-                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(lessTds)}</td>
+                        <td style="color:#c2410c; font-weight:700;">Less: TDS (${c.tds_percent || 0}%)</td>
+                        <td style="text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(lessTds)}</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: Advance Paid</td>
-                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(advance)}</td>
+                        <td style="color:#c2410c; font-weight:700;">Less: Advance Paid</td>
+                        <td style="text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(advance)}</td>
                     </tr>
-                    <tr class="summary-heading">
-                        <td style="border:1px solid #1d2f7a; padding:8px; font-size:13px;">NET BALANCE PAYABLE</td>
-                        <td style="border:1px solid #1d2f7a; padding:8px; text-align:right; font-size:18px; color:#111;">₹ ${formatNumber(balance)}</td>
+                    <tr class="summary-heading net-balance-row">
+                        <td class="net-balance-label">NET BALANCE PAYABLE</td>
+                        <td class="net-balance-amount" style="text-align:right;">₹ ${formatNumber(balance)}</td>
                     </tr>
                 </tbody>
             </table>
