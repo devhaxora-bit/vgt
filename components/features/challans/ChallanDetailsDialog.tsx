@@ -217,6 +217,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .hire-table { width: 100%; border-collapse: collapse; }
 .hire-table th { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 800; }
 .hire-table th, .hire-table td { border: 1px solid #1d2f7a; vertical-align: middle !important; padding: 6px 8px !important; }
+.hire-table .deduction-row td { padding: 10px 8px !important; font-size: 11.5px; vertical-align: middle !important; line-height: 1.15 !important; color: #c2410c; font-weight: 700; }
 .note-section { border-top: 1px solid #1d2f7a; padding: 10px; }
 .note-box { border: 1px solid #1d2f7a; padding: 8px; font-size: 12px; line-height: 1.5; }
 .footer-signs { display:flex; justify-content:space-between; padding:20px 20px 5px; font-size: 14px; font-weight: bold; }
@@ -433,13 +434,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                         <td class="gross-hire-label">TOTAL GROSS HIRE</td>
                         <td class="gross-hire-amount" style="text-align:right;">₹ ${formatNumber(totalHireAmount)}</td>
                     </tr>
-                    <tr>
-                        <td style="color:#c2410c; font-weight:700;">Less: TDS (${c.tds_percent || 0}%)</td>
-                        <td style="text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(lessTds)}</td>
+                    <tr class="deduction-row">
+                        <td>Less: TDS (${c.tds_percent || 0}%)</td>
+                        <td style="text-align:right;">- ₹ ${formatNumber(lessTds)}</td>
                     </tr>
-                    <tr>
-                        <td style="color:#c2410c; font-weight:700;">Less: Advance Paid</td>
-                        <td style="text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(advance)}</td>
+                    <tr class="deduction-row">
+                        <td>Less: Advance Paid</td>
+                        <td style="text-align:right;">- ₹ ${formatNumber(advance)}</td>
                     </tr>
                     <tr class="summary-heading net-balance-row">
                         <td class="net-balance-label">NET BALANCE PAYABLE</td>
