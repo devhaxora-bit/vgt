@@ -203,6 +203,10 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .main-table { width:100%; border-collapse: collapse; }
 .main-table th, .main-table td { border:1px solid #1d2f7a; padding: 10px 8px; vertical-align: middle; line-height:1.4; }
 .main-table th { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-size: 10px; font-weight: 800; text-align: center; }
+.panel-heading { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; text-align: center; padding: 4px 6px; font-weight: 900; letter-spacing: 0.5px; font-size: 11px; }
+.section-heading { display: block; font-size: 12px; font-weight: 900; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; text-transform: uppercase; margin-bottom: 10px; padding: 5px 8px; }
+.summary-heading { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 900; }
+.summary-heading td { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 900; }
 .ink { font-family: Arial, Helvetica, sans-serif; color: #111; font-weight: 700; letter-spacing: 0.2px; }
 .hire-table th { background: ${PDF_TABLE_HEADER_BG}; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; font-weight: 800; }
 .hire-table th, .hire-table td { vertical-align: middle !important; padding-top: 8px !important; padding-bottom: 8px !important; }
@@ -243,7 +247,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; padding: 6px 8px 0;">
         <!-- BOX 1: DRIVER DETAILS -->
         <div class="box right-stack tiny" style="padding:0; overflow:hidden;">
-            <div style="background:#f0f4ff; text-align:center; padding:3px;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">DRIVER DETAILS</span></div>
+            <div class="panel-heading">DRIVER DETAILS</div>
             <div style="padding:3px 6px;"><span class="lbl">Driver Name:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.driver_name)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.driver_mobile)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">DL No:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.driver_dl_no)}</span></div>
@@ -252,7 +256,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </div>
         <!-- BOX 2: VEHICLE INFO -->
         <div class="box right-stack tiny" style="padding:0; overflow:hidden;">
-            <div style="background:#f0f4ff; text-align:center; padding:3px;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">VEHICLE INFO</span></div>
+            <div class="panel-heading">VEHICLE INFO</div>
             <div style="padding:3px 6px;"><span class="lbl">Vehicle No:</span><br/><span class="strong ink" style="font-size:13px;">${toUpperValue(c.vehicle_no)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Permit:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.permit_no)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Insurance:</span><span class="strong ink" style="font-size:10px;">${toUpperValue(c.insurance_policy_no)}</span></div>
@@ -262,13 +266,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <!-- BOX 3: BROKER / OWNER DETAILS -->
         <div class="box right-stack tiny" style="padding:0; overflow:hidden;">
             ${c.engagement_type === 'direct' ? `
-            <div style="background:#f0f4ff; text-align:center; padding:3px;"><span class="lbl" style="font-weight:900;">OWNER DETAILS</span></div>
+            <div class="panel-heading">OWNER DETAILS</div>
             <div style="padding:3px 6px;"><span class="lbl">Owner Name:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.owner_name)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">PAN:</span><span class="strong ink">${toUpperValue(c.owner_pan)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.owner_mobile)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px 5px;"><span class="lbl">Slip:</span><span class="strong ink">${toUpperValue(c.slip_no)}</span></div>
             ` : `
-            <div style="background:#f0f4ff; text-align:center; padding:3px;"><span class="lbl" style="font-weight:900;">BROKER DETAILS</span></div>
+            <div class="panel-heading">BROKER DETAILS</div>
             <div style="padding:3px 6px;"><span class="lbl">Broker Name:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.broker_name)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Phone:</span><span class="strong ink">${toUpperValue(c.broker_mobile)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Slip:</span><span class="strong ink">${toUpperValue(c.slip_no)}</span></div>
@@ -277,7 +281,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </div>
         <!-- BOX 4: OWNER / LORRY PARTY -->
         <div class="box right-stack tiny" style="padding:0; overflow:hidden;">
-            <div style="background:#f0f4ff; text-align:center; padding:3px;"><span class="lbl" style="font-weight:900; letter-spacing:1px;">OWNER / LORRY PARTY</span></div>
+            <div class="panel-heading">OWNER / LORRY PARTY</div>
             <div style="padding:3px 6px;"><span class="lbl">Name:</span><br/><span class="strong ink" style="font-size:12px;">${toUpperValue(c.owner_name || c.broker_name)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">PAN:</span><span class="strong ink">${toUpperValue(c.owner_pan)}</span></div>
             <div style="display:flex; justify-content:space-between; padding:2px 6px;"><span class="lbl">Mobile:</span><span class="strong ink">${toUpperValue(c.owner_mobile || c.broker_mobile)}</span></div>
@@ -287,7 +291,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 
     <!-- CONSIGNMENT DETAILS (full width) -->
     <div style="padding: 4px 6px 0;">
-        <div style="font-size:13px; font-weight:900; color:#1d2f7a; text-transform:uppercase; margin-bottom:10px;">Consignment Details</div>
+        <div class="section-heading">Consignment Details</div>
         <table class="main-table" style="margin-bottom:6px;">
             <thead>
                 <tr style="font-size:10px;">
@@ -322,16 +326,16 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 })()}
             </tbody>
             <tfoot>
-                <tr style="background:#f0f4ff; font-weight:900; font-size:10px;">
-                    <td colspan="4" style="padding:6px 6px 8px; color:#555; font-weight:600; font-size:10px;">
+                <tr style="font-weight:900; font-size:10px;">
+                    <td colspan="4" style="padding:6px 6px 8px; font-weight:600; font-size:10px; background:#fff; color:#111;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span>Remarks: <span style="font-weight:400; color:#111;">${c.remarks ? String(c.remarks).toUpperCase() : ''}</span></span>
-                            <span style="color:#1d2f7a; font-weight:900;">GRAND TOTAL</span>
+                            <span>Remarks: <span style="font-weight:400;">${c.remarks ? String(c.remarks).toUpperCase() : ''}</span></span>
+                            <span class="summary-heading" style="display:inline-block; padding:2px 8px;">GRAND TOTAL</span>
                         </div>
                     </td>
-                    <td style="padding:6px 6px 8px; text-align:center; color:#1d2f7a;">${totalPkg} Pkg</td>
-                    <td style="padding:6px 6px 8px; text-align:right; color:#1d2f7a;">${formatChallanWeight(totalActualWeight, weightUnit)}</td>
-                    <td style="padding:6px 6px 8px; text-align:right; color:#111;">${formatChallanWeight(totalChargedWeight, weightUnit)}</td>
+                    <td class="summary-heading" style="padding:6px 6px 8px; text-align:center;">${totalPkg} Pkg</td>
+                    <td class="summary-heading" style="padding:6px 6px 8px; text-align:right;">${formatChallanWeight(totalActualWeight, weightUnit)}</td>
+                    <td class="summary-heading" style="padding:6px 6px 8px; text-align:right; color:#111;">${formatChallanWeight(totalChargedWeight, weightUnit)}</td>
                 </tr>
             </tfoot>
         </table>
@@ -339,9 +343,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
     ${resolvedLinkedDetails.length > 5 ? `
     <!-- PAGE 2: Overflow CNs only -->
     <div style="page-break-before: always; padding: 10px 8px;">
-        <div style="font-size:13px; font-weight:900; color:#1d2f7a; text-transform:uppercase; margin-bottom:6px; border-bottom:2px solid #1d2f7a; padding-bottom:4px;">
-            Challan No: ${c.challan_no} &nbsp;|&nbsp; Consignment Details (Continued)
-        </div>
+        <div class="section-heading" style="margin-bottom:6px;">Challan No: ${c.challan_no} &nbsp;|&nbsp; Consignment Details (Continued)</div>
         <table class="main-table">
             <thead>
                 <tr style="font-size:10px;">
@@ -372,7 +374,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
     </div>` : ''}
     <div style="padding: 0 6px 0;">
 
-        <div style="font-size:11px; font-weight:900; color:#1d2f7a; text-transform:uppercase; margin-bottom:10px;">Lorry Hire Details</div>
+        <div class="section-heading">Lorry Hire Details</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
             <!-- LEFT: individual line items -->
             <table class="hire-table" style="width:100%; border-collapse:collapse; font-size:10px;">
@@ -420,21 +422,21 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <!-- RIGHT: totals and deductions -->
             <table class="hire-table" style="width:100%; border-collapse:collapse; font-size:10px; align-self:start;">
                 <tbody>
-                    <tr style="background:#f9fafb;">
-                        <td style="border:1px solid #1d2f7a; padding:5px 8px; margin-bottom:4px; font-weight:900; color:#1d2f7a; font-size:12px;">TOTAL GROSS HIRE</td>
-                        <td style="border:1px solid #1d2f7a; padding:5px 8px; text-align:right; font-weight:900; font-size:14px; color:#111;">₹ ${formatNumber(totalHireAmount)}</td>
+                    <tr class="summary-heading">
+                        <td style="border:1px solid #1d2f7a; padding:5px 8px; font-size:12px;">TOTAL GROSS HIRE</td>
+                        <td style="border:1px solid #1d2f7a; padding:5px 8px; text-align:right; font-size:14px; color:#111;">₹ ${formatNumber(totalHireAmount)}</td>
                     </tr>
-                    <tr>
-                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: TDS (${c.tds_percent || 0}%)</td>
-                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(lessTds)}</td>
+                    <tr class="summary-heading">
+                        <td style="border:1px solid #1d2f7a; padding:6px 8px;">Less: TDS (${c.tds_percent || 0}%)</td>
+                        <td style="border:1px solid #1d2f7a; padding:6px 8px; text-align:right; color:#111;">- ₹ ${formatNumber(lessTds)}</td>
                     </tr>
-                    <tr>
-                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: Advance Paid</td>
-                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(advance)}</td>
+                    <tr class="summary-heading">
+                        <td style="border:1px solid #1d2f7a; padding:6px 8px;">Less: Advance Paid</td>
+                        <td style="border:1px solid #1d2f7a; padding:6px 8px; text-align:right; color:#111;">- ₹ ${formatNumber(advance)}</td>
                     </tr>
-                    <tr style="background:#eef2ff;">
-                        <td style="border:1px solid #1a3764; padding:8px; font-weight:900; color:#1a3764; font-size:13px;">NET BALANCE PAYABLE</td>
-                        <td style="border:1px solid #1a3764; padding:8px; text-align:right; font-weight:900; font-size:18px; color:#1a3764;">₹ ${formatNumber(balance)}</td>
+                    <tr class="summary-heading">
+                        <td style="border:1px solid #1d2f7a; padding:8px; font-size:13px;">NET BALANCE PAYABLE</td>
+                        <td style="border:1px solid #1d2f7a; padding:8px; text-align:right; font-size:18px; color:#111;">₹ ${formatNumber(balance)}</td>
                     </tr>
                 </tbody>
             </table>
