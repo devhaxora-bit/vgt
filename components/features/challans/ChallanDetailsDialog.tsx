@@ -426,13 +426,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                         <td style="border:1px solid #1d2f7a; padding:5px 8px; font-size:12px;">TOTAL GROSS HIRE</td>
                         <td style="border:1px solid #1d2f7a; padding:5px 8px; text-align:right; font-size:14px; color:#111;">₹ ${formatNumber(totalHireAmount)}</td>
                     </tr>
-                    <tr class="summary-heading">
-                        <td style="border:1px solid #1d2f7a; padding:6px 8px;">Less: TDS (${c.tds_percent || 0}%)</td>
-                        <td style="border:1px solid #1d2f7a; padding:6px 8px; text-align:right; color:#111;">- ₹ ${formatNumber(lessTds)}</td>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: TDS (${c.tds_percent || 0}%)</td>
+                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(lessTds)}</td>
                     </tr>
-                    <tr class="summary-heading">
-                        <td style="border:1px solid #1d2f7a; padding:6px 8px;">Less: Advance Paid</td>
-                        <td style="border:1px solid #1d2f7a; padding:6px 8px; text-align:right; color:#111;">- ₹ ${formatNumber(advance)}</td>
+                    <tr>
+                        <td style="border:1px solid #dde; padding:6px 8px; color:#c2410c; font-weight:700;">Less: Advance Paid</td>
+                        <td style="border:1px solid #dde; padding:6px 8px; text-align:right; color:#c2410c; font-weight:700;">- ₹ ${formatNumber(advance)}</td>
                     </tr>
                     <tr class="summary-heading">
                         <td style="border:1px solid #1d2f7a; padding:8px; font-size:13px;">NET BALANCE PAYABLE</td>
