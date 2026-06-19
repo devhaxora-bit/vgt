@@ -255,7 +255,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .strong { font-weight: 700; color: #111; }
 .val, .ink, .address-value { font-family: Arial, Helvetica, sans-serif; color: #111; font-weight: 700; letter-spacing: 0.2px; }
 .head-blue { color: ${PDF_HEADER_TITLE_COLOR}; font-weight: 800; }
-.lr-red { color: #cc1a1a; font-weight: 900; font-size: 20px; letter-spacing: 1px; }
+.lr-red { color: #cc1a1a; font-weight: 900; font-size: 23px; letter-spacing: 1px; }
+.invoice-no-red { color: #cc1a1a; font-weight: 700; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
 .logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:transparent; }
@@ -298,8 +299,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .top-grid .right-stack .lbl { font-size: 8.5px; line-height: 1.05; }
 .top-grid .right-stack .val { font-size: 9.5px; line-height: 1.1; color: #111; }
 .eway-entry-box { margin-top: 4px; padding: 4px 6px; }
-.eway-entry-box .strong { font-size: 15px !important; }
-.eway-valid { font-size: 17px !important; color: #111 !important; }
+.eway-entry-box .val { font-size: 15px !important; }
+.eway-valid { font-size: 15px !important; color: #111 !important; }
 </style>
 </head>
 <body>
@@ -361,11 +362,11 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         <div class="box right-stack tiny">
             <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">PAN NO : </span><span class="val" style="font-size:15px;">AAWFV7670H</span></div>
             <div style="font-size:16px;"><span class="lbl" style="font-size:15px;">GSTIN : </span><span class="val" style="font-size:15px;">37AAWFV7670H1Z8</span></div>
-            <div style="font-size:15px;">
+            <div style="font-size:16px;">
                 <span class="lbl" style="font-size:15px;">E-Way Bill No. : </span>
                 <div class="eway-entry-box">
                     <span class="val">${ewayNo}</span><br/>
-                    <span class="lbl" style="font-size:13px;">valid upto : </span><span class="val eway-valid">${ewayValidUpto}</span>
+                    <span class="lbl" style="font-size:15px;">valid upto : </span><span class="val eway-valid">${ewayValidUpto}</span>
                 </div>
             </div>
             <div style="font-size:15px;"><span class="lbl" style="font-size:15px;">HSN Desc : </span><span class="val ink" style="font-size:15px;">${toUpperValue(goodsDescription)}</span></div>
@@ -442,13 +443,13 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             <tr style="height:162px;">
                 <td class="val ink" style="font-size:16px; text-align:center; padding-top: 15px;">${packagesList}<br/><span style="display:block; margin-top:10px; font-size:15px;"><span class="lbl">Nos:</span> ${totalPackageNos}</span></td>
                 <td>
-                    ${invoiceDescription ? `<div class="val ink" style="font-size:20px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
-                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;"><span class="lbl">Invoice No.</span> <span class="val ink" style="font-size:15px;">${invoiceNo}</span></div>
+                    ${invoiceDescription ? `<div class="val ink" style="font-size:17px; line-height:1.15; margin-bottom:8px;">${toUpperValue(invoiceDescription)}</div>` : ''}
+                    <div style="margin-top:${invoiceDescription ? '8px' : '42px'}; font-size:16px;"><span class="lbl">Invoice No.</span> <span class="val ink invoice-no-red" style="font-size:15px;">${invoiceNo}</span></div>
                     <div style="margin-top:8px; font-size:16px;"><span class="lbl">Invoice Date .</span> <span class="val ink">${invoiceDate}</span></div>
                     ${remarks ? `<div style="margin-top:8px; font-size:16px;"><span class="lbl">Remarks .</span> <span class="val ink">${toUpperValue(remarks)}</span></div>` : ''}
                 </td>
-                <td class="val ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(actualWeight, loadUnitDisplay, 'cn')}</td>
-                <td class="val ink" style="text-align:center; font-size:23px;">${formatLoadWeightDisplay(chargedWeight, loadUnitDisplay, 'cn')}</td>
+                <td class="val ink" style="text-align:center; font-size:20px;">${formatLoadWeightDisplay(actualWeight, loadUnitDisplay, 'cn')}</td>
+                <td class="val ink" style="text-align:center; font-size:20px;">${formatLoadWeightDisplay(chargedWeight, loadUnitDisplay, 'cn')}</td>
                 <td class="charges-list">
                     <span class="charge-label" style="font-size:16px;">${rateLabel}</span><br/>
                     <span class="charge-val" style="font-size:16px; display:block; margin-bottom:8px;">${rateValue}</span>
