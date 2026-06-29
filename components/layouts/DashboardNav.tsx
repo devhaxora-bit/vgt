@@ -18,6 +18,7 @@ import {
     Clock,
     MapPin,
     ChevronDown,
+    Search,
     X
 } from 'lucide-react';
 
@@ -124,6 +125,22 @@ export default function DashboardNav() {
                         { title: 'Live Tracking', href: '#' },
                         { title: 'Delivery Status', href: '#' },
                         { title: 'POD Upload', href: '#' },
+                    ]
+                }
+            ]
+        },
+        {
+            title: 'Query',
+            icon: Search,
+            content: [
+                {
+                    title: 'Lookup',
+                    items: [
+                        { title: 'Query Center', href: '/dashboard/query' },
+                        { title: 'CNS Query', href: '/dashboard/query/cns' },
+                        { title: 'Challan Query', href: '/dashboard/query/challan' },
+                        { title: 'Bill Query', href: '/dashboard/query/bill' },
+                        { title: 'Truck Query', href: '/dashboard/query/truck' },
                     ]
                 }
             ]
