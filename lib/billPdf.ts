@@ -51,6 +51,8 @@ type BillPageSlice = {
 
 const BILL_TABLE_COLUMNS = 15;
 const PAGE_LAYOUT_BUFFER_PX = 16;
+/** Fixed vertical gap between the table TOTAL row and the Rupees In Words footer. */
+const BILL_TABLE_FOOTER_GAP_PX = 20;
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 
@@ -178,7 +180,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .bill-cell:last-child { border-right: none; }
 .bill-cell.center { text-align: center; justify-content: center; }
 .bill-cell.value { font-size: 13px; font-weight: 800; }
-.table-wrap { min-height: 0; flex: 1 1 auto; overflow: visible; display: flex; flex-direction: column; }
+.table-wrap { flex: 0 0 auto; overflow: visible; }
+.table-footer-gap { height: ${BILL_TABLE_FOOTER_GAP_PX}px; max-height: ${BILL_TABLE_FOOTER_GAP_PX}px; min-height: ${BILL_TABLE_FOOTER_GAP_PX}px; flex-shrink: 0; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-top: 1.2px solid #1d2f7a; }
 .page--first .items-table { margin-top: 5px; }
 .page--continuation .items-table { margin-top: 0; border-top: none; }
@@ -350,6 +353,7 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
             - layout.theadHeight
             - layout.footerHeight
             - totalRowHeight
+            - BILL_TABLE_FOOTER_GAP_PX
             - PAGE_LAYOUT_BUFFER_PX,
     );
 
@@ -373,6 +377,7 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
             - layout.theadHeight
             - layout.footerHeight
             - totalRowHeight
+            - BILL_TABLE_FOOTER_GAP_PX
             - PAGE_LAYOUT_BUFFER_PX,
     );
 
@@ -380,17 +385,11 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
     const singlePageContentHeight = dataHeight + totalRowHeight;
 
     if (singlePageContentHeight <= singlePageTbodyBudget) {
-        const maxBlankRowsByBudget = Math.max(
-            0,
-            Math.floor((singlePageTbodyBudget - singlePageContentHeight) / blankRowHeight),
-        );
         return [{
             rows,
             isFirst: true,
             isLast: true,
-            // Let short single-page bills consume the available table height so
-            // the footer sits closer to the total row without creating overlap.
-            blankCount: maxBlankRowsByBudget,
+            blankCount: 0,
         }];
     }
 
@@ -403,15 +402,11 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
         const lastPageBudget = isFirst ? singlePageTbodyBudget : contLastPageTbodyBudget;
 
         if (remainingDataHeight + totalRowHeight <= lastPageBudget) {
-            const blankCount = Math.max(
-                0,
-                Math.floor((lastPageBudget - remainingDataHeight - totalRowHeight) / blankRowHeight),
-            );
             pages.push({
                 rows: rows.slice(rowIndex),
                 isFirst,
                 isLast: true,
-                blankCount,
+                blankCount: 0,
             });
             break;
         }
@@ -438,15 +433,12 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
         }
 
         const isLast = rowIndex >= rows.length;
-        const blankCount = isLast
-            ? Math.max(0, Math.floor((lastPageBudget - usedHeight - totalRowHeight) / blankRowHeight))
-            : 0;
 
         pages.push({
             rows: pageRows,
             isFirst,
             isLast,
-            blankCount,
+            blankCount: 0,
         });
     }
 
@@ -476,6 +468,7 @@ const billPageHtml = (payload: BillPdfPayload, slice: BillPageSlice) => `
             <div class="table-wrap">
                 ${billTableHtml(slice, payload.displayTotal)}
             </div>
+            ${slice.isLast ? '<div class="table-footer-gap" aria-hidden="true"></div>' : ''}
             ${slice.isLast ? billFooterHtml(payload) : ''}
         </div>
     </div>
@@ -493,6 +486,7 @@ const measurementHtml = (payload: BillPdfPayload, rows: BillPrintableRow[]) => `
             <div class="table-wrap">
                 <table class="items-table">${billTableHeadHtml()}<tbody></tbody></table>
             </div>
+            <div class="table-footer-gap" aria-hidden="true"></div>
             ${billFooterHtml(payload)}
         </div>
     </div>
