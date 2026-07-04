@@ -21,6 +21,8 @@ const getFinancialYearRange = (value?: string | null) => {
 
 const toShortYear = (year: number) => String(year).slice(-2);
 
+export const normalizeBillRefNo = (value: string | null | undefined) => String(value || '').trim();
+
 export const getBillRefFinancialYearLabel = (value?: string | null) => {
     const { startYear, endYear } = getFinancialYearRange(value);
     return `${toShortYear(startYear)}-${toShortYear(endYear)}`;
@@ -30,7 +32,7 @@ export const getBillRefPrefix = (value?: string | null) =>
     `${BILL_REF_BRANCH_PREFIX}/${getBillRefFinancialYearLabel(value)}/`;
 
 export const splitBillRefSuffix = (billRefNo?: string | null, value?: string | null) => {
-    const normalizedBillRefNo = String(billRefNo || '').trim();
+    const normalizedBillRefNo = normalizeBillRefNo(billRefNo);
     if (!normalizedBillRefNo) return '';
 
     const prefix = getBillRefPrefix(value);
@@ -42,7 +44,7 @@ export const splitBillRefSuffix = (billRefNo?: string | null, value?: string | n
 };
 
 export const composeBillRefNo = (value: string | null | undefined, suffix: string | null | undefined) => {
-    const normalizedSuffix = String(suffix || '').trim();
+    const normalizedSuffix = normalizeBillRefNo(suffix);
     if (!normalizedSuffix) return '';
     return `${getBillRefPrefix(value)}${normalizedSuffix}`;
 };

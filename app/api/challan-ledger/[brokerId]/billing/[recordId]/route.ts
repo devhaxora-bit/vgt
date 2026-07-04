@@ -1,10 +1,10 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import {
-    findDuplicateChallanBillRefNo,
     hasActiveLinkedChallanPayments,
     prepareChallanBillingSnapshot,
 } from '@/lib/server/challanBillingSnapshot';
+import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
 
 export async function PATCH(
     request: NextRequest,
@@ -83,10 +83,9 @@ export async function PATCH(
 
     const normalizedBillRefNo = bill_ref_no?.trim() || null;
 
-    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateChallanBillRefNo(supabase, {
-        brokerId,
+    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateGlobalBillRefNo(supabase, {
         billRefNo: normalizedBillRefNo,
-        excludeBillingRecordId: recordId,
+        excludeBrokerBillingRecordId: recordId,
     });
 
     if (duplicateBillRefError) {
@@ -94,7 +93,7 @@ export async function PATCH(
     }
 
     if (duplicateRecordId) {
-        return NextResponse.json({ error: 'Bill reference number already exists for this broker' }, { status: 400 });
+        return NextResponse.json({ error: 'Bill reference number already exists' }, { status: 400 });
     }
 
     const normalizedNarration = narration?.trim() || (normalizedBillRefNo ? `Challan bill ${normalizedBillRefNo}` : 'Challan bill');

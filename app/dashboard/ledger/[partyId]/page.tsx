@@ -104,6 +104,7 @@ interface BillingRecord {
     settled_amount?: number;
     remaining_amount?: number;
     cancel_reason?: string; cancelled_at?: string;
+    created_at?: string;
 }
 
 interface PaymentDeductionItem {
@@ -1587,7 +1588,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
     const filteredBillingRecords = useMemo(() => {
         const query = billingSearch.trim().toLowerCase();
-
         return data.billing_records.filter((record) => {
             if (billingStatusFilter !== 'all' && record.status !== billingStatusFilter) {
                 return false;
@@ -1612,6 +1612,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             ].join(' ').toLowerCase();
 
             return haystack.includes(query);
+        }).sort((left, right) => {
+            const billingDateCompare = String(right.billing_date || '').localeCompare(String(left.billing_date || ''));
+            if (billingDateCompare !== 0) return billingDateCompare;
+
+            const createdAtCompare = String(right.created_at || '').localeCompare(String(left.created_at || ''));
+            if (createdAtCompare !== 0) return createdAtCompare;
+
+            return String(right.bill_ref_no || right.id).localeCompare(String(left.bill_ref_no || left.id));
         });
     }, [billingSearch, billingStatusFilter, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
 

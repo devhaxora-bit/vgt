@@ -109,9 +109,10 @@ export async function GET(request: Request) {
 
     const { data: bills, error: billsError } = await supabase
         .from('party_billing_records')
-        .select('id, bill_ref_no, billing_date, amount, status, party_id, covered_cn_nos')
+        .select('id, bill_ref_no, billing_date, amount, status, party_id, covered_cn_nos, created_at')
         .or(filters.join(','))
         .order('billing_date', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(20);
 
     if (billsError) {

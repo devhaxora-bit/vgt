@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { findDuplicateBillRefNo, prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
+import { prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
+import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
 
 // POST /api/ledger/[partyId]/billing
 // Create a billing record for a party (admin only)
@@ -54,8 +55,7 @@ export async function POST(
         return NextResponse.json({ error: 'billing_date and bill_ref_no are required' }, { status: 400 });
     }
 
-    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateBillRefNo(supabase, {
-        partyId,
+    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateGlobalBillRefNo(supabase, {
         billRefNo: normalizedBillRefNo,
     });
 
@@ -64,7 +64,7 @@ export async function POST(
     }
 
     if (duplicateRecordId) {
-        return NextResponse.json({ error: 'Bill reference number already exists for this party' }, { status: 400 });
+        return NextResponse.json({ error: 'Bill reference number already exists' }, { status: 400 });
     }
 
     const { data: snapshotData, error: snapshotError } = await prepareBillingSnapshot(supabase, {

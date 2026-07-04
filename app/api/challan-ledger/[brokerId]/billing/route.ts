@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { findDuplicateChallanBillRefNo, prepareChallanBillingSnapshot } from '@/lib/server/challanBillingSnapshot';
+import { prepareChallanBillingSnapshot } from '@/lib/server/challanBillingSnapshot';
+import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
 
 export async function POST(
     request: NextRequest,
@@ -49,8 +50,7 @@ export async function POST(
         return NextResponse.json({ error: 'billing_date and bill_ref_no are required' }, { status: 400 });
     }
 
-    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateChallanBillRefNo(supabase, {
-        brokerId,
+    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateGlobalBillRefNo(supabase, {
         billRefNo: normalizedBillRefNo,
     });
 
@@ -59,7 +59,7 @@ export async function POST(
     }
 
     if (duplicateRecordId) {
-        return NextResponse.json({ error: 'Bill reference number already exists for this broker' }, { status: 400 });
+        return NextResponse.json({ error: 'Bill reference number already exists' }, { status: 400 });
     }
 
     const { data: snapshotData, error: snapshotError } = await prepareChallanBillingSnapshot(supabase, {
