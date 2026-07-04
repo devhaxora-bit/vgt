@@ -66,6 +66,13 @@
     --ring: hsl(221.2 83.2% 53.3%);
 
     --radius: 0.5rem;
+
+    /* Document sheet accents — mirror the printed PDF brand colors */
+    --doc-line: #1d2f7a;
+    --doc-line-soft: rgba(29, 47, 122, 0.18);
+    --doc-head-bg: #e8f1fd;
+    --doc-head-fg: #1d2f7a;
+    --doc-table-head-bg: #d7e8fb;
   }
 
   .dark {
@@ -96,6 +103,12 @@
     --border: hsl(217.2 32.6% 17.5%);
     --input: hsl(217.2 32.6% 17.5%);
     --ring: hsl(224.3 76.3% 48%);
+
+    --doc-line: #5b73c4;
+    --doc-line-soft: rgba(91, 115, 196, 0.28);
+    --doc-head-bg: rgba(91, 115, 196, 0.16);
+    --doc-head-fg: #b9c6f0;
+    --doc-table-head-bg: rgba(91, 115, 196, 0.22);
   }
 }
 

@@ -51,9 +51,6 @@ type BillPageSlice = {
 
 const BILL_TABLE_COLUMNS = 15;
 const PAGE_LAYOUT_BUFFER_PX = 16;
-/** Match the old single-page bill layout: pad short bills up to this many detail rows. */
-const MIN_SINGLE_PAGE_DETAIL_ROWS = 12;
-
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 
@@ -383,7 +380,6 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
     const singlePageContentHeight = dataHeight + totalRowHeight;
 
     if (singlePageContentHeight <= singlePageTbodyBudget) {
-        const desiredBlankRows = Math.max(0, MIN_SINGLE_PAGE_DETAIL_ROWS - rows.length);
         const maxBlankRowsByBudget = Math.max(
             0,
             Math.floor((singlePageTbodyBudget - singlePageContentHeight) / blankRowHeight),
@@ -392,7 +388,9 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
             rows,
             isFirst: true,
             isLast: true,
-            blankCount: Math.min(desiredBlankRows, maxBlankRowsByBudget),
+            // Let short single-page bills consume the available table height so
+            // the footer sits closer to the total row without creating overlap.
+            blankCount: maxBlankRowsByBudget,
         }];
     }
 
