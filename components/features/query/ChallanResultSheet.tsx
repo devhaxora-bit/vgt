@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Printer, RotateCcw, Truck, User, Users, Receipt, Loader2 } from 'lucide-react';
+import { Printer, RotateCcw, Truck, User, Users, Receipt, Loader2, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChallanDetailsDialog } from '@/components/features/challans/ChallanDetailsDialog';
 import { sortLinkedConsignments } from '@/lib/sortLinkedConsignments';
@@ -13,8 +13,8 @@ import {
     SheetDataTable,
     type SheetColumn,
 } from './DocumentSheet';
-import { money, num, upper, fmtDate, toNum } from './queryFormat';
-import type { QueryConsignment } from '@/lib/types/query.types';
+import { money, num, upper, fmtDate } from './queryFormat';
+import type { QueryConsignment, QueryChallanDetail, QueryLinkedPayment } from '@/lib/types/query.types';
 
 type Challan = Record<string, unknown>;
 
@@ -29,10 +29,11 @@ interface ChargeRow {
     amount: unknown;
 }
 
-export function ChallanResultSheet({ challan, reset }: { challan: Challan; reset: () => void }) {
+export function ChallanResultSheet({ detail, reset }: { detail: QueryChallanDetail; reset: () => void }) {
     const [printOpen, setPrintOpen] = React.useState(false);
     const [linked, setLinked] = React.useState<QueryConsignment[]>([]);
     const [loadingLinked, setLoadingLinked] = React.useState(false);
+    const challan = detail.challan;
     const c = challan;
 
     const linkedCnNos = React.useMemo(() => {
@@ -71,10 +72,13 @@ export function ChallanResultSheet({ challan, reset }: { challan: Challan; reset
     const status = String(get(c, 'status') || 'ACTIVE');
     const cancelled = status.toUpperCase() === 'CANCELLED';
 
-    const totalHire = toNum(get(c, 'total_hire_amount'));
-    const advance = toNum(get(c, 'advance_amount'));
-    const lessTds = toNum(get(c, 'less_tds'));
-    const balance = totalHire - advance - lessTds;
+    const { gross_hire: totalHire, advance, tds: lessTds, balance_payable: balance } = detail.settlement;
+    const brokerBill = detail.broker_bill;
+    const payments: QueryLinkedPayment[] = detail.payments ?? [];
+    const paidTotal = detail.paid_total ?? 0;
+    const pending = detail.pending_amount ?? balance;
+    const lastReceiptDate = payments.length > 0 ? payments[0].receipt_date : null;
+    const isPaid = pending <= 0.005 && (brokerBill != null || paidTotal > 0);
 
     const cnColumns: SheetColumn<QueryConsignment>[] = [
         { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{r.cn_no}</span> },
@@ -98,6 +102,13 @@ export function ChallanResultSheet({ challan, reset }: { challan: Challan; reset
     const chargeColumns: SheetColumn<ChargeRow>[] = [
         { key: 'label', header: 'Particulars', cell: (r) => <span className="font-medium">{r.label}</span> },
         { key: 'amount', header: 'Amount', align: 'right', cell: (r) => money(r.amount), className: 'font-mono' },
+    ];
+
+    const paymentColumns: SheetColumn<QueryLinkedPayment>[] = [
+        { key: 'date', header: 'Received Date', cell: (r) => fmtDate(r.receipt_date) },
+        { key: 'amount', header: 'Amount', align: 'right', cell: (r) => money(r.amount, true), className: 'font-mono font-semibold' },
+        { key: 'mode', header: 'Mode', cell: (r) => upper(r.payment_mode) || '—' },
+        { key: 'ref', header: 'Reference', cell: (r) => r.reference_no || '—' },
     ];
 
     return (
@@ -219,6 +230,64 @@ export function ChallanResultSheet({ challan, reset }: { challan: Challan; reset
                         </div>
                     </SheetSection>
                 </div>
+
+                <SheetSection title="Payment Status" icon={<Wallet className="h-3.5 w-3.5" />}>
+                    <div className="mb-4 flex flex-wrap items-center gap-3">
+                        <span
+                            className={
+                                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide ' +
+                                (isPaid
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : 'border-amber-200 bg-amber-50 text-amber-700')
+                            }
+                        >
+                            {isPaid ? 'Fully Settled' : 'Payment Pending'}
+                        </span>
+                        {!isPaid ? (
+                            <span className="text-sm text-muted-foreground">
+                                Pending amount:{' '}
+                                <span className="font-mono font-bold text-amber-700">{money(pending, true)}</span>
+                            </span>
+                        ) : lastReceiptDate ? (
+                            <span className="text-sm text-muted-foreground">
+                                Last received on <span className="font-semibold text-foreground">{fmtDate(lastReceiptDate)}</span>
+                            </span>
+                        ) : null}
+                    </div>
+
+                    <SheetInfoGrid>
+                        <SheetField
+                            label="Broker Bill Status"
+                            value={brokerBill ? 'Billed to broker' : 'Not yet billed'}
+                            accent={Boolean(brokerBill)}
+                        />
+                        <SheetField label="Broker Bill Ref" value={brokerBill?.bill_ref_no ?? undefined} mono />
+                        <SheetField label="Billed On" value={brokerBill ? fmtDate(brokerBill.billing_date) : undefined} />
+                        <SheetField label="Billed Amount" value={brokerBill ? money(brokerBill.amount, true) : undefined} mono />
+                        <SheetField label="Amount Received" value={money(paidTotal, true)} mono />
+                        <SheetField label="Last Received Date" value={lastReceiptDate ? fmtDate(lastReceiptDate) : undefined} />
+                        <SheetField
+                            label="Amount Pending"
+                            value={
+                                <span className={pending > 0.005 ? 'text-amber-600' : 'text-emerald-600'}>
+                                    {money(pending, true)}
+                                </span>
+                            }
+                        />
+                        <SheetField label="Receipts" value={num(payments.length)} mono />
+                    </SheetInfoGrid>
+
+                    {payments.length > 0 ? (
+                        <div className="mt-4">
+                            <SheetDataTable
+                                columns={paymentColumns}
+                                rows={payments}
+                                getRowKey={(r) => r.id}
+                                emptyText="No payments recorded."
+                            />
+                        </div>
+                    ) : null}
+                </SheetSection>
 
                 {str(get(c, 'remarks')) ? (
                     <SheetSection title="Remarks">

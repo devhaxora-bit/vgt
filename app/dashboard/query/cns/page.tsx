@@ -6,7 +6,7 @@ import { QueryPageShell } from '@/components/features/query/QueryPageShell';
 import { QueryWorkbench } from '@/components/features/query/QueryWorkbench';
 import { CnsResultSheet } from '@/components/features/query/CnsResultSheet';
 import { fmtDate, upper } from '@/components/features/query/queryFormat';
-import type { QuerySuggestion } from '@/lib/types/query.types';
+import type { QuerySuggestion, QueryCnsDetail } from '@/lib/types/query.types';
 
 export default function CnsQueryPage() {
     const searchSuggestions = React.useCallback(async (term: string): Promise<QuerySuggestion[]> => {
@@ -22,10 +22,10 @@ export default function CnsQueryPage() {
         }));
     }, []);
 
-    const loadDetail = React.useCallback(async (suggestion: QuerySuggestion) => {
-        const res = await fetch(`/api/consignments/${suggestion.value}`);
+    const loadDetail = React.useCallback(async (suggestion: QuerySuggestion): Promise<QueryCnsDetail> => {
+        const res = await fetch(`/api/query/cns?id=${encodeURIComponent(suggestion.value)}`);
         if (!res.ok) throw new Error('Consignment not found.');
-        return (await res.json()) as Record<string, unknown>;
+        return (await res.json()) as QueryCnsDetail;
     }, []);
 
     return (
@@ -40,7 +40,7 @@ export default function CnsQueryPage() {
                 helperText="Start typing a CN number — matching consignments appear as you type."
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
-                renderResult={(detail, { reset }) => <CnsResultSheet consignment={detail} reset={reset} />}
+                renderResult={(detail, { reset }) => <CnsResultSheet detail={detail} reset={reset} />}
             />
         </QueryPageShell>
     );

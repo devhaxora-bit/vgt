@@ -80,8 +80,9 @@ export interface QueryBillParty {
 
 export interface QueryBillDetail {
     record: Record<string, unknown>;
-    party: QueryBillParty;
+    party: QueryBillParty & { branch_name?: string | null };
     consignments: QueryConsignment[];
+    party_summary: QueryPartySummary | null;
 }
 
 export interface QueryChallanLink {
@@ -96,6 +97,59 @@ export interface QueryChallanLink {
     actual_weight?: number | null;
     charged_weight?: number | null;
     load_unit?: string | null;
+}
+
+/** A bill that a record (CN / challan) is linked to. */
+export interface QueryLinkedBill {
+    id: string;
+    bill_ref_no: string | null;
+    billing_date: string | null;
+    amount: number;
+    status: string;
+    party_name?: string | null;
+    broker_name?: string | null;
+}
+
+/** A payment receipt shown against a linked bill. */
+export interface QueryLinkedPayment {
+    id: string;
+    receipt_date: string | null;
+    amount: number;
+    payment_mode?: string | null;
+    reference_no?: string | null;
+    status: string;
+}
+
+/** Full CNS lookup payload: the consignment plus its included children and billing status. */
+export interface QueryCnsDetail {
+    consignment: Record<string, unknown>;
+    children: QueryConsignment[];
+    parent_cn_no: string | null;
+    bill: QueryLinkedBill | null;
+}
+
+/** Full challan lookup payload: the challan plus its hire settlement and payment status. */
+export interface QueryChallanDetail {
+    challan: Record<string, unknown>;
+    settlement: {
+        gross_hire: number;
+        advance: number;
+        tds: number;
+        balance_payable: number;
+    };
+    broker_bill: QueryLinkedBill | null;
+    payments: QueryLinkedPayment[];
+    paid_total: number;
+    pending_amount: number;
+}
+
+/** Party ledger snapshot shown inside the bill query. */
+export interface QueryPartySummary {
+    opening_balance: number;
+    total_billed: number;
+    total_paid: number;
+    outstanding: number;
+    unbilled_amount: number;
 }
 
 export interface QueryTruckDetail {

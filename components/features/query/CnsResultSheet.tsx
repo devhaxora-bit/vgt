@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Printer, RotateCcw, MapPin, User, Package, Receipt, Building2 } from 'lucide-react';
+import { Printer, RotateCcw, MapPin, User, Package, Receipt, Building2, Link2, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConsignmentDetailsDialog } from '@/components/features/consignments/ConsignmentDetailsDialog';
 import {
@@ -12,7 +12,8 @@ import {
     SheetDataTable,
     type SheetColumn,
 } from './DocumentSheet';
-import { money, num, upper, fmtDate } from './queryFormat';
+import { money, num, upper, fmtDate, toNum } from './queryFormat';
+import type { QueryCnsDetail, QueryConsignment } from '@/lib/types/query.types';
 
 type Cn = Record<string, unknown>;
 
@@ -28,12 +29,31 @@ const str = (value: unknown) => {
     return text || undefined;
 };
 
-export function CnsResultSheet({ consignment, reset }: { consignment: Cn; reset: () => void }) {
+export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; reset: () => void }) {
     const [printOpen, setPrintOpen] = React.useState(false);
+    const consignment = detail.consignment;
     const c = consignment;
 
     const cancelled = Boolean(get(c, 'cancel_cn'));
     const loadUnit = upper(get(c, 'load_unit')) || 'MT';
+
+    const children = detail.children ?? [];
+    const isChild = Boolean(get(c, 'parent_cn_id'));
+    const freightPending = Boolean(get(c, 'freight_pending'));
+    const bill = detail.bill;
+
+    const childColumns: SheetColumn<QueryConsignment>[] = [
+        { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{r.cn_no}</span> },
+        { key: 'date', header: 'Date', cell: (r) => fmtDate(r.bkg_date) },
+        { key: 'consignor', header: 'Consignor', cell: (r) => upper(r.consignor_name) || '—' },
+        {
+            key: 'route',
+            header: 'Route',
+            cell: (r) => `${upper(r.loading_point || r.booking_branch) || '—'} → ${upper(r.delivery_point || r.dest_branch) || '—'}`,
+        },
+        { key: 'pkg', header: 'Pkg', align: 'right', cell: (r) => num(r.total_qty ?? r.no_of_pkg) },
+        { key: 'wt', header: 'Charged Wt', align: 'right', cell: (r) => num(r.charged_weight) },
+    ];
 
     const chargeRows: ChargeRow[] = [
         { label: 'Basic Freight', amount: get(c, 'basic_freight'), note: str(get(c, 'freight_rate')) ? `Rate ${num(get(c, 'freight_rate'))}` : undefined },
@@ -69,10 +89,17 @@ export function CnsResultSheet({ consignment, reset }: { consignment: Cn; reset:
                 status={cancelled ? 'Cancelled' : 'Active'}
                 statusTone={cancelled ? 'danger' : 'success'}
                 meta={
-                    <span>
-                        Booked {fmtDate(get(c, 'bkg_date') as string)} · {upper(get(c, 'booking_branch')) || '—'}
-                        {' → '}
-                        {upper(get(c, 'dest_branch')) || upper(get(c, 'delivery_point')) || '—'}
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>
+                            Booked {fmtDate(get(c, 'bkg_date') as string)} · {upper(get(c, 'booking_branch')) || '—'}
+                            {' → '}
+                            {upper(get(c, 'dest_branch')) || upper(get(c, 'delivery_point')) || '—'}
+                        </span>
+                        {isChild && detail.parent_cn_no ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                <Link2 className="h-3 w-3" /> Freight included in {detail.parent_cn_no}
+                            </span>
+                        ) : null}
                     </span>
                 }
                 actions={
@@ -171,6 +198,58 @@ export function CnsResultSheet({ consignment, reset }: { consignment: Cn; reset:
                         </div>
                     </SheetSection>
                 </div>
+
+                <SheetSection title="Billing & Payment" icon={<Wallet className="h-3.5 w-3.5" />}>
+                    <SheetInfoGrid>
+                        <SheetField
+                            label="Billing Status"
+                            value={
+                                <span
+                                    className={
+                                        bill
+                                            ? 'text-emerald-600'
+                                            : freightPending
+                                                ? 'text-amber-600'
+                                                : 'text-muted-foreground'
+                                    }
+                                >
+                                    {bill ? 'Billed' : freightPending ? 'Freight Pending' : 'Not Billed'}
+                                </span>
+                            }
+                        />
+                        <SheetField label="Bill Ref No" value={bill?.bill_ref_no ?? undefined} mono accent />
+                        <SheetField label="Billed On" value={bill ? fmtDate(bill.billing_date) : undefined} />
+                        <SheetField label="Billed To" value={upper(bill?.party_name)} />
+                        <SheetField label="Bill Amount" value={bill ? money(bill.amount, true) : undefined} mono />
+                        <SheetField label="Freight Pending" value={freightPending ? 'Yes' : 'No'} />
+                        <SheetField label="Advance Received" value={money(get(c, 'advance_amount'))} mono />
+                        <SheetField
+                            label="Balance Pending"
+                            value={
+                                <span className={toNum(get(c, 'balance_amount')) > 0 ? 'text-amber-600' : 'text-emerald-600'}>
+                                    {money(get(c, 'balance_amount'), true)}
+                                </span>
+                            }
+                        />
+                    </SheetInfoGrid>
+                </SheetSection>
+
+                {children.length > 0 ? (
+                    <SheetSection
+                        title="Included Consignments"
+                        icon={<Link2 className="h-3.5 w-3.5" />}
+                        right={`${children.length} freight-included CN${children.length === 1 ? '' : 's'}`}
+                    >
+                        <p className="mb-3 text-xs text-muted-foreground">
+                            These consignments have their freight included in this CN, so their own freight is nil.
+                        </p>
+                        <SheetDataTable
+                            columns={childColumns}
+                            rows={children}
+                            getRowKey={(r, i) => `${r.cn_no}-${i}`}
+                        />
+                    </SheetSection>
+                ) : null}
 
                 {str(get(c, 'remarks')) ? (
                     <SheetSection title="Remarks">

@@ -32,11 +32,39 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
         }
 
-        const { data: party } = await supabase
+        const { data: partyRow } = await supabase
             .from('parties')
             .select('id, name, code, type, phone, gstin, address, branch_code')
             .eq('id', record.party_id)
             .single();
+
+        const party: Record<string, unknown> | null = partyRow ? { ...partyRow, branch_name: null } : null;
+        if (party && partyRow?.branch_code) {
+            const { data: branch } = await supabase
+                .from('branches')
+                .select('name')
+                .eq('code', partyRow.branch_code)
+                .maybeSingle();
+            party.branch_name = branch?.name ?? null;
+        }
+
+        let partySummary = null;
+        if (record.party_id) {
+            const { data: summary } = await supabase
+                .from('vw_party_ledger_summary')
+                .select('opening_balance, total_billed, total_paid, outstanding, unbilled_amount')
+                .eq('party_id', record.party_id)
+                .maybeSingle();
+            if (summary) {
+                partySummary = {
+                    opening_balance: toNumber(summary.opening_balance),
+                    total_billed: toNumber(summary.total_billed),
+                    total_paid: toNumber(summary.total_paid),
+                    outstanding: toNumber(summary.outstanding),
+                    unbilled_amount: Math.max(toNumber(summary.unbilled_amount), 0),
+                };
+            }
+        }
 
         const coveredCnNos: string[] = Array.isArray(record.covered_cn_nos)
             ? record.covered_cn_nos.map((cn: unknown) => String(cn).trim()).filter(Boolean)
@@ -58,7 +86,7 @@ export async function GET(request: Request) {
             consignments = data ?? [];
         }
 
-        return NextResponse.json({ record, party: party ?? null, consignments });
+        return NextResponse.json({ record, party: party ?? null, consignments, party_summary: partySummary });
     }
 
     if (q === undefined || q === null) {

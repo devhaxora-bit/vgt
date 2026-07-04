@@ -6,7 +6,7 @@ import { QueryPageShell } from '@/components/features/query/QueryPageShell';
 import { QueryWorkbench } from '@/components/features/query/QueryWorkbench';
 import { ChallanResultSheet } from '@/components/features/query/ChallanResultSheet';
 import { fmtDate, upper } from '@/components/features/query/queryFormat';
-import type { QuerySuggestion } from '@/lib/types/query.types';
+import type { QuerySuggestion, QueryChallanDetail } from '@/lib/types/query.types';
 
 export default function ChallanQueryPage() {
     const searchSuggestions = React.useCallback(async (term: string): Promise<QuerySuggestion[]> => {
@@ -22,10 +22,10 @@ export default function ChallanQueryPage() {
         }));
     }, []);
 
-    const loadDetail = React.useCallback(async (suggestion: QuerySuggestion) => {
-        const res = await fetch(`/api/challans/${suggestion.value}`);
+    const loadDetail = React.useCallback(async (suggestion: QuerySuggestion): Promise<QueryChallanDetail> => {
+        const res = await fetch(`/api/query/challan?id=${encodeURIComponent(suggestion.value)}`);
         if (!res.ok) throw new Error('Challan not found.');
-        return (await res.json()) as Record<string, unknown>;
+        return (await res.json()) as QueryChallanDetail;
     }, []);
 
     return (
@@ -40,7 +40,7 @@ export default function ChallanQueryPage() {
                 helperText="Search by challan number or vehicle number."
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
-                renderResult={(detail, { reset }) => <ChallanResultSheet challan={detail} reset={reset} />}
+                renderResult={(detail, { reset }) => <ChallanResultSheet detail={detail} reset={reset} />}
             />
         </QueryPageShell>
     );

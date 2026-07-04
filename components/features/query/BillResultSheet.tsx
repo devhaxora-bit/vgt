@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Printer, RotateCcw, Building2, FileText } from 'lucide-react';
+import { Printer, RotateCcw, Building2, FileText, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { numberToWords } from '@/lib/utils';
 import { BillingRecordViewDialog } from '@/components/features/ledger/BillingRecordDialogs';
@@ -26,6 +26,7 @@ const str = (value: unknown) => {
 export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; reset: () => void }) {
     const [printOpen, setPrintOpen] = React.useState(false);
     const { record, party } = detail;
+    const summary = detail.party_summary;
 
     const status = String(get(record, 'status') || 'ACTIVE');
     const cancelled = status.toUpperCase() === 'CANCELLED';
@@ -93,7 +94,10 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                         <SheetInfoGrid columns={2}>
                             <SheetField label="Party" value={upper(party?.name)} accent />
                             <SheetField label="Code" value={upper(party?.code)} mono />
+                            <SheetField label="Type" value={upper(party?.type)} />
+                            <SheetField label="Phone" value={str(party?.phone)} mono />
                             <SheetField label="GSTIN" value={upper(party?.gstin)} mono />
+                            <SheetField label="Home Branch" value={upper(party?.branch_name) || upper(party?.branch_code)} />
                             <SheetField label="Issuing Branch" value={issuingBranch} />
                             <SheetField label="Address" value={upper(party?.address)} className="col-span-full" />
                         </SheetInfoGrid>
@@ -109,6 +113,25 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                         </SheetInfoGrid>
                     </SheetSection>
                 </div>
+
+                {summary ? (
+                    <SheetSection title="Party Ledger Snapshot" icon={<Wallet className="h-3.5 w-3.5" />}>
+                        <SheetInfoGrid>
+                            <SheetField label="Opening Balance" value={money(summary.opening_balance, true)} mono />
+                            <SheetField label="Total Billed" value={money(summary.total_billed, true)} mono />
+                            <SheetField label="Total Received" value={money(summary.total_paid, true)} mono />
+                            <SheetField label="Unbilled Amount" value={money(summary.unbilled_amount, true)} mono />
+                            <SheetField
+                                label="Outstanding"
+                                value={
+                                    <span className={summary.outstanding > 0.005 ? 'text-amber-600' : 'text-emerald-600'}>
+                                        {money(summary.outstanding, true)}
+                                    </span>
+                                }
+                            />
+                        </SheetInfoGrid>
+                    </SheetSection>
+                ) : null}
 
                 <SheetSection title="Covered Consignments" icon={<FileText className="h-3.5 w-3.5" />} right={`${snapshot.length} rows`}>
                     <SheetDataTable
