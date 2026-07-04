@@ -113,7 +113,8 @@ export async function GET(
         .from('party_billing_records')
         .select('*')
         .eq('party_id', partyId)
-        .order('billing_date', { ascending: false });
+        .order('billing_date', { ascending: false })
+        .order('created_at', { ascending: false });
 
     const billingRecords = (allBillingRecords || []).filter((record) => {
         const billingDate = record.billing_date?.slice(0, 10) || '';

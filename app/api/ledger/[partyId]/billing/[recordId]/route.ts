@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { findDuplicateBillRefNo, hasActiveLinkedPayments, prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
+import { hasActiveLinkedPayments, prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
+import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
 
 // PATCH /api/ledger/[partyId]/billing/[recordId]
 // Update editable fields on a billing record (admin only)
@@ -83,10 +84,9 @@ export async function PATCH(
 
     const normalizedBillRefNo = bill_ref_no?.trim() || null;
 
-    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateBillRefNo(supabase, {
-        partyId,
+    const { duplicateRecordId, error: duplicateBillRefError } = await findDuplicateGlobalBillRefNo(supabase, {
         billRefNo: normalizedBillRefNo,
-        excludeBillingRecordId: recordId,
+        excludePartyBillingRecordId: recordId,
     });
 
     if (duplicateBillRefError) {
@@ -94,7 +94,7 @@ export async function PATCH(
     }
 
     if (duplicateRecordId) {
-        return NextResponse.json({ error: 'Bill reference number already exists for this party' }, { status: 400 });
+        return NextResponse.json({ error: 'Bill reference number already exists' }, { status: 400 });
     }
 
     const normalizedNarration = narration?.trim() || (normalizedBillRefNo ? `Freight bill ${normalizedBillRefNo}` : 'Freight bill');

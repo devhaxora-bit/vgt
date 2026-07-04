@@ -73,7 +73,8 @@ export async function GET(
         .from('broker_challan_billing_records')
         .select('*')
         .eq('broker_id', brokerId)
-        .order('billing_date', { ascending: false });
+        .order('billing_date', { ascending: false })
+        .order('created_at', { ascending: false });
 
     const billingRecords = (allBillingRecords || []).filter((record) => {
         const billingDate = record.billing_date?.slice(0, 10) || '';
