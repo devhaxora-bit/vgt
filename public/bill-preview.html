@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bill PDF layout preview (debug)</title>
+<style>
+/* ── Debug controls (not part of the real PDF) ───────────────────────── */
+.debug-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    display: flex; gap: 16px; align-items: center;
+    padding: 8px 14px; background: #111; color: #fff;
+    font: 13px/1.3 Arial, sans-serif;
+}
+.debug-bar label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.debug-bar .legend { display: inline-flex; gap: 12px; margin-left: auto; }
+.debug-bar .legend span { display: inline-flex; gap: 5px; align-items: center; }
+.swatch { width: 12px; height: 12px; display: inline-block; border-radius: 2px; }
+.preview-shell { padding: 56px 20px 40px; background: #6b7280; min-height: 100vh; }
+
+/* When debug is on, outline each region so the empty gap is obvious. */
+body.debug .table-wrap { outline: 2px solid #e11d48; outline-offset: -2px; }        /* red   = flex-grown wrapper */
+body.debug .items-table { outline: 2px solid #16a34a; outline-offset: -2px; }        /* green = table (natural height) */
+body.debug .bill-footer { outline: 2px solid #2563eb; outline-offset: -2px; }        /* blue  = footer */
+/* The red area NOT covered by green is the leftover flex gap. */
+body.debug .table-wrap::after {
+    content: "leftover flex gap (table-wrap grows, table is top-aligned)";
+    display: block; flex: 1 1 auto;
+    background: repeating-linear-gradient(45deg, rgba(225,29,72,.12), rgba(225,29,72,.12) 8px, rgba(225,29,72,.22) 8px, rgba(225,29,72,.22) 16px);
+    color: #7f1d1d; font: 700 11px/1.4 Arial, sans-serif; text-align: center; padding-top: 4px;
+}
+
+/* ── Real bill styles (copied verbatim from lib/billPdf.ts billStyles) ─ */
+@page { size: A4 landscape; margin: 5mm; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
+.page { width: 287mm; height: 200mm; max-height: 200mm; margin: 0 auto; padding: 6mm 10mm; background: #fff; page-break-after: always; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.page:last-child { page-break-after: auto; }
+.sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; flex-shrink: 0; }
+.header-logo { display: flex; align-items: center; justify-content: flex-start; }
+.header-logo img { width: 102px; max-width: 100%; object-fit: contain; }
+.header-copy { text-align: center; }
+.header-title { font-size: 16px; font-weight: 800; letter-spacing: 0.2px; color: #1d2f7a; }
+.header-line { display: flex; justify-content: center; gap: 34px; font-size: 11px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
+.header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
+.detail-grid { display: grid; grid-template-columns: 56% 44%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; flex-shrink: 0; }
+.party-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 8px 10px; }
+.party-line { font-size: 11px; font-weight: 800; text-transform: uppercase; line-height: 1.24; overflow-wrap: anywhere; word-break: break-word; }
+.party-address-line2 { display: block; margin-top: 4px; }
+.right-block { display: grid; grid-template-rows: 44px minmax(50px, 1fr); height: 100%; }
+.branch-row { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 24% 76%; align-items: stretch; }
+.branch-label { border-right: 1.2px solid #1d2f7a; padding: 4px 6px; font-size: 10px; font-weight: 800; line-height: 1.15; display: flex; align-items: center; color: #1d2f7a; }
+.branch-value { display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #111; padding: 4px 6px; }
+.bill-row { display: grid; grid-template-columns: 42% 16% 42%; align-items: stretch; min-height: 50px; }
+.bill-cell { border-right: 1.2px solid #1d2f7a; padding: 4px 6px; font-size: 10px; font-weight: 700; line-height: 1.12; display: flex; align-items: center; }
+.bill-cell:last-child { border-right: none; }
+.bill-cell.center { text-align: center; justify-content: center; }
+.bill-cell.value { font-size: 13px; font-weight: 800; }
+.table-wrap { min-height: 0; flex: 1 1 auto; overflow: visible; display: flex; flex-direction: column; }
+.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-top: 1.2px solid #1d2f7a; }
+.page--first .items-table { margin-top: 5px; }
+.page--continuation .items-table { margin-top: 0; border-top: none; }
+.items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
+.items-table th:last-child, .items-table td:last-child { border-right: none; }
+.items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: #000000; background: #90caf9; }
+.items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.invoice-cell, .name-cell, .cn-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
+.invoice-cell { word-break: break-all !important; }
+.cn-cell.incl { color: #1d4ed8; font-weight: 800; font-size: 9.6px; line-height: 1.2; }
+.items-table .center { text-align: center; }
+.items-table .amount { text-align: right; padding-right: 8px; }
+.blank-row td { font-weight: 400; }
+.total-row td { height: 24px; max-height: 24px; min-height: 24px; font-size: 10.8px; font-weight: 800; padding: 5px 3px 6px; line-height: 1.15; vertical-align: middle; overflow: visible !important; text-overflow: clip !important; }
+.total-label { text-align: right; padding-right: 8px; color: #1d2f7a; font-size: 10.8px; white-space: nowrap !important; }
+.total-row .amount { font-size: 10.8px; font-weight: 900; }
+.bill-footer { flex-shrink: 0; }
+.words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 600; line-height: 1.25; }
+.notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
+.remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
+.footer-grid { display: grid; grid-template-columns: 65% 35%; }
+.bank-block { border-right: 1.2px solid #1d2f7a; padding: 0 10px; font-size: 9.2px; font-weight: 700; line-height: 1.45; color: #111; display: grid; grid-template-columns: 1fr 1.2px 1.05fr; gap: 10px; align-items: stretch; }
+.bank-details-sub { display: flex; flex-direction: column; justify-content: center; padding: 3px 0; }
+.bank-divider { background-color: #1d2f7a; width: 1.2px; height: 100%; }
+.eway-sub { display: flex; flex-direction: column; justify-content: center; line-height: 1.45; padding: 3px 0; }
+.bank-title { font-size: 9.4px; font-weight: 800; color: #1d2f7a; }
+.signature-block { padding: 6px 8px 8px; display: flex; align-items: flex-start; justify-content: center; }
+.signature-inner { width: 100%; text-align: center; font-size: 9.4px; font-weight: 700; line-height: 1.45; }
+.signature-company { font-size: 10.5px; font-weight: 800; margin-bottom: 16px; color: #1d2f7a; }
+.signature-name { margin-top: 10px; color: #111; }
+.signature-role { font-size: 9.4px; font-weight: 800; color: #1d2f7a; }
+</style>
+</head>
+<body class="debug">
+<div class="debug-bar">
+    <label><input type="checkbox" id="toggle-debug" checked /> Debug outlines</label>
+    <label><input type="checkbox" id="toggle-fill" checked /> Auto-fill blank rows (leave ~20px)</label>
+    <span id="gap-readout">gap: —</span>
+    <span class="legend">
+        <span><span class="swatch" style="background:#e11d48"></span>table-wrap (grows)</span>
+        <span><span class="swatch" style="background:#16a34a"></span>table</span>
+        <span><span class="swatch" style="background:#2563eb"></span>footer</span>
+    </span>
+</div>
+
+<div class="preview-shell">
+    <div class="page page--first">
+        <div class="sheet">
+            <div class="header-band">
+                <div class="header-logo"><img src="/vgt_logo.png" alt="VGT Logo" /></div>
+                <div class="header-copy">
+                    <div class="header-title">VISAKHA GOLDEN TRANSPORT</div>
+                    <div class="header-line"><span>D. NO. 8-19-58/A, GOPAL NAGAR, NEAR BANK COLONY, VIZIANAGARAM, ANDHRA PRADESH - 535003</span></div>
+                    <div class="header-line contact">Contact:9392223404,8756314575 Email:vsp@visakhagolden.com</div>
+                </div>
+                <div style="text-align: right; font-size: 11px; font-weight: 800; line-height: 1.35;">
+                    <span style="color: #1d2f7a;">PAN NO:</span><br/><span style="color: #111;">AAWFV7670H</span>
+                </div>
+            </div>
+
+            <div class="detail-grid">
+                <div class="party-block">
+                    <div class="party-line" style="color: #111;">M/S TIRUPATI VENEERS PVT LTD</div>
+                    <div class="party-line" style="color: #111;">288/1, DAKAMARRI VILLAGE BHEEMUNIPATNAM<span class="party-address-line2">MANDAL VISAKHAPATNAM ANDHRA PRADESH 531162</span></div>
+                    <div class="party-line" style="color: #111; display: flex; align-items: center;">
+                        <span><span style="color: #1d2f7a; font-weight: 800;">GSTIN:</span> <span style="font-weight: 800;">37AAACT6356R1ZK</span></span>
+                    </div>
+                </div>
+                <div class="right-block">
+                    <div class="branch-row">
+                        <div class="branch-label">Issuing<br/>Branch :</div>
+                        <div class="branch-value">Vizianagaram</div>
+                    </div>
+                    <div class="bill-row">
+                        <div class="bill-cell value">
+                            <span style="color: #1d2f7a; font-weight: 800; margin-right: 4px;">Bill No.</span>
+                            <span style="color: #cc1a1a; font-weight: 800;">VZM/26-27/1855</span>
+                        </div>
+                        <div class="bill-cell center" style="color: #1d2f7a; font-weight: 800;">Date.</div>
+                        <div class="bill-cell value center" style="color: #111;">08.05.2026</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width:4%;">CNS<br/>No</th>
+                            <th style="width:6.5%;">Date</th>
+                            <th style="width:13%;">Invoice<br/>No</th>
+                            <th style="width:8%;">Vehicle no.</th>
+                            <th style="width:10%;">Loading<br/>Station</th>
+                            <th style="width:10%;">Destination</th>
+                            <th style="width:6.5%;">Charge Wt.</th>
+                            <th style="width:5.5%;">Rate</th>
+                            <th style="width:5%;">Freight</th>
+                            <th style="width:6%;">Detention</th>
+                            <th style="width:5.5%;">Loading</th>
+                            <th style="width:5.5%;">Unload</th>
+                            <th style="width:5.5%;">Extra KM</th>
+                            <th style="width:5%;">Other<br/>Charg</th>
+                            <th style="width:6.5%;">Total Billed<br/>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody">
+                        <tr class="item-row">
+                            <td class="center cn-cell">5072</td>
+                            <td class="center">31.03.2026</td>
+                            <td class="center invoice-cell">TVPL/25-26/2378</td>
+                            <td class="center name-cell">TN52M1248</td>
+                            <td class="center name-cell">DAKAMARRI</td>
+                            <td class="center name-cell">TIRUNELVELI</td>
+                            <td class="center">12MT</td>
+                            <td class="center">4,200</td>
+                            <td class="amount">50,400</td>
+                            <td class="amount">1,000</td>
+                            <td class="amount">&nbsp;</td>
+                            <td class="amount">&nbsp;</td>
+                            <td class="amount">500</td>
+                            <td class="amount">&nbsp;</td>
+                            <td class="amount">51,900</td>
+                        </tr>
+                        <!-- blank + total rows injected by script -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="bill-footer">
+                <div class="words-row">
+                    <span style="color: #1d2f7a; font-weight: 700; margin-right: 4px;">Rupees In Words:-</span>
+                    <span style="color: #111; font-weight: 600;">Fifty One Thousand Nine Hundred Only</span>
+                </div>
+                <div class="notes-block">
+                    <div class="remark-title">Remarks :</div>
+                    Halting charges 1000 &amp; Extra km rs.500
+                </div>
+                <div class="footer-grid">
+                    <div class="bank-block">
+                        <div class="bank-details-sub">
+                            <div class="bank-title">Bank Details: Visakha Golden Transport</div>
+                            <div><span style="color: #1d2f7a; font-weight: 700;">A/C No:</span> 070205500602</div>
+                            <div><span style="color: #1d2f7a; font-weight: 700;">IFSC Code:</span> ICIC0000702</div>
+                            <div>ICICI Bank Vizianagaram</div>
+                        </div>
+                        <div class="bank-divider"></div>
+                        <div class="eway-sub">
+                            <div style="color: #1d2f7a; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">GST PAYABLE BY UNDER REVERSE CHARGE MECHANISM</div>
+                            <div style="margin-top: 2px;"><span style="color: #1d2f7a; font-weight: 800; font-size: 9.5px;">Ewaybill id:</span> <span style="font-weight: 800; font-size: 9.5px; color: #111;">37AAWFV7670H1Z8</span></div>
+                        </div>
+                    </div>
+                    <div class="signature-block">
+                        <div class="signature-inner">
+                            <div class="signature-company">For Visakha Golden Transport</div>
+                            <div class="signature-name">&nbsp;</div>
+                            <div class="signature-role">(Authorized Signatory)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const FOOTER_GAP_PX = 20;            // same intent as BILL_FOOTER_GAP_PX in lib/billPdf.ts
+const COLS = 15;
+
+const blankRowHtml = () =>
+    '<tr class="item-row blank-row">' + '<td>&nbsp;</td>'.repeat(COLS) + '</tr>';
+const totalRowHtml = () =>
+    '<tr class="total-row"><td colspan="14" class="total-label">TOTAL</td>' +
+    '<td class="amount" style="color:#111;font-weight:900;">51,900</td></tr>';
+
+const tbody = document.getElementById('tbody');
+const tableWrap = document.querySelector('.table-wrap');
+const table = document.querySelector('.items-table');
+const thead = document.querySelector('.items-table thead');
+const readout = document.getElementById('gap-readout');
+
+function render(fill) {
+    // Reset to just the single data row.
+    [...tbody.querySelectorAll('.blank-row, .total-row')].forEach((el) => el.remove());
+
+    if (fill) {
+        // Mirror the algorithm: fill so only ~FOOTER_GAP_PX remains under the table.
+        const oneBlank = document.createElement('tbody');
+        // measure a single blank + total by injecting temporarily
+        tbody.insertAdjacentHTML('beforeend', totalRowHtml());
+        const totalH = tbody.querySelector('.total-row').offsetHeight;
+        tbody.insertAdjacentHTML('beforeend', blankRowHtml());
+        const blankH = tbody.querySelector('.blank-row').offsetHeight || 24;
+        const dataH = tbody.querySelector('.item-row:not(.blank-row):not(.total-row)').offsetHeight;
+        // clean temp
+        [...tbody.querySelectorAll('.blank-row, .total-row')].forEach((el) => el.remove());
+
+        const wrapH = tableWrap.clientHeight;
+        const availTbody = wrapH - thead.offsetHeight - totalH - FOOTER_GAP_PX;
+        const count = Math.max(0, Math.floor((availTbody - dataH) / blankH));
+        tbody.insertAdjacentHTML('beforeend', blankRowHtml().repeat(count));
+    }
+    tbody.insertAdjacentHTML('beforeend', totalRowHtml());
+
+    requestAnimationFrame(() => {
+        const gap = Math.round(tableWrap.clientHeight - table.offsetHeight);
+        readout.textContent = 'leftover gap under table: ' + gap + 'px';
+    });
+}
+
+document.getElementById('toggle-debug').addEventListener('change', (e) => {
+    document.body.classList.toggle('debug', e.target.checked);
+});
+document.getElementById('toggle-fill').addEventListener('change', (e) => render(e.target.checked));
+window.addEventListener('resize', () => render(document.getElementById('toggle-fill').checked));
+
+render(true);
+</script>
+</body>
+</html>

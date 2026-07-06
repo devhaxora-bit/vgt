@@ -51,8 +51,8 @@ type BillPageSlice = {
 
 const BILL_TABLE_COLUMNS = 15;
 const PAGE_LAYOUT_BUFFER_PX = 16;
-/** Fixed vertical gap between the table TOTAL row and the Rupees In Words footer. */
-const BILL_TABLE_FOOTER_GAP_PX = 20;
+/** Fixed gap (px) left between the TOTAL row and the "Rupees In Words" footer. */
+const BILL_FOOTER_GAP_PX = 20;
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 
@@ -180,9 +180,11 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .bill-cell:last-child { border-right: none; }
 .bill-cell.center { text-align: center; justify-content: center; }
 .bill-cell.value { font-size: 13px; font-weight: 800; }
-.table-wrap { flex: 0 0 auto; overflow: visible; }
-.table-footer-gap { height: ${BILL_TABLE_FOOTER_GAP_PX}px; max-height: ${BILL_TABLE_FOOTER_GAP_PX}px; min-height: ${BILL_TABLE_FOOTER_GAP_PX}px; flex-shrink: 0; }
+.table-wrap { min-height: 0; flex: 1 1 auto; overflow: visible; display: flex; flex-direction: column; }
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-top: 1.2px solid #1d2f7a; }
+/* Stretch the table to fill the flex-grown wrapper so no empty gap is left
+   between the TOTAL row and the footer ("Rupees In Words"). */
+.table-wrap > .items-table { height: 100%; }
 .page--first .items-table { margin-top: 5px; }
 .page--continuation .items-table { margin-top: 0; border-top: none; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 3px 6px; font-size: 10.8px; vertical-align: middle; }
@@ -353,7 +355,6 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
             - layout.theadHeight
             - layout.footerHeight
             - totalRowHeight
-            - BILL_TABLE_FOOTER_GAP_PX
             - PAGE_LAYOUT_BUFFER_PX,
     );
 
@@ -377,19 +378,31 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
             - layout.theadHeight
             - layout.footerHeight
             - totalRowHeight
-            - BILL_TABLE_FOOTER_GAP_PX
             - PAGE_LAYOUT_BUFFER_PX,
     );
 
     const dataHeight = sumRowHeights(rowHeights);
     const singlePageContentHeight = dataHeight + totalRowHeight;
 
+    // Blank rows needed to fill the flex-grown table-wrap so that only
+    // BILL_FOOTER_GAP_PX is left between the TOTAL row and the footer.
+    const blankRowsToLeaveFooterGap = (tableWrapHeight: number, usedDataHeight: number) => {
+        const fillableTbodyHeight =
+            tableWrapHeight - layout.theadHeight - totalRowHeight - BILL_FOOTER_GAP_PX;
+        return Math.max(0, Math.floor((fillableTbodyHeight - usedDataHeight) / blankRowHeight));
+    };
+
+    const firstPageWrapHeight =
+        layout.sheetHeight - layout.headerHeight - layout.detailHeight - layout.footerHeight;
+    const contLastPageWrapHeight = layout.contSheetHeight - layout.footerHeight;
+
     if (singlePageContentHeight <= singlePageTbodyBudget) {
         return [{
             rows,
             isFirst: true,
             isLast: true,
-            blankCount: 0,
+            // Fill the table down to a fixed ~20px gap before "Rupees In Words".
+            blankCount: blankRowsToLeaveFooterGap(firstPageWrapHeight, dataHeight),
         }];
     }
 
@@ -402,11 +415,12 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
         const lastPageBudget = isFirst ? singlePageTbodyBudget : contLastPageTbodyBudget;
 
         if (remainingDataHeight + totalRowHeight <= lastPageBudget) {
+            const lastPageWrapHeight = isFirst ? firstPageWrapHeight : contLastPageWrapHeight;
             pages.push({
                 rows: rows.slice(rowIndex),
                 isFirst,
                 isLast: true,
-                blankCount: 0,
+                blankCount: blankRowsToLeaveFooterGap(lastPageWrapHeight, remainingDataHeight),
             });
             break;
         }
@@ -433,12 +447,15 @@ const measureBillPages = (doc: Document, rows: BillPrintableRow[]): BillPageSlic
         }
 
         const isLast = rowIndex >= rows.length;
+        const blankCount = isLast
+            ? blankRowsToLeaveFooterGap(isFirst ? firstPageWrapHeight : contLastPageWrapHeight, usedHeight)
+            : 0;
 
         pages.push({
             rows: pageRows,
             isFirst,
             isLast,
-            blankCount: 0,
+            blankCount,
         });
     }
 
@@ -468,7 +485,6 @@ const billPageHtml = (payload: BillPdfPayload, slice: BillPageSlice) => `
             <div class="table-wrap">
                 ${billTableHtml(slice, payload.displayTotal)}
             </div>
-            ${slice.isLast ? '<div class="table-footer-gap" aria-hidden="true"></div>' : ''}
             ${slice.isLast ? billFooterHtml(payload) : ''}
         </div>
     </div>
@@ -486,7 +502,6 @@ const measurementHtml = (payload: BillPdfPayload, rows: BillPrintableRow[]) => `
             <div class="table-wrap">
                 <table class="items-table">${billTableHeadHtml()}<tbody></tbody></table>
             </div>
-            <div class="table-footer-gap" aria-hidden="true"></div>
             ${billFooterHtml(payload)}
         </div>
     </div>
