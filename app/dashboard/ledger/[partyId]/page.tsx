@@ -1486,6 +1486,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 otherCharges: roundMoney(charges.other + charges.doorCollection + charges.doorDelivery),
                 totalAmount: roundMoney(charges.total),
                 billedOnBill: activeBill?.bill_ref_no || cancelledBill?.bill_ref_no || null,
+                billDateIso: (activeBill?.billing_date || cancelledBill?.billing_date || '').slice(0, 10) || undefined,
                 billStatus: activeBill ? 'BILLED' as const : cancelledBill ? 'CANCELLED' as const : 'UNBILLED' as const,
                 billAmount,
                 billPaidAmount,

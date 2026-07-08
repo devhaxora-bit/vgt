@@ -1,5 +1,10 @@
 import { formatBranchLabel as formatBranch } from '@/lib/formatBranchLabel';
-import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
+import {
+    loadPdfLogo,
+    PDF_HEADER_LOGO_IMG_CSS,
+    PDF_TABLE_HEADER_BG,
+    PDF_TABLE_HEADER_TEXT_COLOR,
+} from '@/lib/pdfLogo';
 
 export type LedgerParty = {
     name: string;
@@ -32,6 +37,8 @@ export type CnsRow = {
     /** Raw ISO date (YYYY-MM-DD) used for chronological sorting in the PDF. Optional
      *  for backwards-compat: payloads without it fall back to parsing `date`. */
     bkgDateIso?: string;
+    /** Raw ISO billing date for the linked bill — used to order bill groups oldest → newest. */
+    billDateIso?: string;
     invoiceNo: string;
     vehicleNo: string;
     route: string;
@@ -181,6 +188,8 @@ type SectionPage = {
 
 const CNS_TABLE_COLUMNS = 11;
 const PAGE_LAYOUT_BUFFER_PX = 22;
+/** Max blank rows before the TOTAL row on the last ledger PDF page. */
+const MAX_LAST_PAGE_BLANK_ROWS = 5;
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const fmt = (value: number) => fmtNum.format(value || 0);
@@ -191,6 +200,10 @@ const safe = (value: string | number | null | undefined) => String(value ?? '')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 const titleText = (value: string | null | undefined) => safe(String(value ?? '').trim() || '-');
+const upperTitleText = (value: string | null | undefined) => {
+    const normalized = String(value ?? '').trim();
+    return titleText(normalized ? normalized.toUpperCase() : '-');
+};
 
 const partyBranchLabel = (party: LedgerParty) =>
     formatBranch(party.branch_code, party.branch_name);
@@ -225,36 +238,57 @@ const sortRowsByDateAsc = (rows: CnsRow[]): CnsRow[] => {
         .map((entry) => entry.row);
 };
 
-/** Reorder rows so every CN sharing a bill_ref_no is adjacent.
- *  The PDF merges bill cells with rowspan, but rowspan can only span CONSECUTIVE rows;
- *  if a bill covers two CNs separated by another bill's row (e.g. CN5355 on 26/05 and
- *  CN5356 on 29/05 both billed under VZM/26-27/1875, but a different bill's CN sits
- *  between them by date), the bill amount cell would render twice and the column
- *  would double-count. Grouping keeps the relative date order across distinct bills:
- *    1. Walk rows in the incoming order (date-asc, so oldest → newest).
- *    2. Each unique bill_ref_no becomes a group at its first sighting.
- *    3. Subsequent CNs sharing that ref are appended to the same group rather than
- *       getting a new slot — they "pull down" into the existing group.
- *    4. Unbilled / ref-less rows are emitted individually in their original slot. */
-const groupRowsBySharedBill = (rows: CnsRow[]): CnsRow[] => {
-    const groups = new Map<string, CnsRow[]>();
-    const order: string[] = [];
+const billRowSortKey = (row: CnsRow): number => {
+    const iso = (row.billDateIso ?? '').trim();
+    if (iso) {
+        const t = new Date(iso).getTime();
+        if (!Number.isNaN(t)) return t;
+    }
+    return cnsRowSortKey(row);
+};
 
-    rows.forEach((row, index) => {
+/** Group CNs that share a bill, then order blocks oldest → newest.
+ *  Billed groups sort by billing date (fallback: earliest CN date in the group).
+ *  Unbilled CNs are individual blocks sorted by booking date.
+ *  Within each bill group, CNs are sorted by booking date ascending. */
+const sortLedgerPdfRows = (rows: CnsRow[]): CnsRow[] => {
+    const billGroups = new Map<string, CnsRow[]>();
+    const unbilledRows: CnsRow[] = [];
+
+    rows.forEach((row) => {
         const refKey = String(row.billedOnBill ?? '').trim();
         const isBilledWithRef = row.billStatus === 'BILLED' && refKey.length > 0;
-        const key = isBilledWithRef ? `bill:${refKey}` : `solo:${index}`;
 
-        const existing = groups.get(key);
+        if (!isBilledWithRef) {
+            unbilledRows.push(row);
+            return;
+        }
+
+        const existing = billGroups.get(refKey);
         if (existing) {
             existing.push(row);
             return;
         }
-        groups.set(key, [row]);
-        order.push(key);
+        billGroups.set(refKey, [row]);
     });
 
-    return order.flatMap((key) => groups.get(key) ?? []);
+    type LedgerBlock = { sortKey: number; rows: CnsRow[] };
+
+    const blocks: LedgerBlock[] = [
+        ...[...billGroups.entries()].map(([, groupRows]) => {
+            const sortedGroup = sortRowsByDateAsc(groupRows);
+            const sortKey = Math.min(...sortedGroup.map((row) => billRowSortKey(row)));
+            return { sortKey, rows: sortedGroup };
+        }),
+        ...sortRowsByDateAsc(unbilledRows).map((row) => ({
+            sortKey: cnsRowSortKey(row),
+            rows: [row],
+        })),
+    ];
+
+    return blocks
+        .sort((left, right) => left.sortKey - right.sortKey)
+        .flatMap((block) => block.rows);
 };
 
 /** PDF omits cancelled bills — those CNS rows appear as unbilled with no bill amounts. */
@@ -271,10 +305,8 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
         };
     });
 
-    // Sort chronologically (oldest → newest) first so the ledger reads from the
-    // start date to the end date when a period filter is applied, then group same-bill
-    // CNs together so rowspan merging works.
-    const cnsRows = groupRowsBySharedBill(sortRowsByDateAsc(normalizedRows));
+    // Oldest bills / CNs first, with same-bill CNs grouped for rowspan merging.
+    const cnsRows = sortLedgerPdfRows(normalizedRows);
 
     const billedRows = cnsRows.filter((row) => row.billStatus === 'BILLED');
     const unbilledRows = cnsRows.filter((row) => row.billStatus !== 'BILLED');
@@ -387,8 +419,8 @@ const cnsDataRowHtml = (row: CnsRow, billMeta: BillCellMeta) => `
         <td class="center">${titleText(row.date)}</td>
         <td class="center">${titleText(row.invoiceNo)}</td>
         <td class="center">${titleText(row.vehicleNo)}</td>
-        <td class="center">${titleText(row.loadingStation)}</td>
-        <td class="center">${titleText(row.destination)}</td>
+        <td class="center">${upperTitleText(row.loadingStation)}</td>
+        <td class="center">${upperTitleText(row.destination)}</td>
         <td class="amount">${fmt(row.totalAmount)}</td>
         ${billMeta.showMergedCells ? billStatusCell(row).replace('<td ', `<td rowspan="${billMeta.rowSpan}" `) : ''}
         ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billAmount)}</td>` : ''}
@@ -452,7 +484,10 @@ const measureLedgerPages = (
 
         const isLast = rowIndex >= rows.length;
         const remaining = budget - usedHeight - (isLast ? totalRowHeight : 0);
-        const blankCount = Math.max(0, Math.floor(remaining / blankRowHeight));
+        const rawBlankCount = Math.max(0, Math.floor(remaining / blankRowHeight));
+        const blankCount = isLast
+            ? Math.min(MAX_LAST_PAGE_BLANK_ROWS, rawBlankCount)
+            : rawBlankCount;
 
         pages.push({
             rows: pageRows,
@@ -635,7 +670,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-bottom: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 4px 4px 5px; vertical-align: middle; overflow: hidden; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { color: #ffffff; background: #17308b; text-align: center; font-size: 10.6px; font-weight: 800; line-height: 1.22; padding-top: 6px; padding-bottom: 7px; }
+.items-table thead th { color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; text-align: center; font-size: 10.6px; font-weight: 800; line-height: 1.22; padding-top: 6px; padding-bottom: 7px; }
 .items-table tbody td { min-height: 19px; height: 19px; color: #111; font-size: 9.8px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
 .items-table tbody td.status-cell { text-align: center; vertical-align: middle; font-size: 8.5px; font-weight: 800; color: #1d2f7a; background: rgba(29, 47, 122, 0.08); padding: 3px 4px; white-space: nowrap; }
 .items-table tbody td.status-cell.ok { color: #11653d; background: rgba(41, 171, 105, 0.14); }
