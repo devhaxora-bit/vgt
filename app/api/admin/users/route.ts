@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UserRepository } from '@/lib/repositories/UserRepository';
 import { createClient } from '@/utils/supabase/server';
+import { updateUserSchema } from '@/lib/schemas/user.schema';
 
 export async function GET(request: NextRequest) {
     try {
@@ -39,10 +40,23 @@ export async function PATCH(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { id, ...data } = body;
+        const { id, ...rawData } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+        }
+
+        const validation = updateUserSchema.safeParse(rawData);
+        if (!validation.success) {
+            return NextResponse.json(
+                { error: 'Validation failed', details: validation.error.issues },
+                { status: 400 },
+            );
+        }
+
+        const data = { ...validation.data };
+        if (data.branch_access === 'global') {
+            data.branch_code = null;
         }
 
         const updatedUser = await repo.update(id, data);

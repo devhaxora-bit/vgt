@@ -140,6 +140,7 @@ export default function DashboardNav() {
                         { title: 'CNS Query', href: '/dashboard/query/cns' },
                         { title: 'Challan Query', href: '/dashboard/query/challan' },
                         { title: 'Bill Query', href: '/dashboard/query/bill' },
+                        { title: 'Party Query', href: '/dashboard/query/party' },
                         { title: 'Truck Query', href: '/dashboard/query/truck' },
                     ]
                 }

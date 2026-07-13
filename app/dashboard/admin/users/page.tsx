@@ -39,6 +39,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { branchAccessLabel } from '@/lib/branchAccess';
+import type { BranchAccess } from '@/lib/types/user.types';
 
 type ApiUser = {
     id: string;
@@ -47,6 +49,8 @@ type ApiUser = {
     role: 'admin' | 'employee' | 'agent';
     department: string | null;
     phone: string | null;
+    branch_access?: BranchAccess | null;
+    branch_code?: string | null;
     is_active: boolean;
 };
 
@@ -58,10 +62,13 @@ type UiUser = {
     role: ApiUser['role'];
     department: string;
     phone: string;
+    branchAccess: BranchAccess;
+    branchCode: string | null;
     status: 'Active' | 'Inactive';
 };
 
 const branches = [
+    { code: 'VZM', name: 'Vizianagaram (Main)' },
     { code: 'MRG', name: 'Margao Hub' },
     { code: 'PNJ', name: 'Panjim Branch' },
     { code: 'VZG', name: 'Vasco Branch' },
@@ -69,13 +76,9 @@ const branches = [
     { code: 'HO', name: 'Head Office' },
 ];
 
-function getBranchNameFromEmployeeCode(employeeCode: string): string {
-    const branch = branches.find((b) => employeeCode.startsWith(`${b.code}-`) || employeeCode.startsWith(b.code));
-    return branch?.name || 'Unassigned';
-}
-
 function normalizeUser(user: ApiUser): UiUser {
     const emailLocalPart = user.employee_code ? user.employee_code.toLowerCase() : 'unknown';
+    const access = (user.branch_access || 'global') as BranchAccess;
     return {
         id: user.id,
         code: user.employee_code,
@@ -84,6 +87,8 @@ function normalizeUser(user: ApiUser): UiUser {
         role: user.role,
         department: user.department || '',
         phone: user.phone || '',
+        branchAccess: access,
+        branchCode: user.branch_code || null,
         status: user.is_active ? 'Active' : 'Inactive',
     };
 }
@@ -97,6 +102,7 @@ export default function UserManagementPage() {
     const [mode, setMode] = useState<'create' | 'edit'>('create');
     const [selectedBranch, setSelectedBranch] = useState('');
     const [selectedRole, setSelectedRole] = useState<'admin' | 'employee' | 'agent'>('employee');
+    const [selectedBranchAccess, setSelectedBranchAccess] = useState<BranchAccess>('global');
     const [generatedCode, setGeneratedCode] = useState('');
 
     const [editingUser, setEditingUser] = useState<UiUser | null>(null);
@@ -153,6 +159,7 @@ export default function UserManagementPage() {
     const resetForm = () => {
         setSelectedBranch('');
         setSelectedRole('employee');
+        setSelectedBranchAccess('global');
         setGeneratedCode('');
         setEditingUser(null);
         setEditName('');
@@ -164,9 +171,12 @@ export default function UserManagementPage() {
     const openEditModel = (user: UiUser) => {
         setMode('edit');
         setEditingUser(user);
-        const branchMatch = branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code || 'HO';
+        const branchMatch = user.branchCode
+            || branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code
+            || 'VZM';
         setSelectedBranch(branchMatch);
         setSelectedRole(user.role);
+        setSelectedBranchAccess(user.branchAccess || 'global');
         setGeneratedCode(user.code);
         setEditName(user.name);
         setEditDepartment(user.department);
@@ -184,6 +194,10 @@ export default function UserManagementPage() {
                     full_name: editName.trim(),
                     department: editDepartment || null,
                     phone: editPhone.trim() || null,
+                    branch_access: selectedBranchAccess,
+                    branch_code: selectedBranchAccess === 'global'
+                        ? null
+                        : (selectedBranch || null),
                 };
 
                 const res = await fetch('/api/admin/users', {
@@ -245,13 +259,35 @@ export default function UserManagementPage() {
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>Branch Access</Label>
+                                    <Select
+                                        value={selectedBranchAccess}
+                                        onValueChange={(value) => setSelectedBranchAccess(value as BranchAccess)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select access" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="global">Global (all branches)</SelectItem>
+                                            <SelectItem value="main">Main Branch (same rights as Global)</SelectItem>
+                                            <SelectItem value="branch">Branch Only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Global and Main Branch accounts can see every branch. Branch Only is limited to one branch.
+                                    </p>
+                                </div>
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="branch">Branch</Label>
+                                        <Label htmlFor="branch">
+                                            {selectedBranchAccess === 'branch' ? 'Assigned Branch *' : 'Home Branch'}
+                                        </Label>
                                         <Select
                                             onValueChange={handleBranchChange}
                                             value={selectedBranch}
-                                            disabled={mode === 'edit'}
+                                            disabled={mode === 'edit' && selectedBranchAccess === 'global'}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select Branch" />
@@ -398,7 +434,7 @@ export default function UserManagementPage() {
                         <TableRow className="bg-slate-50 hover:bg-slate-50">
                             <TableHead className="w-[120px]">Code</TableHead>
                             <TableHead>User Details</TableHead>
-                            <TableHead>Branch</TableHead>
+                            <TableHead>Branch Access</TableHead>
                             <TableHead>Role</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
@@ -432,9 +468,18 @@ export default function UserManagementPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <div className="flex items-center gap-1.5">
-                                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                            <span className="text-sm">{getBranchNameFromEmployeeCode(user.code)}</span>
+                                        <div className="flex flex-col gap-0.5">
+                                            <div className="flex items-center gap-1.5">
+                                                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <span className="text-sm font-medium">{branchAccessLabel(user.branchAccess)}</span>
+                                            </div>
+                                            <span className="text-[11px] text-muted-foreground pl-5">
+                                                {user.branchAccess === 'global'
+                                                    ? 'All branches'
+                                                    : user.branchAccess === 'main'
+                                                        ? 'Same rights as Global'
+                                                        : (branches.find((b) => b.code === user.branchCode)?.name || user.branchCode || 'Unassigned')}
+                                            </span>
                                         </div>
                                     </TableCell>
                                     <TableCell>
