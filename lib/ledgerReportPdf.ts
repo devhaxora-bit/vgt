@@ -374,10 +374,15 @@ const cnsTableHeadHtml = () => `
 type BillCellMeta = {
     showMergedCells: boolean;
     rowSpan: number;
+    /** When a bill group continues from a prior PDF page, keep column layout but hide values. */
+    hideValues: boolean;
 };
 
-const computeBillCellMeta = (rows: CnsRow[]): BillCellMeta[] => {
-    const meta: BillCellMeta[] = rows.map(() => ({ showMergedCells: true, rowSpan: 1 }));
+const computeBillCellMeta = (
+    rows: CnsRow[],
+    options?: { suppressBillRefs?: Set<string> },
+): BillCellMeta[] => {
+    const meta: BillCellMeta[] = rows.map(() => ({ showMergedCells: true, rowSpan: 1, hideValues: false }));
     let index = 0;
 
     while (index < rows.length) {
@@ -402,15 +407,36 @@ const computeBillCellMeta = (rows: CnsRow[]): BillCellMeta[] => {
         }
 
         const span = end - index;
-        meta[index] = { showMergedCells: true, rowSpan: span };
+        const hideValues = options?.suppressBillRefs?.has(billNo) ?? false;
+        meta[index] = { showMergedCells: true, rowSpan: span, hideValues };
         for (let follow = index + 1; follow < end; follow += 1) {
-            meta[follow] = { showMergedCells: false, rowSpan: 0 };
+            meta[follow] = { showMergedCells: false, rowSpan: 0, hideValues: false };
         }
 
         index = end;
     }
 
     return meta;
+};
+
+const billMergedCellsHtml = (row: CnsRow, billMeta: BillCellMeta) => {
+    if (!billMeta.showMergedCells) return '';
+
+    if (billMeta.hideValues) {
+        return `
+            <td rowspan="${billMeta.rowSpan}" class="status-cell">&nbsp;</td>
+            <td rowspan="${billMeta.rowSpan}" class="amount">&nbsp;</td>
+            <td rowspan="${billMeta.rowSpan}" class="amount">&nbsp;</td>
+            <td rowspan="${billMeta.rowSpan}" class="amount">&nbsp;</td>
+        `;
+    }
+
+    return `
+        ${billStatusCell(row).replace('<td ', `<td rowspan="${billMeta.rowSpan}" `)}
+        <td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billAmount)}</td>
+        <td rowspan="${billMeta.rowSpan}" class="amount" style="color:#11653d;">${fmt(row.billPaidAmount)}</td>
+        <td rowspan="${billMeta.rowSpan}" class="amount" style="color:#a32727;">${fmt(row.billBalance)}</td>
+    `;
 };
 
 const cnsDataRowHtml = (row: CnsRow, billMeta: BillCellMeta) => `
@@ -422,10 +448,7 @@ const cnsDataRowHtml = (row: CnsRow, billMeta: BillCellMeta) => `
         <td class="center">${upperTitleText(row.loadingStation)}</td>
         <td class="center">${upperTitleText(row.destination)}</td>
         <td class="amount">${fmt(row.totalAmount)}</td>
-        ${billMeta.showMergedCells ? billStatusCell(row).replace('<td ', `<td rowspan="${billMeta.rowSpan}" `) : ''}
-        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount">${fmt(row.billAmount)}</td>` : ''}
-        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount" style="color:#11653d;">${fmt(row.billPaidAmount)}</td>` : ''}
-        ${billMeta.showMergedCells ? `<td rowspan="${billMeta.rowSpan}" class="amount" style="color:#a32727;">${fmt(row.billBalance)}</td>` : ''}
+        ${billMergedCellsHtml(row, billMeta)}
     </tr>
 `;
 
@@ -506,9 +529,10 @@ const cnsTable = (
     rows: CnsRow[],
     isLast: boolean,
     blankCount: number,
+    suppressBillRefs?: Set<string>,
 ) => {
     const allRows = payload.cnsRows;
-    const billMeta = computeBillCellMeta(rows);
+    const billMeta = computeBillCellMeta(rows, { suppressBillRefs });
     // Derive totals from cnsRows so the TOTAL row is always the literal sum of the
     // CNS Amount / Bill Amt cells above. Each bill is counted once (dedup by
     // bill_ref_no) because the cell is rendered once via rowspan for multi-CN bills.
@@ -541,8 +565,11 @@ const cnsTable = (
     `;
 };
 
-const sectionTable = (payload: PartyLedgerReportPayload, page: SectionPage) =>
-    cnsTable(payload, page.rows, page.isLast, page.blankCount);
+const sectionTable = (
+    payload: PartyLedgerReportPayload,
+    page: SectionPage,
+    suppressBillRefs?: Set<string>,
+) => cnsTable(payload, page.rows, page.isLast, page.blankCount, suppressBillRefs);
 
 const summaryTiles = (summary: LedgerSummary) => `
     <div class="summary-grid">
@@ -594,13 +621,14 @@ const pageHtml = (
     logoUrl: string,
     pageIndex: number,
     pageCount: number,
+    suppressBillRefs?: Set<string>,
 ) => {
     const isCoverPage = pageIndex === 0;
     return `
     <div class="page${isCoverPage ? ' page--cover' : ' page--continuation'}">
         <div class="sheet">
             ${isCoverPage ? `<div class="cover-block">${reportCoverHtml(payload, logoUrl)}</div>` : ''}
-            <div class="section-wrap${isCoverPage ? ' section-wrap--cover' : ' section-wrap--cont'}">${sectionTable(payload, page)}</div>
+            <div class="section-wrap${isCoverPage ? ' section-wrap--cover' : ' section-wrap--cont'}">${sectionTable(payload, page, suppressBillRefs)}</div>
             <div class="footer-row">
                 <span class="footer-party">${titleText(payload.party.name)} · ${titleText(partyBranchLabel(payload.party))}</span>
                 <span class="footer-page">Page ${pageIndex + 1} of ${pageCount}</span>
@@ -747,7 +775,25 @@ const measurementHtml = (
 </html>`;
 };
 
-const htmlDocument = (payload: PartyLedgerReportPayload, pages: SectionPage[], logoUrl: string) => `<!DOCTYPE html>
+const collectShownBillRefs = (rows: CnsRow[]) => {
+    const refs = new Set<string>();
+    rows.forEach((row) => {
+        const billNo = String(row.billedOnBill ?? '').trim();
+        if (row.billStatus === 'BILLED' && billNo) refs.add(billNo);
+    });
+    return refs;
+};
+
+const htmlDocument = (payload: PartyLedgerReportPayload, pages: SectionPage[], logoUrl: string) => {
+    const shownBillRefs = new Set<string>();
+    const pagesHtml = pages.map((page, index) => {
+        const suppressBillRefs = new Set(shownBillRefs);
+        const html = pageHtml(payload, page, logoUrl, index, pages.length, suppressBillRefs);
+        collectShownBillRefs(page.rows).forEach((ref) => shownBillRefs.add(ref));
+        return html;
+    }).join('');
+
+    return `<!DOCTYPE html>
 <html>
 <head>
 <title>${titleText(payload.party.code)} Party Ledger</title>
@@ -756,9 +802,10 @@ ${reportStyles()}
 </style>
 </head>
 <body>
-${pages.map((page, index) => pageHtml(payload, page, logoUrl, index, pages.length)).join('')}
+${pagesHtml}
 </body>
 </html>`;
+};
 
 export const downloadPartyLedgerReportPdf = async (
     payload: PartyLedgerReportPayload,

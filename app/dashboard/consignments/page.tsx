@@ -122,7 +122,7 @@ export default function ConsignmentsPage() {
     const [error, setError] = useState<string | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
     const [sortField, setSortField] = useState<ConsignmentSortField>('cn_no');
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [kpiFilter, setKpiFilter] = useState<KpiFilter>('none');
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -372,7 +372,7 @@ export default function ConsignmentsPage() {
     }, [searchTerm, appliedFilters, consignments]);
 
     const groupedList = useMemo(() => {
-        const sortedBase = [...filteredList].sort((a, b) => compareCnNo(a.cn_no || '', b.cn_no || ''));
+        const sortedBase = [...filteredList].sort((a, b) => compareCnNo(b.cn_no || '', a.cn_no || ''));
         const processed = new Set<string>();
         const grouped: ConsignmentRow[] = [];
 
