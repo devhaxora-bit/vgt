@@ -72,7 +72,7 @@ export default function ChallanListPage() {
     const [isCnDetailsOpen, setIsCnDetailsOpen] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [sortField, setSortField] = useState<'challan_no' | 'date_from' | 'vehicle_no' | 'total_hire_amount'>('challan_no');
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
     const fetchChallans = useCallback(async () => {
         setLoading(true);
