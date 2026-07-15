@@ -67,14 +67,11 @@ type UiUser = {
     status: 'Active' | 'Inactive';
 };
 
-const branches = [
-    { code: 'VZM', name: 'Vizianagaram (Main)' },
-    { code: 'MRG', name: 'Margao Hub' },
-    { code: 'PNJ', name: 'Panjim Branch' },
-    { code: 'VZG', name: 'Vasco Branch' },
-    { code: 'MAP', name: 'Mapusa Hub' },
-    { code: 'HO', name: 'Head Office' },
-];
+type BranchOption = {
+    code: string;
+    name: string;
+    is_head_branch?: boolean;
+};
 
 function normalizeUser(user: ApiUser): UiUser {
     const emailLocalPart = user.employee_code ? user.employee_code.toLowerCase() : 'unknown';
@@ -95,6 +92,7 @@ function normalizeUser(user: ApiUser): UiUser {
 
 export default function UserManagementPage() {
     const [users, setUsers] = useState<UiUser[]>([]);
+    const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
@@ -109,6 +107,8 @@ export default function UserManagementPage() {
     const [editName, setEditName] = useState('');
     const [editDepartment, setEditDepartment] = useState('');
     const [editPhone, setEditPhone] = useState('');
+
+    const headBranchCode = branches.find((b) => b.is_head_branch)?.code || branches[0]?.code || '';
 
     const fetchUsers = async () => {
         setIsLoading(true);
@@ -127,8 +127,34 @@ export default function UserManagementPage() {
         }
     };
 
+    const fetchBranches = async () => {
+        try {
+            const res = await fetch('/api/references/branches');
+            if (!res.ok) throw new Error('Failed to fetch branches');
+            const data = await res.json();
+            const options: BranchOption[] = (Array.isArray(data) ? data : [])
+                .filter((branch: { code?: string; name?: string; is_active?: boolean }) => Boolean(branch.code))
+                .map((branch: { code: string; name?: string; is_head_branch?: boolean }) => ({
+                    code: String(branch.code).trim().toUpperCase(),
+                    name: String(branch.name || branch.code).trim(),
+                    is_head_branch: Boolean(branch.is_head_branch),
+                }))
+                .sort((a: BranchOption, b: BranchOption) => {
+                    if (a.is_head_branch && !b.is_head_branch) return -1;
+                    if (!a.is_head_branch && b.is_head_branch) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            setBranches(options);
+        } catch (error) {
+            console.error('Failed to fetch branches:', error);
+            toast.error('Failed to load branches');
+            setBranches([]);
+        }
+    };
+
     useEffect(() => {
-        fetchUsers();
+        void fetchUsers();
+        void fetchBranches();
     }, []);
 
     const filteredUsers = users.filter((user) =>
@@ -173,7 +199,8 @@ export default function UserManagementPage() {
         setEditingUser(user);
         const branchMatch = user.branchCode
             || branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code
-            || 'VZM';
+            || headBranchCode
+            || '';
         setSelectedBranch(branchMatch);
         setSelectedRole(user.role);
         setSelectedBranchAccess(user.branchAccess || 'global');
@@ -293,11 +320,17 @@ export default function UserManagementPage() {
                                                 <SelectValue placeholder="Select Branch" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {branches.map((b) => (
-                                                    <SelectItem key={b.code} value={b.code}>
-                                                        {b.name} ({b.code})
+                                                {branches.length === 0 ? (
+                                                    <SelectItem value="__none" disabled>
+                                                        No active branches found
                                                     </SelectItem>
-                                                ))}
+                                                ) : (
+                                                    branches.map((b) => (
+                                                        <SelectItem key={b.code} value={b.code}>
+                                                            {b.name} ({b.code}){b.is_head_branch ? ' · Main' : ''}
+                                                        </SelectItem>
+                                                    ))
+                                                )}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -478,7 +511,9 @@ export default function UserManagementPage() {
                                                     ? 'All branches'
                                                     : user.branchAccess === 'main'
                                                         ? 'Same rights as Global'
-                                                        : (branches.find((b) => b.code === user.branchCode)?.name || user.branchCode || 'Unassigned')}
+                                                        : (branches.find((b) => b.code === user.branchCode)?.name
+                                                            || user.branchCode
+                                                            || 'Unassigned')}
                                             </span>
                                         </div>
                                     </TableCell>
