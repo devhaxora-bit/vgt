@@ -2,6 +2,14 @@
 export const USER_ROLES = ['admin', 'employee', 'agent'] as const;
 export type UserRole = typeof USER_ROLES[number];
 
+/** Branch visibility scope for an account.
+ *  - global: all branches
+ *  - main: head/main branch account (same rights as global)
+ *  - branch: limited to branch_code only
+ */
+export const BRANCH_ACCESS_LEVELS = ['global', 'main', 'branch'] as const;
+export type BranchAccess = typeof BRANCH_ACCESS_LEVELS[number];
+
 // User entity
 export interface User {
     id: string;
@@ -10,6 +18,8 @@ export interface User {
     role: UserRole;
     department: string | null;
     phone: string | null;
+    branch_access: BranchAccess;
+    branch_code: string | null;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
@@ -45,6 +55,8 @@ export interface CreateUserInput {
     role: UserRole;
     department?: string;
     phone?: string;
+    branch_access?: BranchAccess;
+    branch_code?: string | null;
 }
 
 // Update user input
@@ -53,6 +65,8 @@ export interface UpdateUserInput {
     department?: string;
     phone?: string;
     is_active?: boolean;
+    branch_access?: BranchAccess;
+    branch_code?: string | null;
 }
 
 // Login input

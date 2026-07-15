@@ -39,6 +39,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { branchAccessLabel } from '@/lib/branchAccess';
+import type { BranchAccess } from '@/lib/types/user.types';
 
 type ApiUser = {
     id: string;
@@ -47,6 +49,8 @@ type ApiUser = {
     role: 'admin' | 'employee' | 'agent';
     department: string | null;
     phone: string | null;
+    branch_access?: BranchAccess | null;
+    branch_code?: string | null;
     is_active: boolean;
 };
 
@@ -58,24 +62,20 @@ type UiUser = {
     role: ApiUser['role'];
     department: string;
     phone: string;
+    branchAccess: BranchAccess;
+    branchCode: string | null;
     status: 'Active' | 'Inactive';
 };
 
-const branches = [
-    { code: 'MRG', name: 'Margao Hub' },
-    { code: 'PNJ', name: 'Panjim Branch' },
-    { code: 'VZG', name: 'Vasco Branch' },
-    { code: 'MAP', name: 'Mapusa Hub' },
-    { code: 'HO', name: 'Head Office' },
-];
-
-function getBranchNameFromEmployeeCode(employeeCode: string): string {
-    const branch = branches.find((b) => employeeCode.startsWith(`${b.code}-`) || employeeCode.startsWith(b.code));
-    return branch?.name || 'Unassigned';
-}
+type BranchOption = {
+    code: string;
+    name: string;
+    is_head_branch?: boolean;
+};
 
 function normalizeUser(user: ApiUser): UiUser {
     const emailLocalPart = user.employee_code ? user.employee_code.toLowerCase() : 'unknown';
+    const access = (user.branch_access || 'global') as BranchAccess;
     return {
         id: user.id,
         code: user.employee_code,
@@ -84,12 +84,15 @@ function normalizeUser(user: ApiUser): UiUser {
         role: user.role,
         department: user.department || '',
         phone: user.phone || '',
+        branchAccess: access,
+        branchCode: user.branch_code || null,
         status: user.is_active ? 'Active' : 'Inactive',
     };
 }
 
 export default function UserManagementPage() {
     const [users, setUsers] = useState<UiUser[]>([]);
+    const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
@@ -97,12 +100,15 @@ export default function UserManagementPage() {
     const [mode, setMode] = useState<'create' | 'edit'>('create');
     const [selectedBranch, setSelectedBranch] = useState('');
     const [selectedRole, setSelectedRole] = useState<'admin' | 'employee' | 'agent'>('employee');
+    const [selectedBranchAccess, setSelectedBranchAccess] = useState<BranchAccess>('global');
     const [generatedCode, setGeneratedCode] = useState('');
 
     const [editingUser, setEditingUser] = useState<UiUser | null>(null);
     const [editName, setEditName] = useState('');
     const [editDepartment, setEditDepartment] = useState('');
     const [editPhone, setEditPhone] = useState('');
+
+    const headBranchCode = branches.find((b) => b.is_head_branch)?.code || branches[0]?.code || '';
 
     const fetchUsers = async () => {
         setIsLoading(true);
@@ -121,8 +127,34 @@ export default function UserManagementPage() {
         }
     };
 
+    const fetchBranches = async () => {
+        try {
+            const res = await fetch('/api/references/branches');
+            if (!res.ok) throw new Error('Failed to fetch branches');
+            const data = await res.json();
+            const options: BranchOption[] = (Array.isArray(data) ? data : [])
+                .filter((branch: { code?: string; name?: string; is_active?: boolean }) => Boolean(branch.code))
+                .map((branch: { code: string; name?: string; is_head_branch?: boolean }) => ({
+                    code: String(branch.code).trim().toUpperCase(),
+                    name: String(branch.name || branch.code).trim(),
+                    is_head_branch: Boolean(branch.is_head_branch),
+                }))
+                .sort((a: BranchOption, b: BranchOption) => {
+                    if (a.is_head_branch && !b.is_head_branch) return -1;
+                    if (!a.is_head_branch && b.is_head_branch) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            setBranches(options);
+        } catch (error) {
+            console.error('Failed to fetch branches:', error);
+            toast.error('Failed to load branches');
+            setBranches([]);
+        }
+    };
+
     useEffect(() => {
-        fetchUsers();
+        void fetchUsers();
+        void fetchBranches();
     }, []);
 
     const filteredUsers = users.filter((user) =>
@@ -153,6 +185,7 @@ export default function UserManagementPage() {
     const resetForm = () => {
         setSelectedBranch('');
         setSelectedRole('employee');
+        setSelectedBranchAccess('global');
         setGeneratedCode('');
         setEditingUser(null);
         setEditName('');
@@ -164,9 +197,13 @@ export default function UserManagementPage() {
     const openEditModel = (user: UiUser) => {
         setMode('edit');
         setEditingUser(user);
-        const branchMatch = branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code || 'HO';
+        const branchMatch = user.branchCode
+            || branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code
+            || headBranchCode
+            || '';
         setSelectedBranch(branchMatch);
         setSelectedRole(user.role);
+        setSelectedBranchAccess(user.branchAccess || 'global');
         setGeneratedCode(user.code);
         setEditName(user.name);
         setEditDepartment(user.department);
@@ -184,6 +221,10 @@ export default function UserManagementPage() {
                     full_name: editName.trim(),
                     department: editDepartment || null,
                     phone: editPhone.trim() || null,
+                    branch_access: selectedBranchAccess,
+                    branch_code: selectedBranchAccess === 'global'
+                        ? null
+                        : (selectedBranch || null),
                 };
 
                 const res = await fetch('/api/admin/users', {
@@ -245,23 +286,51 @@ export default function UserManagementPage() {
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>Branch Access</Label>
+                                    <Select
+                                        value={selectedBranchAccess}
+                                        onValueChange={(value) => setSelectedBranchAccess(value as BranchAccess)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select access" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="global">Global (all branches)</SelectItem>
+                                            <SelectItem value="main">Main Branch (same rights as Global)</SelectItem>
+                                            <SelectItem value="branch">Branch Only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Global and Main Branch accounts can see every branch. Branch Only is limited to one branch.
+                                    </p>
+                                </div>
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="branch">Branch</Label>
+                                        <Label htmlFor="branch">
+                                            {selectedBranchAccess === 'branch' ? 'Assigned Branch *' : 'Home Branch'}
+                                        </Label>
                                         <Select
                                             onValueChange={handleBranchChange}
                                             value={selectedBranch}
-                                            disabled={mode === 'edit'}
+                                            disabled={mode === 'edit' && selectedBranchAccess === 'global'}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select Branch" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {branches.map((b) => (
-                                                    <SelectItem key={b.code} value={b.code}>
-                                                        {b.name} ({b.code})
+                                                {branches.length === 0 ? (
+                                                    <SelectItem value="__none" disabled>
+                                                        No active branches found
                                                     </SelectItem>
-                                                ))}
+                                                ) : (
+                                                    branches.map((b) => (
+                                                        <SelectItem key={b.code} value={b.code}>
+                                                            {b.name} ({b.code}){b.is_head_branch ? ' · Main' : ''}
+                                                        </SelectItem>
+                                                    ))
+                                                )}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -398,7 +467,7 @@ export default function UserManagementPage() {
                         <TableRow className="bg-slate-50 hover:bg-slate-50">
                             <TableHead className="w-[120px]">Code</TableHead>
                             <TableHead>User Details</TableHead>
-                            <TableHead>Branch</TableHead>
+                            <TableHead>Branch Access</TableHead>
                             <TableHead>Role</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
@@ -432,9 +501,20 @@ export default function UserManagementPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <div className="flex items-center gap-1.5">
-                                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                            <span className="text-sm">{getBranchNameFromEmployeeCode(user.code)}</span>
+                                        <div className="flex flex-col gap-0.5">
+                                            <div className="flex items-center gap-1.5">
+                                                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <span className="text-sm font-medium">{branchAccessLabel(user.branchAccess)}</span>
+                                            </div>
+                                            <span className="text-[11px] text-muted-foreground pl-5">
+                                                {user.branchAccess === 'global'
+                                                    ? 'All branches'
+                                                    : user.branchAccess === 'main'
+                                                        ? 'Same rights as Global'
+                                                        : (branches.find((b) => b.code === user.branchCode)?.name
+                                                            || user.branchCode
+                                                            || 'Unassigned')}
+                                            </span>
                                         </div>
                                     </TableCell>
                                     <TableCell>

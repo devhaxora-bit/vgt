@@ -110,6 +110,12 @@ export class UserRepository implements IUserRepository {
                 role: data.role,
                 department: data.department || null,
                 phone: data.phone || null,
+                branch_access: data.branch_access || 'global',
+                branch_code: data.branch_access === 'branch'
+                    ? (data.branch_code || null)
+                    : data.branch_access === 'main'
+                        ? (data.branch_code || null)
+                        : null,
                 created_by: createdBy,
             })
             .select()

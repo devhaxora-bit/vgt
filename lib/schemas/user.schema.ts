@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { USER_ROLES } from '../types/user.types';
+import { USER_ROLES, BRANCH_ACCESS_LEVELS } from '../types/user.types';
 
 // User role schema
 export const userRoleSchema = z.enum(USER_ROLES);
+export const branchAccessSchema = z.enum(BRANCH_ACCESS_LEVELS);
 
 // Create user schema
 export const createUserSchema = z.object({
@@ -27,6 +28,16 @@ export const createUserSchema = z.object({
     phone: z.string()
         .regex(/^\+?[0-9]{10,15}$/, 'Invalid phone number')
         .optional(),
+    branch_access: branchAccessSchema.optional().default('global'),
+    branch_code: z.string().max(10).nullable().optional(),
+}).superRefine((value, ctx) => {
+    if (value.branch_access === 'branch' && !String(value.branch_code || '').trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['branch_code'],
+            message: 'Branch code is required for branch-only access',
+        });
+    }
 });
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -42,6 +53,16 @@ export const updateUserSchema = z.object({
         .regex(/^\+?[0-9]{10,15}$/, 'Invalid phone number')
         .optional(),
     is_active: z.boolean().optional(),
+    branch_access: branchAccessSchema.optional(),
+    branch_code: z.string().max(10).nullable().optional(),
+}).superRefine((value, ctx) => {
+    if (value.branch_access === 'branch' && value.branch_code !== undefined && !String(value.branch_code || '').trim()) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['branch_code'],
+            message: 'Branch code is required for branch-only access',
+        });
+    }
 });
 
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

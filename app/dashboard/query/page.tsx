@@ -1,6 +1,6 @@
 import * as React from 'react';
 import Link from 'next/link';
-import { FileText, ClipboardList, ReceiptText, Truck, ArrowRight, Search } from 'lucide-react';
+import { FileText, ClipboardList, ReceiptText, Truck, Building2, ArrowRight, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QueryTile {
@@ -36,6 +36,14 @@ const tiles: QueryTile[] = [
         example: 'e.g. VGT/25-26/120',
         icon: <ReceiptText className="h-6 w-6" />,
         accent: 'bg-emerald-500/10 text-emerald-600',
+    },
+    {
+        href: '/dashboard/query/party',
+        title: 'Party Query',
+        description: 'Search by party name to see bills, payments, outstanding dues, consignments and related challans.',
+        example: 'e.g. Saburi / Tirupati',
+        icon: <Building2 className="h-6 w-6" />,
+        accent: 'bg-sky-500/10 text-sky-600',
     },
     {
         href: '/dashboard/query/truck',

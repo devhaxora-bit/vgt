@@ -1,6 +1,6 @@
 /** Shared types for the Query / Lookup module. */
 
-export type QueryEntity = 'cns' | 'challan' | 'bill' | 'truck';
+export type QueryEntity = 'cns' | 'challan' | 'bill' | 'truck' | 'party';
 
 /** A consignment row as returned by the search/detail consignment APIs. */
 export interface QueryConsignment {
@@ -163,4 +163,63 @@ export interface QueryTruckDetail {
         total_freight: number;
         total_hire: number;
     };
+}
+
+/** Party search suggestion row. */
+export interface QueryPartySummaryRow {
+    id: string;
+    name: string;
+    code: string | null;
+    gstin: string | null;
+    phone: string | null;
+    branch_code: string | null;
+    branch_name: string | null;
+    outstanding: number;
+    total_billed: number;
+    total_paid: number;
+}
+
+export interface QueryPartyBillRow {
+    id: string;
+    bill_ref_no: string | null;
+    billing_date: string | null;
+    amount: number;
+    paid_amount: number;
+    balance_amount: number;
+    status: string;
+    covered_count: number;
+}
+
+export interface QueryPartyPaymentRow {
+    id: string;
+    receipt_date: string | null;
+    amount: number;
+    payment_mode: string | null;
+    reference_no: string | null;
+    status: string;
+    linked_bills: string;
+}
+
+export interface QueryPartyChallanRow {
+    id: string;
+    challan_no: string;
+    date_from: string | null;
+    vehicle_no: string | null;
+    broker_name: string | null;
+    total_hire_amount: number;
+    linked_cn_count: number;
+}
+
+export interface QueryPartyDetail {
+    party: QueryBillParty & { branch_name?: string | null };
+    summary: QueryPartySummary & {
+        total_cns_amount: number;
+        total_cns_count: number;
+        total_bills_count: number;
+        overbilled_amount: number;
+    };
+    bills: QueryPartyBillRow[];
+    payments: QueryPartyPaymentRow[];
+    consignments: QueryConsignment[];
+    challans: QueryPartyChallanRow[];
 }
