@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from "next/server";
 import { resolveBillingPartyId } from '@/lib/server/resolveBillingParty';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 type ManagedCnRange = {
     id: string;
@@ -83,17 +84,23 @@ const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClie
 };
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
+    const listBranch = auth.resolveListBranch(searchParams.get('branch'));
 
-    let query = supabase
+    let query = auth.supabase
         .from("consignments")
         .select("*")
         .order("cn_no", { ascending: false });
+
+    if (listBranch) {
+        query = query.eq('booking_branch', listBranch);
+    }
 
     if (search) {
         query = query.or(`cn_no.ilike.%${search}%,dest_branch.ilike.%${search}%`);
@@ -116,18 +123,24 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    // Get authenticated user
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const supabase = auth.supabase;
+    const user = { id: auth.user.id };
 
     const body = await request.json();
+
+    const bookingBranch = String(body.booking_branch || '').trim().toUpperCase();
+    if (auth.isBranchScoped) {
+        if (!auth.canAccessBranch(bookingBranch || auth.branchCode)) {
+            return NextResponse.json(
+                { error: 'Forbidden: You can only create CNs for your branch' },
+                { status: 403 },
+            );
+        }
+        body.booking_branch = auth.branchCode;
+    }
 
     const insertData: Record<string, unknown> = {
         cn_no: body.cn_no,

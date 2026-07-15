@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 type SummaryConsignment = {
     total_freight: number | string | null;
@@ -23,10 +24,10 @@ export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ partyId: string }> }
 ) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { partyId } = await params;
     const { searchParams } = new URL(request.url);
@@ -44,6 +45,9 @@ export async function GET(
     if (partyError || !party) {
         return NextResponse.json({ error: 'Party not found' }, { status: 404 });
     }
+
+    const forbidden = auth.forbidIfForeignBranch(party.branch_code);
+    if (forbidden) return forbidden;
 
     let branch_name: string | null = null;
     if (party.branch_code) {

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-    Plus, Search, Edit, Trash2, Phone, MapPin, Hash, Loader2, RefreshCw
+    Plus, Search, Edit, Trash2, Phone, MapPin, Hash, Loader2, RefreshCw, Building2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +16,12 @@ import {
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 interface Broker {
     id: string;
@@ -25,13 +29,22 @@ interface Broker {
     name: string;
     mobile?: string;
     address?: string;
+    branch_code: string;
     is_active: boolean;
 }
 
-const emptyForm = { code: '', name: '', mobile: '', address: '' };
+type BranchOption = {
+    code: string;
+    name: string;
+    is_head_branch?: boolean;
+};
+
+const emptyForm = { code: '', name: '', mobile: '', address: '', branch_code: '' };
 
 export default function BrokersAdminPage() {
+    const userScope = useCurrentUserScope();
     const [brokers, setBrokers] = useState<Broker[]>([]);
+    const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -39,12 +52,39 @@ export default function BrokersAdminPage() {
     const [form, setForm] = useState(emptyForm);
     const [isSaving, setIsSaving] = useState(false);
 
+    const headBranchCode = branches.find((b) => b.is_head_branch)?.code || branches[0]?.code || '';
+    const defaultBranchCode = userScope.branchCode || headBranchCode;
+
+    const fetchBranches = async () => {
+        try {
+            const res = await fetch('/api/references/branches');
+            if (!res.ok) throw new Error('Failed to load branches');
+            const data = await res.json();
+            const options: BranchOption[] = (Array.isArray(data) ? data : [])
+                .filter((b: { code?: string }) => Boolean(b.code))
+                .map((b: { code: string; name?: string; is_head_branch?: boolean }) => ({
+                    code: String(b.code).trim().toUpperCase(),
+                    name: String(b.name || b.code).trim(),
+                    is_head_branch: Boolean(b.is_head_branch),
+                }))
+                .sort((a: BranchOption, b: BranchOption) => {
+                    if (a.is_head_branch && !b.is_head_branch) return -1;
+                    if (!a.is_head_branch && b.is_head_branch) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            setBranches(options);
+        } catch {
+            toast.error('Failed to load branches');
+            setBranches([]);
+        }
+    };
+
     const fetchBrokers = async () => {
         setIsLoading(true);
         try {
             const res = await fetch('/api/brokers');
             const data = await res.json();
-            setBrokers(data);
+            setBrokers(Array.isArray(data) ? data : []);
         } catch {
             toast.error('Failed to load brokers');
         } finally {
@@ -52,23 +92,36 @@ export default function BrokersAdminPage() {
         }
     };
 
-    useEffect(() => { fetchBrokers(); }, []);
+    useEffect(() => {
+        void fetchBranches();
+        void fetchBrokers();
+    }, []);
 
     const openAdd = () => {
         setEditing(null);
-        setForm(emptyForm);
+        setForm({ ...emptyForm, branch_code: defaultBranchCode });
         setDialogOpen(true);
     };
 
     const openEdit = (b: Broker) => {
         setEditing(b);
-        setForm({ code: b.code, name: b.name, mobile: b.mobile || '', address: b.address || '' });
+        setForm({
+            code: b.code,
+            name: b.name,
+            mobile: b.mobile || '',
+            address: b.address || '',
+            branch_code: b.branch_code || defaultBranchCode,
+        });
         setDialogOpen(true);
     };
 
     const handleSave = async () => {
         if (!form.code.trim() || !form.name.trim()) {
             toast.error('Code and Name are required');
+            return;
+        }
+        if (!form.branch_code.trim()) {
+            toast.error('Branch is required');
             return;
         }
         setIsSaving(true);
@@ -106,9 +159,16 @@ export default function BrokersAdminPage() {
         }
     };
 
-    const filtered = brokers.filter(b =>
+    const branchLabel = (code?: string) => {
+        if (!code) return '—';
+        const match = branches.find((b) => b.code === code);
+        return match ? `${match.name} (${match.code})` : code;
+    };
+
+    const filtered = brokers.filter((b) =>
         b.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.code.toLowerCase().includes(searchTerm.toLowerCase())
+        b.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (b.branch_code || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -116,7 +176,9 @@ export default function BrokersAdminPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Broker Management</h1>
-                    <p className="text-muted-foreground">Add and manage transport brokers. Their details auto-fill in Challan entry.</p>
+                    <p className="text-muted-foreground">
+                        Brokers are branch-specific. Their details auto-fill in Challan entry.
+                    </p>
                 </div>
                 <Button onClick={openAdd}>
                     <Plus className="mr-2 h-4 w-4" /> Add Broker
@@ -135,7 +197,7 @@ export default function BrokersAdminPage() {
                             <div className="relative flex-1 md:w-64">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Search name or code..."
+                                    placeholder="Search name, code or branch..."
                                     className="pl-9"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -151,6 +213,7 @@ export default function BrokersAdminPage() {
                                 <TableRow>
                                     <TableHead className="w-[120px]">Code</TableHead>
                                     <TableHead>Broker Name</TableHead>
+                                    <TableHead>Branch</TableHead>
                                     <TableHead>Mobile</TableHead>
                                     <TableHead>Address</TableHead>
                                     <TableHead>Status</TableHead>
@@ -160,7 +223,7 @@ export default function BrokersAdminPage() {
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="h-24 text-center">
+                                        <TableCell colSpan={7} className="h-24 text-center">
                                             <div className="flex items-center justify-center gap-2 text-muted-foreground">
                                                 <Loader2 className="h-4 w-4 animate-spin" /> Loading brokers...
                                             </div>
@@ -168,7 +231,7 @@ export default function BrokersAdminPage() {
                                     </TableRow>
                                 ) : filtered.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                        <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                                             No brokers found.
                                         </TableCell>
                                     </TableRow>
@@ -180,6 +243,12 @@ export default function BrokersAdminPage() {
                                             </span>
                                         </TableCell>
                                         <TableCell className="font-medium">{b.name}</TableCell>
+                                        <TableCell>
+                                            <span className="flex items-center gap-1 text-sm">
+                                                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <span className="font-mono text-xs font-semibold">{b.branch_code || '—'}</span>
+                                            </span>
+                                        </TableCell>
                                         <TableCell>
                                             {b.mobile && (
                                                 <span className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -225,13 +294,34 @@ export default function BrokersAdminPage() {
                 </CardContent>
             </Card>
 
-            {/* Add / Edit Dialog */}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>{editing ? 'Edit Broker' : 'Add New Broker'}</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-4 py-2">
+                        <div className="space-y-1">
+                            <Label className="text-[11px] font-bold uppercase text-muted-foreground">Branch *</Label>
+                            <Select
+                                value={form.branch_code}
+                                onValueChange={(value) => setForm((f) => ({ ...f, branch_code: value }))}
+                                disabled={userScope.isBranchScoped}
+                            >
+                                <SelectTrigger className="h-9">
+                                    <SelectValue placeholder="Select branch" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {branches.map((b) => (
+                                        <SelectItem key={b.code} value={b.code}>
+                                            {b.name} ({b.code}){b.is_head_branch ? ' · Main' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-[11px] text-muted-foreground">
+                                This broker belongs only to {branchLabel(form.branch_code)}.
+                            </p>
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                 <Label className="text-[11px] font-bold uppercase text-muted-foreground">Broker Code *</Label>
@@ -239,7 +329,7 @@ export default function BrokersAdminPage() {
                                     className="h-9 text-sm uppercase"
                                     placeholder="e.g. BRK001"
                                     value={form.code}
-                                    onChange={(e) => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                                    onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
                                 />
                             </div>
                             <div className="space-y-1">
@@ -248,7 +338,7 @@ export default function BrokersAdminPage() {
                                     className="h-9 text-sm"
                                     placeholder="Phone number"
                                     value={form.mobile}
-                                    onChange={(e) => setForm(f => ({ ...f, mobile: e.target.value }))}
+                                    onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value }))}
                                 />
                             </div>
                         </div>
@@ -258,7 +348,7 @@ export default function BrokersAdminPage() {
                                 className="h-9 text-sm"
                                 placeholder="Full name"
                                 value={form.name}
-                                onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                             />
                         </div>
                         <div className="space-y-1">
@@ -267,7 +357,7 @@ export default function BrokersAdminPage() {
                                 className="h-9 text-sm"
                                 placeholder="Full address"
                                 value={form.address}
-                                onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))}
+                                onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
                             />
                         </div>
                     </div>

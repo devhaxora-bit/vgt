@@ -1,15 +1,18 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveBrokerId } from '@/lib/server/resolveBrokerId';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 export async function GET(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
+
     const { id } = await params;
 
-    const { data, error } = await supabase
+    const { data, error } = await auth.supabase
         .from('challans')
         .select(`
             *,
@@ -23,6 +26,9 @@ export async function GET(
         return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
+    const forbidden = auth.forbidIfForeignBranch(data.origin_branch_code);
+    if (forbidden) return forbidden;
+
     return NextResponse.json(data);
 }
 
@@ -30,15 +36,32 @@ export async function PUT(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const supabase = auth.supabase;
+    const user = { id: auth.user.id };
 
     const { id } = await params;
+
+    const { data: existing } = await supabase
+        .from('challans')
+        .select('id, origin_branch_code')
+        .eq('id', id)
+        .single();
+
+    if (!existing) {
+        return NextResponse.json({ error: 'Challan not found' }, { status: 404 });
+    }
+
+    const forbidden = auth.forbidIfForeignBranch(existing.origin_branch_code);
+    if (forbidden) return forbidden;
+
     const body = await request.json();
+
+    if (auth.isBranchScoped) {
+        body.origin_branch_code = auth.branchCode;
+    }
 
     // Check if any linked CNs are already assigned to a DIFFERENT challan
     const linkedCns: string[] = Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [];

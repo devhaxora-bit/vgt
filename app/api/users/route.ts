@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UserServiceFactory } from '@/lib/services/user/UserServiceFactory';
 import { AuthServiceFactory } from '@/lib/services/auth/AuthServiceFactory';
 import { createUserSchema } from '@/lib/schemas/user.schema';
+import { hasFullBranchAccess } from '@/lib/branchAccess';
 
 const userService = UserServiceFactory.create();
 const authService = AuthServiceFactory.create();
 
-// GET /api/users - List all users (admin only)
+// GET /api/users - List all users (global/main admin only)
 export async function GET(request: NextRequest) {
     try {
-        // Check if user is admin
+        // Check if user is a full admin
         const currentUserResult = await authService.getCurrentUser();
         if (!currentUserResult.success || !currentUserResult.data) {
             return NextResponse.json(
@@ -18,9 +19,9 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        if (currentUserResult.data.role !== 'admin') {
+        if (currentUserResult.data.role !== 'admin' || !hasFullBranchAccess(currentUserResult.data)) {
             return NextResponse.json(
-                { success: false, error: 'Forbidden: Admin access required' },
+                { success: false, error: 'Forbidden: Full admin access required' },
                 { status: 403 }
             );
         }
@@ -53,10 +54,10 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// POST /api/users - Create new user (admin only)
+// POST /api/users - Create new user (global/main admin only)
 export async function POST(request: NextRequest) {
     try {
-        // Check if user is admin
+        // Check if user is a full admin
         const currentUserResult = await authService.getCurrentUser();
         if (!currentUserResult.success || !currentUserResult.data) {
             return NextResponse.json(
@@ -65,9 +66,9 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (currentUserResult.data.role !== 'admin') {
+        if (currentUserResult.data.role !== 'admin' || !hasFullBranchAccess(currentUserResult.data)) {
             return NextResponse.json(
-                { success: false, error: 'Forbidden: Admin access required' },
+                { success: false, error: 'Forbidden: Full admin access required' },
                 { status: 403 }
             );
         }

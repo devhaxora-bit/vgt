@@ -25,6 +25,7 @@ import {
     X,
 } from 'lucide-react';
 import { compareCnNo } from '@/lib/sortLinkedConsignments';
+import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
 import { Button } from "@/components/ui/button";
 import { createClient as createSupabaseClient } from "@/utils/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -115,6 +116,7 @@ interface ConsignmentRow {
 
 export default function ConsignmentsPage() {
     const router = useRouter();
+    const userScope = useCurrentUserScope();
     const [consignments, setConsignments] = useState<ConsignmentRow[]>([]);
     const [billingRecords, setBillingRecords] = useState<BillRecordPreview[]>([]);
     const [partiesById, setPartiesById] = useState<Record<string, BillPartyPreview>>({});
@@ -248,6 +250,16 @@ export default function ConsignmentsPage() {
         dateFrom: new Date('2025-01-01'), // Broader range
         dateTo: new Date('2026-12-31')    // Broader range
     });
+
+    // Default booking-branch filter to logged-in user's branch
+    useEffect(() => {
+        if (!userScope.ready || !userScope.branchCode) return;
+        const code = userScope.branchCode;
+        setBkgBranch((prev) => (prev === 'all' ? code : prev));
+        setAppliedFilters((prev) => (
+            prev.bkgBranch === 'all' ? { ...prev, bkgBranch: code } : prev
+        ));
+    }, [userScope.ready, userScope.branchCode]);
 
     const billingRecordsById = useMemo(() => {
         const map = new Map<string, BillRecordPreview>();
@@ -508,9 +520,10 @@ export default function ConsignmentsPage() {
     };
 
     const resetFilters = () => {
+        const defaultBranch = defaultBranchFilterValue(userScope);
         setSearchTerm('');
         setCnNoFilter('');
-        setBkgBranch('all');
+        setBkgBranch(defaultBranch);
         setDeliveryBranch('all');
         setBookingType('all');
         setDeliveryType('all');
@@ -520,7 +533,7 @@ export default function ConsignmentsPage() {
         setDateTo(defaultTo);
         setAppliedFilters({
             cnNo: '',
-            bkgBranch: 'all',
+            bkgBranch: defaultBranch,
             deliveryBranch: 'all',
             bookingType: 'all',
             deliveryType: 'all',
@@ -621,12 +634,18 @@ export default function ConsignmentsPage() {
                         {/* Row 1: Branch, No, Range */}
                         <div className="space-y-2">
                             <Label className="text-xs font-bold text-muted-foreground/70 tracking-tight">Booking Branch</Label>
-                            <Select value={bkgBranch} onValueChange={setBkgBranch}>
+                            <Select
+                                value={bkgBranch}
+                                onValueChange={setBkgBranch}
+                                disabled={userScope.isBranchScoped}
+                            >
                                 <SelectTrigger className="bg-background/80 focus:ring-primary h-10">
                                     <SelectValue placeholder="Select Branch" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Branches</SelectItem>
+                                    {!userScope.isBranchScoped && (
+                                        <SelectItem value="all">All Branches</SelectItem>
+                                    )}
                                     {branchOptions.map(b => (
                                         <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
                                     ))}

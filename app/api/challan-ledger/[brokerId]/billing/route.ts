@@ -1,28 +1,21 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { prepareChallanBillingSnapshot } from '@/lib/server/challanBillingSnapshot';
 import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
+import { requireAuthz, requireBrokerBranchAccess } from '@/lib/server/requireAuthz';
 
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ brokerId: string }> }
 ) {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const auth = await requireAuthz({ adminOnly: true });
+    if (!auth.ok) return auth.response;
 
     const { brokerId } = await params;
+    const brokerAccess = await requireBrokerBranchAccess(auth, brokerId);
+    if (!brokerAccess.ok) return brokerAccess.response;
+
+    const supabase = auth.supabase;
+    const userId = auth.user.id;
 
     const { data: account, error: accountError } = await supabase
         .from('broker_ledger_accounts')
@@ -94,7 +87,8 @@ export async function POST(
             added_other_charges_amount: snapshotData.addedOtherChargesAmount,
             challan_snapshot: snapshotData.challanSnapshot,
             extra_charge_items: [],
-            created_by: user.id,
+            branch_code: brokerAccess.entity.branch_code,
+            created_by: userId,
         })
         .select()
         .single();

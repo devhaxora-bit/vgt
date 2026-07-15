@@ -2,6 +2,7 @@ import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { resolveBrokerId } from '@/lib/server/resolveBrokerId';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 // Validation schema for creating a challan
 const createChallanSchema = z.object({
@@ -19,18 +20,20 @@ const createChallanSchema = z.object({
 }).passthrough();
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
+
     const { searchParams } = new URL(request.url);
 
     // Filters
     const search = searchParams.get('search');
-    const branch = searchParams.get('branch');
+    const branch = auth.resolveListBranch(searchParams.get('branch'));
     const type = searchParams.get('type');
     const status = searchParams.get('status');
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
 
-    let query = supabase
+    let query = auth.supabase
         .from('challans')
         .select(`
             *,
@@ -44,7 +47,12 @@ export async function GET(request: Request) {
     }
 
     if (branch) {
-        query = query.or(`origin_branch_code.eq.${branch},destination_branch_code.eq.${branch}`);
+        // Branch-scoped users are locked to origin branch only
+        if (auth.isBranchScoped) {
+            query = query.eq('origin_branch_code', branch);
+        } else {
+            query = query.or(`origin_branch_code.eq.${branch},destination_branch_code.eq.${branch}`);
+        }
     }
 
     if (type && type !== 'ALL') {
@@ -73,13 +81,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    // Check auth
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const supabase = auth.supabase;
+    const user = { id: auth.user.id };
 
     const parseResult = createChallanSchema.safeParse(await request.json());
     if (!parseResult.success) {
@@ -90,6 +96,17 @@ export async function POST(request: Request) {
     }
 
     const body = parseResult.data;
+
+    if (auth.isBranchScoped) {
+        const origin = String(body.origin_branch_code || '').trim().toUpperCase();
+        if (!auth.canAccessBranch(origin)) {
+            return NextResponse.json(
+                { error: 'Forbidden: You can only create challans for your branch' },
+                { status: 403 },
+            );
+        }
+        body.origin_branch_code = auth.branchCode!;
+    }
 
     // Check if any linked CNs are already assigned to another challan
     const linkedCns: string[] = Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [];

@@ -1,7 +1,7 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { hasActiveLinkedPayments, prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
 import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
+import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
 
 // PATCH /api/ledger/[partyId]/billing/[recordId]
 // Update editable fields on a billing record (admin only)
@@ -9,22 +9,14 @@ export async function PATCH(
     request: NextRequest,
     { params }: { params: Promise<{ partyId: string; recordId: string }> }
 ) {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const auth = await requireAuthz({ adminOnly: true });
+    if (!auth.ok) return auth.response;
 
     const { partyId, recordId } = await params;
+    const partyAccess = await requirePartyBranchAccess(auth, partyId);
+    if (!partyAccess.ok) return partyAccess.response;
+
+    const supabase = auth.supabase;
     const body = await request.json();
     const {
         billing_date,
@@ -43,12 +35,14 @@ export async function PATCH(
 
     const { data: record } = await supabase
         .from('party_billing_records')
-        .select('id, status')
+        .select('id, status, branch_code')
         .eq('id', recordId)
         .eq('party_id', partyId)
         .single();
 
     if (!record) return NextResponse.json({ error: 'Billing record not found' }, { status: 404 });
+    const forbiddenRecord = auth.forbidIfForeignBranch(record.branch_code);
+    if (forbiddenRecord) return forbiddenRecord;
     if (record.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Only active billing records can be edited' }, { status: 400 });
     }

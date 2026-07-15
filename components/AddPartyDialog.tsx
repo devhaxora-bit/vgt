@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Party, PartyInput } from '@/lib/types/party.types';
 import { createParty, updateParty, getPartyByCode, getNextPartyCode, getPartyByGstin } from '@/lib/services/party.service';
+import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 interface AddPartyDialogProps {
@@ -38,6 +39,7 @@ export function AddPartyDialog({
     editParty,
     branchOptions = [],
 }: AddPartyDialogProps) {
+    const userScope = useCurrentUserScope();
     const [name, setName] = React.useState(initialName);
     const [code, setCode] = React.useState('');
     const [gstin, setGstin] = React.useState('');
@@ -80,6 +82,17 @@ export function AddPartyDialog({
             setGstinError(null);
         }
     }, [open, initialName, editParty]);
+
+    // Default branch on create once user scope / options are ready
+    React.useEffect(() => {
+        if (!open || editParty || !userScope.branchCode) return;
+        setBranchCode((prev) => {
+            if (prev) return prev;
+            const home = userScope.branchCode!;
+            const matched = branchOptions.find((b) => b.value.toUpperCase() === home.toUpperCase())?.value;
+            return matched || home;
+        });
+    }, [open, editParty, userScope.branchCode, branchOptions]);
 
     const handleCodeBlur = async () => {
         const trimmedCode = code.trim();
@@ -168,7 +181,7 @@ export function AddPartyDialog({
                 is_active: true,
                 city: null,
                 state: null,
-                branch_code: branchCode || 'VZM',
+                branch_code: branchCode || userScope.branchCode || 'VZM',
             };
 
             const savedParty = editParty
@@ -232,12 +245,18 @@ export function AddPartyDialog({
                     {/* Branch */}
                     <div className="space-y-2">
                         <Label htmlFor="branch">Branch</Label>
-                        <Select value={branchCode || '__none__'} onValueChange={(v) => setBranchCode(v === '__none__' ? '' : v)}>
+                        <Select
+                            value={branchCode || '__none__'}
+                            onValueChange={(v) => setBranchCode(v === '__none__' ? '' : v)}
+                            disabled={userScope.isBranchScoped}
+                        >
                             <SelectTrigger id="branch">
                                 <SelectValue placeholder="Select branch" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="__none__">No Branch</SelectItem>
+                                {!userScope.isBranchScoped && (
+                                    <SelectItem value="__none__">No Branch</SelectItem>
+                                )}
                                 {branchOptions.map(b => (
                                     <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
                                 ))}

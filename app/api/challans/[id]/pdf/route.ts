@@ -1,17 +1,19 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import jsPDF from 'jspdf';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 export async function GET(
     _req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
+
     const { id } = await params;
 
     try {
         // Fetch challan with relations
-        const { data: challan, error } = await supabase
+        const { data: challan, error } = await auth.supabase
             .from('challans')
             .select(`
                 *,
@@ -24,6 +26,9 @@ export async function GET(
         if (error || !challan) {
             return NextResponse.json({ error: 'Challan not found' }, { status: 404 });
         }
+
+        const forbidden = auth.forbidIfForeignBranch(challan.origin_branch_code);
+        if (forbidden) return forbidden;
 
         // Generate PDF using jsPDF
         const doc = new jsPDF({

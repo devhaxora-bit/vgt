@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/use-debounce';
 import { LinkedConsignmentsTable, type LinkedConsignmentRow } from '@/components/features/challans/LinkedConsignmentsTable';
 import { mergeSortedLinkedConsignments, sortLinkedConsignments, type LinkedCnSortField } from '@/lib/sortLinkedConsignments';
+import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 // Branch interface
 interface Branch {
@@ -36,12 +37,13 @@ function NewChallanPageContent() {
     const searchParams = useSearchParams();
     const editId = searchParams.get('edit');
     const isEditMode = !!editId;
+    const userScope = useCurrentUserScope();
 
     const [branches, setBranches] = useState<Branch[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoading, setIsLoading] = useState(isEditMode);
-    // Basic Details
-    const [originBranch, setOriginBranch] = useState('MRG');
+    // Basic Details — defaulted to logged-in user's branch once scope loads
+    const [originBranch, setOriginBranch] = useState('');
     const [challanNo, setChallanNo] = useState('');
     const [challanDate, setChallanDate] = useState(new Date().toISOString().split('T')[0]);
     const [truckScheduleDate, setTruckScheduleDate] = useState('');
@@ -239,7 +241,7 @@ function NewChallanPageContent() {
         setChallanNo(data.challan_no || '');
         setChallanDate(data.date_from?.split('T')[0] || new Date().toISOString().split('T')[0]);
         setTruckScheduleDate(data.truck_schedule_date?.split('T')[0] || '');
-        setOriginBranch(data.origin_branch_code || 'MRG');
+        setOriginBranch(data.origin_branch_code || '');
         setLoadingPoint(data.loading_point || '');
         setDestinationPoint(data.destination_point || '');
         setVehicleNo(data.vehicle_no || '');
@@ -334,6 +336,17 @@ function NewChallanPageContent() {
         };
         fetchBranches();
     }, []);
+
+    // Default challan branch to logged-in user's branch (create mode only)
+    useEffect(() => {
+        if (isEditMode || !userScope.ready || !userScope.branchCode) return;
+        setOriginBranch((prev) => {
+            if (prev) return prev;
+            const home = userScope.branchCode!;
+            const matched = branches.find((b) => b.code.toUpperCase() === home)?.code;
+            return matched || home;
+        });
+    }, [userScope.ready, userScope.branchCode, isEditMode, branches]);
 
     // Fetch next Challan No when origin branch changes — skip in edit mode
     useEffect(() => {
@@ -803,7 +816,11 @@ function NewChallanPageContent() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Challan Branch</Label>
-                                            <Select value={originBranch} onValueChange={setOriginBranch} disabled={branches.length === 0}>
+                                            <Select
+                                                value={originBranch}
+                                                onValueChange={setOriginBranch}
+                                                disabled={branches.length === 0 || isEditMode || userScope.isBranchScoped}
+                                            >
                                                 <SelectTrigger className={inputCls + " bg-slate-50"}>
                                                     <SelectValue placeholder={branches.length === 0 ? "Loading..." : "Select Branch"} />
                                                 </SelectTrigger>

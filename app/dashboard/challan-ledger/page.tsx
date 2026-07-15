@@ -7,6 +7,7 @@ import {
     ChevronRight, Truck, Filter, ArrowUpDown, Calendar, Download, Loader2, X, Package,
 } from 'lucide-react';
 import { downloadChallanLedgerSummaryPdf } from '@/lib/challanLedgerSummaryPdf';
+import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -60,6 +61,7 @@ type PaymentFilter = 'all' | 'has_payments' | 'no_payments';
 type KpiFilter = 'none' | 'challans' | 'advance' | 'net_payable' | 'paid' | 'outstanding';
 
 export default function ChallanLedgerPage() {
+    const userScope = useCurrentUserScope();
     const [brokers, setBrokers] = useState<LedgerBroker[]>([]);
     const [globalStats, setGlobalStats] = useState<GlobalStats>({ unchallaned_cns_count: 0, unchallaned_cns_amount: 0 });
     const [isLoading, setIsLoading] = useState(true);
@@ -111,6 +113,11 @@ export default function ChallanLedgerPage() {
             })
             .catch(console.error);
     }, []);
+
+    useEffect(() => {
+        if (!userScope.ready || !userScope.branchCode) return;
+        setBranchFilter((prev) => (prev === 'all' ? userScope.branchCode! : prev));
+    }, [userScope.ready, userScope.branchCode]);
 
     const filtered = useMemo(() => {
         let list = brokers.filter(hasLedgerActivity);
@@ -170,7 +177,7 @@ export default function ChallanLedgerPage() {
 
     const resetFilters = () => {
         setSearchTerm('');
-        setBranchFilter('all');
+        setBranchFilter(defaultBranchFilterValue(userScope));
         setOutstandingOnly(false);
         setDateFrom('');
         setDateTo('');
@@ -286,10 +293,16 @@ export default function ChallanLedgerPage() {
                             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input placeholder="Search broker name or code..." className="pl-9 h-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                         </div>
-                        <Select value={branchFilter} onValueChange={setBranchFilter}>
+                        <Select
+                            value={branchFilter}
+                            onValueChange={setBranchFilter}
+                            disabled={userScope.isBranchScoped}
+                        >
                             <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">All Branches</SelectItem>
+                                {!userScope.isBranchScoped && (
+                                    <SelectItem value="all">All Branches</SelectItem>
+                                )}
                                 {branchOptions.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
                             </SelectContent>
                         </Select>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UserServiceFactory } from '@/lib/services/user/UserServiceFactory';
 import { AuthServiceFactory } from '@/lib/services/auth/AuthServiceFactory';
 import { updateUserSchema } from '@/lib/schemas/user.schema';
+import { hasFullBranchAccess } from '@/lib/branchAccess';
 
 const userService = UserServiceFactory.create();
 const authService = AuthServiceFactory.create();
@@ -21,10 +22,10 @@ export async function GET(
             );
         }
 
-        // Users can view their own profile, admins can view any profile
+        // Users can view their own profile; only global/main admins can view any profile
         if (
             currentUserResult.data.id !== id &&
-            currentUserResult.data.role !== 'admin'
+            (currentUserResult.data.role !== 'admin' || !hasFullBranchAccess(currentUserResult.data))
         ) {
             return NextResponse.json(
                 { success: false, error: 'Forbidden' },
@@ -69,9 +70,9 @@ export async function PATCH(
             );
         }
 
-        if (currentUserResult.data.role !== 'admin') {
+        if (currentUserResult.data.role !== 'admin' || !hasFullBranchAccess(currentUserResult.data)) {
             return NextResponse.json(
-                { success: false, error: 'Forbidden: Admin access required' },
+                { success: false, error: 'Forbidden: Full admin access required' },
                 { status: 403 }
             );
         }
@@ -129,9 +130,9 @@ export async function DELETE(
             );
         }
 
-        if (currentUserResult.data.role !== 'admin') {
+        if (currentUserResult.data.role !== 'admin' || !hasFullBranchAccess(currentUserResult.data)) {
             return NextResponse.json(
-                { success: false, error: 'Forbidden: Admin access required' },
+                { success: false, error: 'Forbidden: Full admin access required' },
                 { status: 403 }
             );
         }

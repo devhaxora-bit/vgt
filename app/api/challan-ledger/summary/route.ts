@@ -1,6 +1,8 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
+import { requireAuthz } from '@/lib/server/requireAuthz';
+
 const hasLedgerActivity = (row: {
     opening_balance?: number | string | null;
     total_challan_amount?: number | string | null;
@@ -66,14 +68,14 @@ const getChallanFullHire = (record: {
 }) => roundMoney(toMoney(record.total_hire_amount) + toMoney(record.extra_hire_amount));
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search')?.trim();
-    const branch = searchParams.get('branch');
+    const branch = auth.resolveListBranch(searchParams.get('branch'));
     const hasOutstanding = searchParams.get('has_outstanding');
     const dateFrom = searchParams.get('date_from')?.trim();
     const dateTo = searchParams.get('date_to')?.trim();
@@ -90,6 +92,7 @@ export async function GET(request: Request) {
             .eq('status', 'ACTIVE')
             .not('broker_id', 'is', null)
             .limit(10000);
+        if (branch) challanQuery = challanQuery.eq('origin_branch_code', branch);
         if (dateFrom) challanQuery = challanQuery.gte('date_from', dateFrom);
         if (dateTo) challanQuery = challanQuery.lte('date_from', dateTo);
 

@@ -56,6 +56,7 @@ import { PartyAutocomplete } from "@/components/PartyAutocomplete";
 import { AddPartyDialog } from "@/components/AddPartyDialog";
 import { Party } from "@/lib/types/party.types";
 import { createClient as createSupabaseClient } from "@/utils/supabase/client";
+import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 interface PackageItem {
     id: string;
@@ -110,6 +111,7 @@ function NewConsignmentForm() {
     const searchParams = useSearchParams();
     const editId = searchParams.get('edit');
     const isEditMode = Boolean(editId);
+    const userScope = useCurrentUserScope();
     const [isOwnersRisk, setIsOwnersRisk] = useState(true);
     const [isCancelCn, setIsCancelCn] = useState(false);
     const [loggedInUserName, setLoggedInUserName] = useState('');
@@ -247,6 +249,13 @@ function NewConsignmentForm() {
         };
         fetchBranches();
     }, []);
+
+    // Default booking branch to logged-in user's branch (create mode only)
+    React.useEffect(() => {
+        if (isEditMode || !userScope.ready || !userScope.branchCode) return;
+        setBookingBranchCode((prev) => prev || userScope.branchCode!.toLowerCase());
+    }, [userScope.ready, userScope.branchCode, isEditMode]);
+
     const [deliveryPoint, setDeliveryPoint] = useState("");
     const [loadingPoint, setLoadingPoint] = useState("");
     const [vehicleNo, setVehicleNo] = useState("");
@@ -879,7 +888,8 @@ function NewConsignmentForm() {
                             setHasChildren(false);
                             setIsOwnersRisk(true); setIsDoorCollection(false); setIsCancelCn(false);
                             setBkgBasis(''); setDeliveryType('dd');
-                            setDestBranch(''); setBookingBranchCode('');
+                            setDestBranch('');
+                            setBookingBranchCode(userScope.branchCode ? userScope.branchCode.toLowerCase() : '');
                             setCnNo(''); setCnDate(new Date().toISOString().split('T')[0]);
                             setCnSequenceState(idleCnSequenceState);
                         }}>
@@ -989,7 +999,11 @@ function NewConsignmentForm() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-4">
                                     <div className="space-y-1">
                                         <Label className="text-[11px] font-bold uppercase text-muted-foreground">Booking Branch</Label>
-                                        <Select value={bookingBranchCode} onValueChange={setBookingBranchCode} disabled={isEditMode}>
+                                        <Select
+                                            value={bookingBranchCode}
+                                            onValueChange={setBookingBranchCode}
+                                            disabled={isEditMode || userScope.isBranchScoped}
+                                        >
                                             <SelectTrigger className="h-9 bg-slate-50">
                                                 <SelectValue placeholder="Select Branch" />
                                             </SelectTrigger>

@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const toNumber = (value: unknown) => {
     const parsed = Number(value);
@@ -10,10 +11,10 @@ const round = (value: number) => Number(value.toFixed(2));
 
 // GET /api/query/challan?id=uuid -> challan + hire settlement + broker bill / payment status
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id')?.trim();
@@ -32,6 +33,9 @@ export async function GET(request: Request) {
     if (error || !challan) {
         return NextResponse.json({ error: 'Challan not found' }, { status: 404 });
     }
+
+    const forbidden = auth.forbidIfForeignBranch(challan.origin_branch_code);
+    if (forbidden) return forbidden;
 
     const grossHire = toNumber(challan.total_hire_amount);
     const advance = toNumber(challan.advance_amount);

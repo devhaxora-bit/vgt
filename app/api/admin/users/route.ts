@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UserRepository } from '@/lib/repositories/UserRepository';
 import { createClient } from '@/utils/supabase/server';
 import { updateUserSchema } from '@/lib/schemas/user.schema';
+import { hasFullBranchAccess } from '@/lib/branchAccess';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
     try {
         const supabase = await createClient();
         const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -13,12 +14,21 @@ export async function GET(request: NextRequest) {
         }
 
         const repo = new UserRepository();
+        const requester = await repo.findById(authUser.id);
+
+        if (!requester || requester.role !== 'admin' || !hasFullBranchAccess(requester)) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const users = await repo.findAll();
 
         return NextResponse.json(users);
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching users:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Failed to fetch users' },
+            { status: 500 },
+        );
     }
 }
 
@@ -31,11 +41,10 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Check if requester is admin
         const repo = new UserRepository();
         const requester = await repo.findById(authUser.id);
 
-        if (!requester || requester.role !== 'admin') {
+        if (!requester || requester.role !== 'admin' || !hasFullBranchAccess(requester)) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
@@ -61,8 +70,11 @@ export async function PATCH(request: NextRequest) {
 
         const updatedUser = await repo.update(id, data);
         return NextResponse.json(updatedUser);
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error updating user:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Failed to update user' },
+            { status: 500 },
+        );
     }
 }

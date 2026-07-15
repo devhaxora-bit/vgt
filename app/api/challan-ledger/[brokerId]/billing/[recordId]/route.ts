@@ -1,31 +1,23 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import {
     hasActiveLinkedChallanPayments,
     prepareChallanBillingSnapshot,
 } from '@/lib/server/challanBillingSnapshot';
 import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
+import { requireAuthz, requireBrokerBranchAccess } from '@/lib/server/requireAuthz';
 
 export async function PATCH(
     request: NextRequest,
     { params }: { params: Promise<{ brokerId: string; recordId: string }> }
 ) {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const auth = await requireAuthz({ adminOnly: true });
+    if (!auth.ok) return auth.response;
 
     const { brokerId, recordId } = await params;
+    const brokerAccess = await requireBrokerBranchAccess(auth, brokerId);
+    if (!brokerAccess.ok) return brokerAccess.response;
+
+    const supabase = auth.supabase;
     const body = await request.json();
     const {
         billing_date,
@@ -43,12 +35,14 @@ export async function PATCH(
 
     const { data: record } = await supabase
         .from('broker_challan_billing_records')
-        .select('id, status')
+        .select('id, status, branch_code')
         .eq('id', recordId)
         .eq('broker_id', brokerId)
         .single();
 
     if (!record) return NextResponse.json({ error: 'Billing record not found' }, { status: 404 });
+    const forbiddenRecord = auth.forbidIfForeignBranch(record.branch_code);
+    if (forbiddenRecord) return forbiddenRecord;
     if (record.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Only active billing records can be edited' }, { status: 400 });
     }
