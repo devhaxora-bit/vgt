@@ -21,6 +21,7 @@ const testUsers: CreateUserInput[] = [
     full_name: 'System Administrator',
     department: 'IT',
     phone: '+91-9999999999',
+    branch_access: 'global',
   },
   {
     employee_code: 'EMP002',
@@ -30,6 +31,7 @@ const testUsers: CreateUserInput[] = [
     full_name: 'John Doe',
     department: 'Operations',
     phone: '+91-9876543210',
+    branch_access: 'global',
   },
   {
     employee_code: 'AGT001',
@@ -39,6 +41,7 @@ const testUsers: CreateUserInput[] = [
     full_name: 'Jane Smith',
     department: 'Sales',
     phone: '+91-9876543211',
+    branch_access: 'global',
   },
 ];
 

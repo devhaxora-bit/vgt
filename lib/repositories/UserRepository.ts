@@ -176,8 +176,6 @@ export class UserRepository implements IUserRepository {
             }
 
             patch.branch_code = branchRow.code;
-        } else if (patch.branch_code === '') {
-            patch.branch_code = null;
         }
 
         const { data: userData, error } = await supabase
