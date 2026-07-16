@@ -45,8 +45,8 @@ interface ConsignmentDetailsDialogProps {
 type CopyType = 'consigner' | 'consignee' | 'lorry' | 'office';
 
 const COPY_CONFIG: Record<CopyType, { label: string; paperTint: string }> = {
-    consigner: { label: 'CONSIGNOR COPY', paperTint: '#ffffff' },
-    consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffd9df' },
+    consigner: { label: 'CONSIGNOR COPY', paperTint: '#ffd9df' },
+    consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffffff' },
     lorry: { label: 'LORRY COPY', paperTint: '#fff6a6' },
     office: { label: 'OFFICE COPY', paperTint: '#cdefff' },
 };
@@ -960,8 +960,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                 onChange={(e) => setCopyType(e.target.value as CopyType)}
                                 className="text-xs font-bold border-none bg-transparent focus:outline-none cursor-pointer pr-1"
                             >
-                                <option value="consigner">Consignor (White)</option>
-                                <option value="consignee">Consignee (Pink)</option>
+                                <option value="consigner">Consignor (Pink)</option>
+                                <option value="consignee">Consignee (White)</option>
                                 <option value="lorry">Lorry (Yellow)</option>
                                 <option value="office">Office (Blue)</option>
                             </select>

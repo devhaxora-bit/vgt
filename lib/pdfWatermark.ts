@@ -10,15 +10,16 @@ export const CANCEL_WATERMARK_RED = { r: 220, g: 140, b: 140 } as const;
 const LOGO_WATERMARK_OPACITY = 0.11;
 const CANCEL_WATERMARK_OPACITY = 0.14;
 const WATERMARK_ANGLE = 32;
-const LOGO_WIDTH_MM = 36;
-const CANCEL_FONT_SIZE = 24;
+/** Large centered logo — ~55% of the shorter page edge */
+const LOGO_SIZE_RATIO = 0.55;
+const CANCEL_FONT_SIZE = 72;
 
 export type PdfWatermarkOptions = {
     /** Pre-loaded logo data URL. Falls back to client tan-tinted logo when omitted. */
     logoDataUrl?: string | null;
     /** Raw header logo (e.g. server-side) — apply opacity via GState instead of baked-in tint */
     serverRawLogo?: boolean;
-    /** Show faint diagonal CANCEL text at both corners */
+    /** Show faint large CANCEL text in the page center */
     showCancel?: boolean;
 };
 
@@ -72,7 +73,7 @@ const tintLogoForWatermark = (src: string): Promise<string> => {
     });
 };
 
-/** Tan-tinted low-opacity VGT logo for corner watermarks (browser). */
+/** Tan-tinted low-opacity VGT logo for centered watermarks (browser). */
 export const loadPdfWatermarkLogo = async (): Promise<string> => {
     if (cachedWatermarkLogo) return cachedWatermarkLogo;
     const src = await loadPdfLogo();
@@ -98,27 +99,19 @@ const stampLogoWatermark = (
     pageWidth: number,
     pageHeight: number,
 ) => {
+    const shortEdge = Math.min(pageWidth, pageHeight);
+    const logoWidth = shortEdge * LOGO_SIZE_RATIO;
     const aspect = 0.42;
-    const logoHeight = LOGO_WIDTH_MM * aspect;
+    const logoHeight = logoWidth * aspect;
+    const x = (pageWidth - logoWidth) / 2;
+    const y = (pageHeight - logoHeight) / 2;
 
     pdf.addImage(
         logoDataUrl,
         'PNG',
-        10,
-        pageHeight - logoHeight - 10,
-        LOGO_WIDTH_MM,
-        logoHeight,
-        undefined,
-        'FAST',
-        WATERMARK_ANGLE,
-    );
-
-    pdf.addImage(
-        logoDataUrl,
-        'PNG',
-        pageWidth - LOGO_WIDTH_MM - 10,
-        10,
-        LOGO_WIDTH_MM,
+        x,
+        y,
+        logoWidth,
         logoHeight,
         undefined,
         'FAST',
@@ -131,8 +124,11 @@ const stampCancelWatermark = (pdf: jsPDF, pageWidth: number, pageHeight: number)
     pdf.setFontSize(CANCEL_FONT_SIZE);
     pdf.setTextColor(CANCEL_WATERMARK_RED.r, CANCEL_WATERMARK_RED.g, CANCEL_WATERMARK_RED.b);
 
-    pdf.text('CANCEL', 14, pageHeight - 14, { angle: WATERMARK_ANGLE });
-    pdf.text('CANCEL', pageWidth - 14, 18, { angle: WATERMARK_ANGLE, align: 'right' });
+    pdf.text('CANCEL', pageWidth / 2, pageHeight / 2, {
+        angle: WATERMARK_ANGLE,
+        align: 'center',
+        baseline: 'middle',
+    });
 };
 
 const stampPageWatermarks = (
