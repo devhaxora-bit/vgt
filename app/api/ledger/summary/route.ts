@@ -1,6 +1,8 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
+import { requireAuthz } from '@/lib/server/requireAuthz';
+
 const hasLedgerActivity = (row: {
     opening_balance?: number | string | null;
     total_cns_amount?: number | string | null;
@@ -60,15 +62,14 @@ const toMoney = (value: number | string | null | undefined) => Number(value || 0
 // Returns vw_party_ledger_summary with optional filters
 // Filters: search, branch, has_outstanding, date_from, date_to, billing_status, payment_status
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    // Auth check
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search')?.trim();
-    const branch = searchParams.get('branch');
+    const branch = auth.resolveListBranch(searchParams.get('branch'));
     const hasOutstanding = searchParams.get('has_outstanding');
     const dateFrom = searchParams.get('date_from')?.trim();     // YYYY-MM-DD
     const dateTo = searchParams.get('date_to')?.trim();         // YYYY-MM-DD
@@ -86,6 +87,7 @@ export async function GET(request: Request) {
             .select('billing_party_id, total_freight')
             .eq('cancel_cn', false)
             .limit(10000);
+        if (branch) cnsQuery = cnsQuery.eq('booking_branch', branch);
         if (dateFrom) cnsQuery = cnsQuery.gte('bkg_date', dateFrom);
         if (dateTo) cnsQuery = cnsQuery.lte('bkg_date', dateTo);
 

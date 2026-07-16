@@ -2,6 +2,7 @@ import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { compareCnNo } from '@/lib/sortLinkedConsignments';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const CN_SEARCH_FIELDS = 'id, cn_no, bkg_date, consignor_name, packages, no_of_pkg, total_qty, goods_class, goods_desc, actual_weight, charged_weight, load_unit, dest_branch, delivery_point, loading_point, booking_branch, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, total_freight, advance_amount, balance_amount, freight_pending';
 
@@ -17,7 +18,12 @@ const getConsignmentsClient = (supabase: SupabaseClient) =>
 async function runCnSearch(
     supabase: SupabaseClient,
     search: string,
-    options: { excludeChildren: boolean; excludeId: string | null; useParentFields: boolean }
+    options: {
+        excludeChildren: boolean;
+        excludeId: string | null;
+        useParentFields: boolean;
+        bookingBranch?: string | null;
+    }
 ): Promise<{ data: ConsignmentSearchRow[] | null; error: { code?: string; message: string } | null }> {
     const fields = options.useParentFields ? CN_SELECT_FIELDS : CN_SEARCH_FIELDS;
     const client = getConsignmentsClient(supabase);
@@ -28,6 +34,10 @@ async function runCnSearch(
         .ilike('cn_no', `%${search}%`)
         .order('cn_no', { ascending: false })
         .limit(20);
+
+    if (options.bookingBranch) {
+        query = query.eq('booking_branch', options.bookingBranch);
+    }
 
     if (options.useParentFields && options.excludeChildren) {
         query = query.is('parent_cn_id', null);
@@ -42,20 +52,18 @@ async function runCnSearch(
 }
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
+
+    const supabase = auth.supabase;
     const { searchParams } = new URL(request.url);
     const cnNo = searchParams.get('cn')?.trim();
     const search = searchParams.get('search')?.trim();
+    const listBranch = auth.resolveListBranch(searchParams.get('branch'));
 
     // --- Autocomplete search mode (partial match) ---
     if (search !== undefined && search !== null) {
         if (search.length < 1) return NextResponse.json([]);
-
-        // Require auth — RLS would otherwise silently return empty
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
 
         const excludeChildren = searchParams.get('exclude_children') === 'true';
         const excludeId = searchParams.get('exclude_id');
@@ -64,6 +72,7 @@ export async function GET(request: Request) {
             excludeChildren,
             excludeId,
             useParentFields: true,
+            bookingBranch: listBranch,
         });
 
         // Fallback when parent_cn_id / freight_included columns are not migrated yet
@@ -72,6 +81,7 @@ export async function GET(request: Request) {
                 excludeChildren: false,
                 excludeId,
                 useParentFields: false,
+                bookingBranch: listBranch,
             }));
         }
 
@@ -100,7 +110,12 @@ export async function GET(request: Request) {
                 .in('cn_no', cnArray));
         }
         if (error) return NextResponse.json([], { status: 200 });
-        const rows = (data ?? []) as Array<{ cn_no?: string }>;
+        let rows = (data ?? []) as Array<{ cn_no?: string; booking_branch?: string }>;
+        if (listBranch) {
+            rows = rows.filter(
+                (row) => String(row.booking_branch || '').trim().toUpperCase() === listBranch,
+            );
+        }
         rows.sort((a, b) => compareCnNo(String(a.cn_no || ''), String(b.cn_no || '')));
         return NextResponse.json(rows);
     }
@@ -128,6 +143,10 @@ export async function GET(request: Request) {
     if (error) {
         return NextResponse.json({ error: 'CN number not found' }, { status: 404 });
     }
+
+    const bookingBranch = (data as { booking_branch?: string } | null)?.booking_branch;
+    const forbidden = auth.forbidIfForeignBranch(bookingBranch);
+    if (forbidden) return forbidden;
 
     return NextResponse.json(data);
 }

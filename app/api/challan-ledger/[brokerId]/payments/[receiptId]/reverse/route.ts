@@ -1,26 +1,19 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthz, requireBrokerBranchAccess } from '@/lib/server/requireAuthz';
 
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ brokerId: string; receiptId: string }> }
 ) {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const auth = await requireAuthz({ adminOnly: true });
+    if (!auth.ok) return auth.response;
 
     const { brokerId, receiptId } = await params;
+    const brokerAccess = await requireBrokerBranchAccess(auth, brokerId);
+    if (!brokerAccess.ok) return brokerAccess.response;
+
+    const supabase = auth.supabase;
+    const userId = auth.user.id;
     const body = await request.json();
     const { reversal_reason } = body;
 
@@ -30,12 +23,14 @@ export async function POST(
 
     const { data: receipt } = await supabase
         .from('broker_challan_payment_receipts')
-        .select('id, status')
+        .select('id, status, branch_code')
         .eq('id', receiptId)
         .eq('broker_id', brokerId)
         .single();
 
     if (!receipt) return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    const forbiddenRecord = auth.forbidIfForeignBranch(receipt.branch_code);
+    if (forbiddenRecord) return forbiddenRecord;
     if (receipt.status === 'REVERSED') {
         return NextResponse.json({ error: 'Receipt is already reversed' }, { status: 400 });
     }
@@ -46,7 +41,7 @@ export async function POST(
             status: 'REVERSED',
             reversal_reason: reversal_reason.trim(),
             reversed_at: new Date().toISOString(),
-            reversed_by: user.id,
+            reversed_by: userId,
         })
         .eq('id', receiptId)
         .select()

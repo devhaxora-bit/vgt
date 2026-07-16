@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, Truck, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Truck, Loader2, RefreshCw, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 interface Vehicle {
     id: string;
@@ -32,22 +33,31 @@ interface Vehicle {
     insurance_company: string;
     insurance_city: string;
     finance_detail: string;
+    branch_code: string;
     is_active: boolean;
 }
+
+type BranchOption = {
+    code: string;
+    name: string;
+    is_head_branch?: boolean;
+};
 
 const emptyForm = {
     vehicle_no: '', vehicle_type: 'open', vehicle_make: '', vehicle_model: '',
     engine_no: '', chasis_no: '', permit_no: '', permit_validity: '',
     owner_name: '', owner_mobile: '', owner_pan: '', owner_address: '', owner_tel: '',
     insurance_policy_no: '', insurance_validity: '', insurance_company: '',
-    insurance_city: '', finance_detail: '',
+    insurance_city: '', finance_detail: '', branch_code: '',
 };
 
 const labelCls = 'text-[11px] font-bold uppercase text-muted-foreground';
 const inputCls = 'h-9 text-sm';
 
 export default function VehiclesAdminPage() {
+    const userScope = useCurrentUserScope();
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -55,7 +65,33 @@ export default function VehiclesAdminPage() {
     const [form, setForm] = useState({ ...emptyForm });
     const [isSaving, setIsSaving] = useState(false);
 
-    const set = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
+    const headBranchCode = branches.find((b) => b.is_head_branch)?.code || branches[0]?.code || '';
+    const defaultBranchCode = userScope.branchCode || headBranchCode;
+    const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+
+    const fetchBranches = async () => {
+        try {
+            const res = await fetch('/api/references/branches');
+            if (!res.ok) throw new Error('Failed to load branches');
+            const data = await res.json();
+            const options: BranchOption[] = (Array.isArray(data) ? data : [])
+                .filter((b: { code?: string }) => Boolean(b.code))
+                .map((b: { code: string; name?: string; is_head_branch?: boolean }) => ({
+                    code: String(b.code).trim().toUpperCase(),
+                    name: String(b.name || b.code).trim(),
+                    is_head_branch: Boolean(b.is_head_branch),
+                }))
+                .sort((a: BranchOption, b: BranchOption) => {
+                    if (a.is_head_branch && !b.is_head_branch) return -1;
+                    if (!a.is_head_branch && b.is_head_branch) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            setBranches(options);
+        } catch {
+            toast.error('Failed to load branches');
+            setBranches([]);
+        }
+    };
 
     const fetchVehicles = async () => {
         setIsLoading(true);
@@ -67,9 +103,16 @@ export default function VehiclesAdminPage() {
         finally { setIsLoading(false); }
     };
 
-    useEffect(() => { fetchVehicles(); }, []);
+    useEffect(() => {
+        void fetchBranches();
+        void fetchVehicles();
+    }, []);
 
-    const openAdd = () => { setEditing(null); setForm({ ...emptyForm }); setDialogOpen(true); };
+    const openAdd = () => {
+        setEditing(null);
+        setForm({ ...emptyForm, branch_code: defaultBranchCode });
+        setDialogOpen(true);
+    };
 
     const openEdit = (v: Vehicle) => {
         setEditing(v);
@@ -84,12 +127,14 @@ export default function VehiclesAdminPage() {
             insurance_policy_no: v.insurance_policy_no || '', insurance_validity: d(v.insurance_validity),
             insurance_company: v.insurance_company || '', insurance_city: v.insurance_city || '',
             finance_detail: v.finance_detail || '',
+            branch_code: v.branch_code || defaultBranchCode,
         });
         setDialogOpen(true);
     };
 
     const handleSave = async () => {
         if (!form.vehicle_no.trim()) { toast.error('Vehicle No is required'); return; }
+        if (!form.branch_code.trim()) { toast.error('Branch is required'); return; }
         setIsSaving(true);
         try {
             const url = editing ? `/api/vehicles/${editing.id}` : '/api/vehicles';
@@ -115,9 +160,10 @@ export default function VehiclesAdminPage() {
         } catch { toast.error('Failed to deactivate'); }
     };
 
-    const filtered = vehicles.filter(v =>
+    const filtered = vehicles.filter((v) =>
         v.vehicle_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        v.owner_name?.toLowerCase().includes(searchTerm.toLowerCase())
+        v.owner_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (v.branch_code || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -125,7 +171,9 @@ export default function VehiclesAdminPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Vehicle Management</h1>
-                    <p className="text-muted-foreground">Add and manage vehicles. All details auto-fill in Challan entry (read-only).</p>
+                    <p className="text-muted-foreground">
+                        Vehicles are branch-specific. Details auto-fill in Challan entry (read-only).
+                    </p>
                 </div>
                 <Button onClick={openAdd}><Plus className="mr-2 h-4 w-4" /> Add Vehicle</Button>
             </div>
@@ -142,7 +190,7 @@ export default function VehiclesAdminPage() {
                             </Button>
                             <div className="relative flex-1 md:w-72">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input placeholder="Search vehicle no or owner..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                                <Input placeholder="Search vehicle, owner or branch..." className="pl-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                             </div>
                         </div>
                     </div>
@@ -153,6 +201,7 @@ export default function VehiclesAdminPage() {
                             <TableHeader className="bg-slate-50">
                                 <TableRow>
                                     <TableHead>Vehicle No</TableHead>
+                                    <TableHead>Branch</TableHead>
                                     <TableHead>Type / Make</TableHead>
                                     <TableHead>Owner</TableHead>
                                     <TableHead>Mobile</TableHead>
@@ -175,6 +224,12 @@ export default function VehiclesAdminPage() {
                                 ) : filtered.map((v) => (
                                     <TableRow key={v.id}>
                                         <TableCell className="font-mono font-bold text-primary">{v.vehicle_no}</TableCell>
+                                        <TableCell>
+                                            <span className="flex items-center gap-1 text-sm">
+                                                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <span className="font-mono text-xs font-semibold">{v.branch_code || '—'}</span>
+                                            </span>
+                                        </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col gap-0.5">
                                                 <Badge variant="outline" className="w-fit text-[10px] capitalize">{v.vehicle_type}</Badge>
@@ -221,6 +276,23 @@ export default function VehiclesAdminPage() {
                         <div>
                             <p className={labelCls + ' mb-3 block'}>Vehicle Details</p>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="space-y-1 md:col-span-2">
+                                    <Label className={labelCls}>Branch *</Label>
+                                    <Select
+                                        value={form.branch_code}
+                                        onValueChange={(v) => set('branch_code', v)}
+                                        disabled={userScope.isBranchScoped}
+                                    >
+                                        <SelectTrigger className={inputCls}><SelectValue placeholder="Select branch" /></SelectTrigger>
+                                        <SelectContent>
+                                            {branches.map((b) => (
+                                                <SelectItem key={b.code} value={b.code}>
+                                                    {b.name} ({b.code}){b.is_head_branch ? ' · Main' : ''}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 <div className="space-y-1 md:col-span-2">
                                     <Label className={labelCls}>Vehicle No *</Label>
                                     <Input className={inputCls + ' uppercase font-mono font-bold'} value={form.vehicle_no}

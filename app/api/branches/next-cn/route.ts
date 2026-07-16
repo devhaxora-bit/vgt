@@ -1,5 +1,5 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from "next/server";
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const isMissingCnManagementSchema = (error: { code?: string; message?: string } | null) => {
     if (!error) return false;
@@ -15,14 +15,23 @@ const countRemaining = (nextNo: number, rangeEnd: number) => {
 };
 
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
+
+    const supabase = auth.supabase;
 
     const { searchParams } = new URL(request.url);
-    const branchCode = searchParams.get("branch")?.toUpperCase();
+    const rawBranch = searchParams.get("branch")?.toUpperCase();
+    const branchCode = auth.isBranchScoped
+        ? auth.branchCode!
+        : rawBranch;
 
     if (!branchCode) {
         return NextResponse.json({ error: "Branch code is required" }, { status: 400 });
     }
+
+    const forbidden = auth.forbidIfForeignBranch(branchCode);
+    if (forbidden) return forbidden;
 
     const { data: branch, error } = await supabase
         .from("branches")

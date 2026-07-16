@@ -1,6 +1,6 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { hasActiveLinkedPayments } from '@/lib/server/billingSnapshot';
+import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
 
 // POST /api/ledger/[partyId]/billing/[recordId]/cancel
 // Cancel a billing record (admin only)
@@ -8,22 +8,15 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ partyId: string; recordId: string }> }
 ) {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const auth = await requireAuthz({ adminOnly: true });
+    if (!auth.ok) return auth.response;
 
     const { partyId, recordId } = await params;
+    const partyAccess = await requirePartyBranchAccess(auth, partyId);
+    if (!partyAccess.ok) return partyAccess.response;
+
+    const supabase = auth.supabase;
+    const userId = auth.user.id;
     const body = await request.json();
     const { cancel_reason } = body;
 
@@ -34,12 +27,14 @@ export async function POST(
     // Verify record belongs to correct party
     const { data: record } = await supabase
         .from('party_billing_records')
-        .select('id, status')
+        .select('id, status, branch_code')
         .eq('id', recordId)
         .eq('party_id', partyId)
         .single();
 
     if (!record) return NextResponse.json({ error: 'Billing record not found' }, { status: 404 });
+    const forbiddenRecord = auth.forbidIfForeignBranch(record.branch_code);
+    if (forbiddenRecord) return forbiddenRecord;
     if (record.status === 'CANCELLED') return NextResponse.json({ error: 'Record is already cancelled' }, { status: 400 });
 
     const { hasLinkedPayments, error: linkedPaymentsError } = await hasActiveLinkedPayments(supabase, {
@@ -61,7 +56,7 @@ export async function POST(
             status: 'CANCELLED',
             cancel_reason: cancel_reason.trim(),
             cancelled_at: new Date().toISOString(),
-            cancelled_by: user.id,
+            cancelled_by: userId,
         })
         .eq('id', recordId)
         .select()

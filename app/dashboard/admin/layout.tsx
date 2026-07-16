@@ -1,10 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+    BRANCH_ADMIN_ALLOWED_PATHS,
+    canAccessAdminPath,
+    isBranchScopedAccess,
+} from '@/lib/branchAccess';
 
 export default function AdminLayout({
     children,
@@ -12,11 +17,16 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     const router = useRouter();
+    const pathname = usePathname();
     const [isLoading, setIsLoading] = useState(true);
     const [isAuthorized, setIsAuthorized] = useState(false);
+    const [isBranchAdmin, setIsBranchAdmin] = useState(false);
 
     useEffect(() => {
         const checkAdminRole = async () => {
+            setIsLoading(true);
+            setIsAuthorized(false);
+
             try {
                 const supabase = createClient();
                 const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -26,10 +36,9 @@ export default function AdminLayout({
                     return;
                 }
 
-                // Check user role in public.users table
                 const { data: userProfile, error } = await supabase
                     .from('users')
-                    .select('role')
+                    .select('role, branch_access')
                     .eq('id', authUser.id)
                     .single();
 
@@ -45,6 +54,15 @@ export default function AdminLayout({
                     return;
                 }
 
+                const branchScoped = isBranchScopedAccess(userProfile);
+                setIsBranchAdmin(branchScoped);
+
+                if (!canAccessAdminPath(userProfile, pathname)) {
+                    toast.error('Access Denied: Not available for branch admin');
+                    router.replace(BRANCH_ADMIN_ALLOWED_PATHS[0]);
+                    return;
+                }
+
                 setIsAuthorized(true);
             } catch (error) {
                 console.error('Admin check failed:', error);
@@ -54,8 +72,8 @@ export default function AdminLayout({
             }
         };
 
-        checkAdminRole();
-    }, [router]);
+        void checkAdminRole();
+    }, [router, pathname]);
 
     if (isLoading) {
         return (
@@ -76,8 +94,14 @@ export default function AdminLayout({
         <div className="p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-[#101828]">System Administration</h1>
-                    <p className="text-sm text-muted-foreground mt-1">Manage users, branches, and system configurations.</p>
+                    <h1 className="text-2xl font-bold tracking-tight text-[#101828]">
+                        {isBranchAdmin ? 'Branch Administration' : 'System Administration'}
+                    </h1>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        {isBranchAdmin
+                            ? 'Manage parties, brokers, and vehicles for your branch.'
+                            : 'Manage users, branches, and system configurations.'}
+                    </p>
                 </div>
             </div>
 

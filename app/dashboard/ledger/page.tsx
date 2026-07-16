@@ -20,6 +20,7 @@ import {
     X,
 } from 'lucide-react';
 import { downloadLedgerSummaryPdf } from '@/lib/ledgerSummaryPdf';
+import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -76,6 +77,7 @@ type PaymentFilter = 'all' | 'has_payments' | 'no_payments';
 type KpiFilter = 'none' | 'cns' | 'billed' | 'unbilled' | 'paid' | 'outstanding';
 
 export default function LedgerPage() {
+    const userScope = useCurrentUserScope();
     const [parties, setParties] = useState<LedgerParty[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -127,6 +129,11 @@ export default function LedgerPage() {
             })
             .catch(console.error);
     }, []);
+
+    useEffect(() => {
+        if (!userScope.ready || !userScope.branchCode) return;
+        setBranchFilter((prev) => (prev === 'all' ? userScope.branchCode! : prev));
+    }, [userScope.ready, userScope.branchCode]);
 
     const filtered = useMemo(() => {
         let list = parties.filter(hasLedgerActivity);
@@ -191,7 +198,7 @@ export default function LedgerPage() {
 
     const resetFilters = () => {
         setSearchTerm('');
-        setBranchFilter('all');
+        setBranchFilter(defaultBranchFilterValue(userScope));
         setOutstandingOnly(false);
         setDateFrom('');
         setDateTo('');
@@ -210,7 +217,7 @@ export default function LedgerPage() {
                     const [y, m, d] = s.split('-');
                     return `${d}/${m}/${y}`;
                 };
-                periodLabel = `${fmtD(dateFrom)} – ${fmtD(dateTo)}`;
+                periodLabel = `${fmtD(dateFrom)} - ${fmtD(dateTo)}`;
             } else if (dateFrom) {
                 const fmtD = (s: string) => { const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; };
                 periodLabel = `From ${fmtD(dateFrom)}`;
@@ -294,12 +301,12 @@ export default function LedgerPage() {
                         {isPdfExporting
                             ? <Loader2 className="h-4 w-4 animate-spin" />
                             : <Download className="h-4 w-4" />}
-                        {isPdfExporting ? 'Exporting…' : 'Export PDF'}
+                        {isPdfExporting ? 'Exporting-' : 'Export PDF'}
                     </Button>
                 </div>
             </div>
 
-            {/* KPI Summary Cards — click to filter, click again to clear */}
+            {/* KPI Summary Cards - click to filter, click again to clear */}
             {kpiFilter !== 'none' && (
                 <div className="flex items-center gap-2 text-xs text-primary font-medium bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
                     <Filter className="h-3.5 w-3.5 shrink-0" />
@@ -322,8 +329,8 @@ export default function LedgerPage() {
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total CNS Amount</p>
-                                <p className="text-lg font-black text-foreground">₹{fmt(totals.cns)}</p>
-                                {kpiFilter === 'cns' && <p className="text-[10px] text-primary font-semibold mt-0.5">● Active Filter</p>}
+                                <p className="text-lg font-black text-foreground">?{fmt(totals.cns)}</p>
+                                {kpiFilter === 'cns' && <p className="text-[10px] text-primary font-semibold mt-0.5">? Active Filter</p>}
                             </div>
                         </div>
                     </div>
@@ -341,8 +348,8 @@ export default function LedgerPage() {
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total Billed</p>
-                                <p className="text-lg font-black text-emerald-700">₹{fmt(totals.billed)}</p>
-                                {kpiFilter === 'billed' && <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">● Active Filter</p>}
+                                <p className="text-lg font-black text-emerald-700">?{fmt(totals.billed)}</p>
+                                {kpiFilter === 'billed' && <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">? Active Filter</p>}
                             </div>
                         </div>
                     </div>
@@ -360,8 +367,8 @@ export default function LedgerPage() {
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Unbilled Amount</p>
-                                <p className="text-lg font-black text-amber-700">₹{fmt(totals.unbilled)}</p>
-                                {kpiFilter === 'unbilled' && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">● Active Filter</p>}
+                                <p className="text-lg font-black text-amber-700">?{fmt(totals.unbilled)}</p>
+                                {kpiFilter === 'unbilled' && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">? Active Filter</p>}
                             </div>
                         </div>
                     </div>
@@ -379,8 +386,8 @@ export default function LedgerPage() {
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total Paid</p>
-                                <p className="text-lg font-black text-indigo-700">₹{fmt(totals.paid)}</p>
-                                {kpiFilter === 'paid' && <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">● Active Filter</p>}
+                                <p className="text-lg font-black text-indigo-700">?{fmt(totals.paid)}</p>
+                                {kpiFilter === 'paid' && <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">? Active Filter</p>}
                             </div>
                         </div>
                     </div>
@@ -398,15 +405,15 @@ export default function LedgerPage() {
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold uppercase text-muted-foreground tracking-wide">Total Outstanding</p>
-                                <p className={`text-lg font-black ${totals.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}`}>₹{fmt(totals.outstanding)}</p>
-                                {kpiFilter === 'outstanding' && <p className="text-[10px] text-red-600 font-semibold mt-0.5">● Active Filter</p>}
+                                <p className={`text-lg font-black ${totals.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}`}>?{fmt(totals.outstanding)}</p>
+                                {kpiFilter === 'outstanding' && <p className="text-[10px] text-red-600 font-semibold mt-0.5">? Active Filter</p>}
                             </div>
                         </div>
                     </div>
                 </button>
             </div>
             {kpiFilter === 'none' && (
-                <p className="text-[11px] text-muted-foreground/60 -mt-2 px-1">💡 Click any card above to filter the table by that category</p>
+                <p className="text-[11px] text-muted-foreground/60 -mt-2 px-1">?? Click any card above to filter the table by that category</p>
             )}
 
             {/* Filter Bar */}
@@ -422,10 +429,16 @@ export default function LedgerPage() {
                                 onChange={e => setSearchTerm(e.target.value)}
                             />
                         </div>
-                        <Select value={branchFilter} onValueChange={setBranchFilter}>
+                        <Select
+                            value={branchFilter}
+                            onValueChange={setBranchFilter}
+                            disabled={userScope.isBranchScoped}
+                        >
                             <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">All Branches</SelectItem>
+                                {!userScope.isBranchScoped && (
+                                    <SelectItem value="all">All Branches</SelectItem>
+                                )}
                                 {branchOptions.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
                             </SelectContent>
                         </Select>
@@ -448,7 +461,7 @@ export default function LedgerPage() {
                             <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                             <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Date Range</span>
                             <Input type="date" className="h-9 w-36 text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-                            <span className="text-muted-foreground text-xs">–</span>
+                            <span className="text-muted-foreground text-xs">-</span>
                             <Input type="date" className="h-9 w-36 text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
                         </div>
                         <Select value={billingFilter} onValueChange={v => setBillingFilter(v as BillingFilter)}>
@@ -516,40 +529,40 @@ export default function LedgerPage() {
                                             {p.branch_code ? (
                                                 <span className="font-mono text-xs font-semibold text-foreground bg-muted px-2 py-0.5 rounded">{p.branch_code}</span>
                                             ) : (
-                                                <span className="text-muted-foreground/40 text-xs">—</span>
+                                                <span className="text-muted-foreground/40 text-xs">-</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <span className="font-mono font-bold text-sm">₹{fmt(p.total_cns_amount)}</span>
+                                            <span className="font-mono font-bold text-sm">?{fmt(p.total_cns_amount)}</span>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {Number(p.total_billed || 0) > 0 ? (
-                                                <span className="font-mono font-bold text-sm text-emerald-700">₹{fmt(p.total_billed)}</span>
+                                                <span className="font-mono font-bold text-sm text-emerald-700">?{fmt(p.total_billed)}</span>
                                             ) : (
                                                 <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Not Billed</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {(p.unbilled_amount || 0) > 0 ? (
-                                                <span className="font-mono font-bold text-sm text-amber-700 bg-amber-50 px-2 py-0.5 rounded">₹{fmt(p.unbilled_amount)}</span>
+                                                <span className="font-mono font-bold text-sm text-amber-700 bg-amber-50 px-2 py-0.5 rounded">?{fmt(p.unbilled_amount)}</span>
                                             ) : (p.overbilled_amount || 0) > 0 ? (
-                                                <span className="font-mono font-bold text-sm text-red-700 bg-red-50 px-2 py-0.5 rounded">OB ₹{fmt(p.overbilled_amount || 0)}</span>
+                                                <span className="font-mono font-bold text-sm text-red-700 bg-red-50 px-2 py-0.5 rounded">OB ?{fmt(p.overbilled_amount || 0)}</span>
                                             ) : (
-                                                <span className="text-muted-foreground/40 text-xs">—</span>
+                                                <span className="text-muted-foreground/40 text-xs">-</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {Number(p.total_paid || 0) > 0 ? (
-                                                <span className="font-mono font-bold text-sm text-indigo-700">₹{fmt(p.total_paid)}</span>
+                                                <span className="font-mono font-bold text-sm text-indigo-700">?{fmt(p.total_paid)}</span>
                                             ) : (
                                                 <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">No Payment</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {(p.outstanding || 0) > 0 ? (
-                                                <span className="font-mono font-bold text-sm text-red-700 bg-red-50 px-2 py-0.5 rounded">₹{fmt(p.outstanding)}</span>
+                                                <span className="font-mono font-bold text-sm text-red-700 bg-red-50 px-2 py-0.5 rounded">?{fmt(p.outstanding)}</span>
                                             ) : (p.outstanding || 0) < 0 ? (
-                                                <span className="font-mono font-bold text-sm text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Cr ₹{fmt(Math.abs(p.outstanding))}</span>
+                                                <span className="font-mono font-bold text-sm text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Cr ?{fmt(Math.abs(p.outstanding))}</span>
                                             ) : (
                                                 <span className="font-mono text-sm text-emerald-700">NIL</span>
                                             )}
@@ -570,11 +583,11 @@ export default function LedgerPage() {
                         <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-9 gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                             <div className="col-span-2">Total ({filtered.length} parties)</div>
                             <div></div>
-                            <div className="text-right font-mono text-foreground">₹{fmt(totals.cns)}</div>
-                            <div className="text-right font-mono text-emerald-700">₹{fmt(totals.billed)}</div>
-                            <div className="text-right font-mono text-amber-700">₹{fmt(totals.unbilled)}</div>
-                            <div className="text-right font-mono text-indigo-700">₹{fmt(filtered.reduce((s, p) => s + (p.total_paid || 0), 0))}</div>
-                            <div className={`text-right font-mono ${totals.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}`}>₹{fmt(totals.outstanding)}</div>
+                            <div className="text-right font-mono text-foreground">?{fmt(totals.cns)}</div>
+                            <div className="text-right font-mono text-emerald-700">?{fmt(totals.billed)}</div>
+                            <div className="text-right font-mono text-amber-700">?{fmt(totals.unbilled)}</div>
+                            <div className="text-right font-mono text-indigo-700">?{fmt(filtered.reduce((s, p) => s + (p.total_paid || 0), 0))}</div>
+                            <div className={`text-right font-mono ${totals.outstanding > 0 ? 'text-red-700' : 'text-emerald-700'}`}>?{fmt(totals.outstanding)}</div>
                             <div></div>
                         </div>
                     )}

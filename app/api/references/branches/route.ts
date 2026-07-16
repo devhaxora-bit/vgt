@@ -1,5 +1,30 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { hasFullBranchAccess } from '@/lib/branchAccess';
+
+async function requireFullAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+        return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+    }
+
+    const { data: profile } = await supabase
+        .from('users')
+        .select('role, branch_access')
+        .eq('id', authUser.id)
+        .single();
+
+    if (!profile || profile.role !== 'admin' || !hasFullBranchAccess(profile)) {
+        return {
+            error: NextResponse.json(
+                { error: 'Forbidden: Full admin access required' },
+                { status: 403 },
+            ),
+        };
+    }
+
+    return { user: authUser, profile };
+}
 
 const parseOptionalInteger = (value: unknown, fallback: number) => {
     if (value === null || value === undefined || value === '') return fallback;
@@ -122,6 +147,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     const supabase = await createClient();
+    const auth = await requireFullAdmin(supabase);
+    if (auth.error) return auth.error;
 
     const body = await request.json();
     const { code, name, type, city, state, phone, next_cn_no, next_challan_no } = body;
@@ -193,6 +220,9 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
     const supabase = await createClient();
+    const auth = await requireFullAdmin(supabase);
+    if (auth.error) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -237,6 +267,9 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
     const supabase = await createClient();
+    const auth = await requireFullAdmin(supabase);
+    if (auth.error) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

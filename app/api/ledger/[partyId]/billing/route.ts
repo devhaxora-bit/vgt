@@ -1,7 +1,7 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { prepareBillingSnapshot } from '@/lib/server/billingSnapshot';
 import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
+import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
 
 // POST /api/ledger/[partyId]/billing
 // Create a billing record for a party (admin only)
@@ -9,23 +9,15 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ partyId: string }> }
 ) {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    // Admin check
-    const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const auth = await requireAuthz({ adminOnly: true });
+    if (!auth.ok) return auth.response;
 
     const { partyId } = await params;
+    const partyAccess = await requirePartyBranchAccess(auth, partyId);
+    if (!partyAccess.ok) return partyAccess.response;
+
+    const supabase = auth.supabase;
+    const userId = auth.user.id;
 
     // Get ledger account
     const { data: account, error: accountError } = await supabase
@@ -102,7 +94,8 @@ export async function POST(
             vehicle_cancel_charges_total: snapshotData.vehicleCancelChargesTotal,
             consignment_snapshot: snapshotData.consignmentSnapshot,
             extra_charge_items: [],
-            created_by: user.id,
+            branch_code: partyAccess.entity.branch_code,
+            created_by: userId,
         })
         .select()
         .single();

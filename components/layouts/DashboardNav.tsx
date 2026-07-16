@@ -36,11 +36,13 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
+import { BRANCH_ADMIN_ALLOWED_PATHS, isBranchScopedAccess } from '@/lib/branchAccess'
 
 interface User {
     full_name: string;
     employee_code: string;
     role: string;
+    branch_access?: string | null;
 }
 
 export default function DashboardNav() {
@@ -67,7 +69,7 @@ export default function DashboardNav() {
             if (authUser) {
                 const { data: profile } = await supabase
                     .from('users')
-                    .select('full_name, employee_code, role')
+                    .select('full_name, employee_code, role, branch_access')
                     .eq('id', authUser.id)
                     .single();
 
@@ -78,7 +80,8 @@ export default function DashboardNav() {
                     setUser({
                         full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Unknown User',
                         employee_code: 'UNC-000',
-                        role: 'admin' // Default to admin so they can fix their profile
+                        role: 'admin', // Default to admin so they can fix their profile
+                        branch_access: 'global',
                     });
                 }
             }
@@ -216,12 +219,30 @@ export default function DashboardNav() {
         },
     ];
 
-    const filteredNavItems = navItems.filter(item => {
-        if (item.title === 'Admin') {
-            return user?.role?.toLowerCase() === 'admin';
-        }
-        return true;
-    });
+    const isBranchAdmin = user?.role?.toLowerCase() === 'admin' && isBranchScopedAccess(user);
+
+    const filteredNavItems = navItems
+        .filter((item) => {
+            if (item.title === 'Admin') {
+                return user?.role?.toLowerCase() === 'admin';
+            }
+            return true;
+        })
+        .map((item) => {
+            if (item.title !== 'Admin' || !isBranchAdmin) {
+                return item;
+            }
+
+            return {
+                ...item,
+                content: item.content.map((section) => ({
+                    ...section,
+                    items: section.items.filter((link) =>
+                        BRANCH_ADMIN_ALLOWED_PATHS.some((allowed) => link.href === allowed),
+                    ),
+                })),
+            };
+        });
 
     if (!mounted) return null;
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { createClient } from "@/utils/supabase/server";
 import { resolveBillingPartyId } from "@/lib/server/resolveBillingParty";
+import { requireAuthz } from "@/lib/server/requireAuthz";
 
 const parseNumber = (value: unknown, fallback = 0) => {
     if (value === null || value === undefined || value === "") return fallback;
@@ -20,37 +20,16 @@ const normalizeDate = (value: unknown) => {
     return normalized || null;
 };
 
-const getCurrentUserRole = async () => {
-    const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-        return { supabase, user: null, role: null };
-    }
-
-    const { data: profile } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-    return { supabase, user, role: profile?.role ?? null };
-};
-
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { supabase, user } = await getCurrentUserRole();
-        if (!user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+        const auth = await requireAuthz();
+        if (!auth.ok) return auth.response;
 
         const { id } = await params;
-        const { data, error } = await supabase
+        const { data, error } = await auth.supabase
             .from("consignments")
             .select("*")
             .eq("id", id)
@@ -60,8 +39,11 @@ export async function GET(
             return NextResponse.json({ error: error.message }, { status: 404 });
         }
 
+        const forbidden = auth.forbidIfForeignBranch(data.booking_branch);
+        if (forbidden) return forbidden;
+
         // Check if this CN has child CNs
-        const { count, error: countError } = await supabase
+        const { count } = await auth.supabase
             .from("consignments")
             .select("*", { count: "exact", head: true })
             .eq("parent_cn_id", id);
@@ -84,17 +66,34 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { supabase, user, role } = await getCurrentUserRole();
-        if (!user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+        const auth = await requireAuthz({ adminOnly: true });
+        if (!auth.ok) return auth.response;
 
-        if (role !== "admin") {
-            return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
-        }
-
+        const supabase = auth.supabase;
         const { id } = await params;
+
+        const { data: existing, error: existingError } = await supabase
+            .from("consignments")
+            .select("id, booking_branch")
+            .eq("id", id)
+            .single();
+
+        if (existingError || !existing) {
+            return NextResponse.json({ error: "Consignment not found" }, { status: 404 });
+        }
+
+        const forbiddenExisting = auth.forbidIfForeignBranch(existing.booking_branch);
+        if (forbiddenExisting) return forbiddenExisting;
+
         const body = await request.json();
+
+        if (auth.isBranchScoped) {
+            body.booking_branch = auth.branchCode;
+        } else if (body.booking_branch) {
+            const forbiddenNew = auth.forbidIfForeignBranch(body.booking_branch);
+            // full access users can change freely — only branch-scoped blocked above
+            void forbiddenNew;
+        }
 
         const updateData: Record<string, unknown> = {
             cn_no: body.cn_no,

@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const CN_SELECT_FIELDS =
     'id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, no_of_pkg, total_qty, actual_weight, charged_weight, load_unit, total_freight, vehicle_no, goods_desc, freight_included, parent_cn_id, consignor_name, consignee_name';
@@ -49,10 +50,10 @@ const buildSettledBillAmountMap = (paymentReceipts: PaymentLike[]) => {
 // GET /api/query/parties?q=name  -> search parties by name / code / GSTIN
 // GET /api/query/parties?id=uuid -> party detail with bills, payments, CNs, related challans, dues
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id')?.trim();
@@ -68,6 +69,9 @@ export async function GET(request: Request) {
         if (partyError || !partyRow) {
             return NextResponse.json({ error: 'Party not found' }, { status: 404 });
         }
+
+        const forbidden = auth.forbidIfForeignBranch(partyRow.branch_code);
+        if (forbidden) return forbidden;
 
         let branchName: string | null = null;
         if (partyRow.branch_code) {
@@ -236,12 +240,19 @@ export async function GET(request: Request) {
     }
     if (q.length < 1) return NextResponse.json([]);
 
-    const { data: parties, error } = await supabase
-        .from('parties')
-        .select('id, name, code, gstin, phone, branch_code')
-        .or(`name.ilike.%${q}%,code.ilike.%${q}%,gstin.ilike.%${q}%`)
-        .order('name', { ascending: true })
-        .limit(20);
+    const { data: parties, error } = await (() => {
+        let query = supabase
+            .from('parties')
+            .select('id, name, code, gstin, phone, branch_code')
+            .or(`name.ilike.%${q}%,code.ilike.%${q}%,gstin.ilike.%${q}%`)
+            .order('name', { ascending: true })
+            .limit(20);
+        const listBranch = auth.resolveListBranch(null);
+        if (listBranch) {
+            query = query.eq('branch_code', listBranch);
+        }
+        return query;
+    })();
 
     if (error) {
         console.error('[query/parties search]', error);

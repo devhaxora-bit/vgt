@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const CHILD_SELECT_FIELDS =
     'id, cn_no, bkg_date, consignor_name, consignee_name, loading_point, delivery_point, booking_branch, dest_branch, no_of_pkg, total_qty, actual_weight, charged_weight, load_unit, goods_class, goods_desc, total_freight, freight_included, parent_cn_id';
@@ -11,10 +12,10 @@ const toNumber = (value: unknown) => {
 
 // GET /api/query/cns?id=uuid -> consignment + included (child) CNs + billing status
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id')?.trim();
@@ -29,6 +30,9 @@ export async function GET(request: Request) {
     if (error || !consignment) {
         return NextResponse.json({ error: 'Consignment not found' }, { status: 404 });
     }
+
+    const forbidden = auth.forbidIfForeignBranch(consignment.booking_branch);
+    if (forbidden) return forbidden;
 
     // Included / child consignments (freight_included children of this CN)
     const { data: children } = await supabase

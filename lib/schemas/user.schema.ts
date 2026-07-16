@@ -25,18 +25,25 @@ export const createUserSchema = z.object({
         .regex(/[@$!%*?&]/, 'Password must contain at least one special character'),
     role: userRoleSchema,
     department: z.string().max(50).optional(),
-    phone: z.string()
-        .regex(/^\+?[0-9]{10,15}$/, 'Invalid phone number')
-        .optional(),
+    phone: z.preprocess(
+        (val) => (val === '' || val === null || val === undefined ? undefined : val),
+        z.string().regex(/^\+?[0-9]{10,15}$/, 'Invalid phone number').optional(),
+    ),
     branch_access: branchAccessSchema.optional().default('global'),
-    branch_code: z.string().max(10).nullable().optional(),
+    branch_code: z.string().max(20).nullable().optional(),
 }).superRefine((value, ctx) => {
-    if (value.branch_access === 'branch' && !String(value.branch_code || '').trim()) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['branch_code'],
-            message: 'Branch code is required for branch-only access',
-        });
+    if (value.branch_access === 'global') {
+        return;
+    }
+    if (value.branch_access === 'main' || value.branch_access === 'branch') {
+        const code = String(value.branch_code || '').trim();
+        if (!code || code === '__GLOBAL__') {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['branch_code'],
+                message: 'Branch code is required for Main / Branch Only access',
+            });
+        }
     }
 });
 
@@ -49,19 +56,29 @@ export const updateUserSchema = z.object({
         .max(100, 'Full name must be at most 100 characters')
         .optional(),
     department: z.string().max(50).optional(),
-    phone: z.string()
-        .regex(/^\+?[0-9]{10,15}$/, 'Invalid phone number')
-        .optional(),
+    phone: z.preprocess(
+        (val) => (val === '' || val === null || val === undefined ? undefined : val),
+        z.string().regex(/^\+?[0-9]{10,15}$/, 'Invalid phone number').optional(),
+    ),
     is_active: z.boolean().optional(),
     branch_access: branchAccessSchema.optional(),
-    branch_code: z.string().max(10).nullable().optional(),
+    branch_code: z.string().max(20).nullable().optional(),
 }).superRefine((value, ctx) => {
-    if (value.branch_access === 'branch' && value.branch_code !== undefined && !String(value.branch_code || '').trim()) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['branch_code'],
-            message: 'Branch code is required for branch-only access',
-        });
+    if (value.branch_access === 'global') {
+        return;
+    }
+    if (
+        (value.branch_access === 'main' || value.branch_access === 'branch')
+        && value.branch_code !== undefined
+    ) {
+        const code = String(value.branch_code || '').trim();
+        if (!code || code === '__GLOBAL__') {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['branch_code'],
+                message: 'Branch code is required for Main / Branch Only access',
+            });
+        }
     }
 });
 

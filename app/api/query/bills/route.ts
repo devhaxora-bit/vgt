@@ -1,5 +1,5 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const CN_SELECT_FIELDS =
     'id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, no_of_pkg, total_qty, is_loose, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no, bkg_basis, goods_desc, delivery_type, freight_included, parent_cn_id';
@@ -12,14 +12,15 @@ const toNumber = (value: unknown) => {
 // GET /api/query/bills?q=ref  -> search bills by bill ref / party name
 // GET /api/query/bills?id=uuid -> full bill detail with party + covered consignments
 export async function GET(request: Request) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id')?.trim();
     const q = searchParams.get('q')?.trim();
+    const listBranch = auth.resolveListBranch(searchParams.get('branch'));
 
     if (id) {
         const { data: record, error } = await supabase
@@ -32,11 +33,17 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
         }
 
+        const forbiddenRecord = auth.forbidIfForeignBranch(record.branch_code);
+        if (forbiddenRecord) return forbiddenRecord;
+
         const { data: partyRow } = await supabase
             .from('parties')
             .select('id, name, code, type, phone, gstin, address, branch_code')
             .eq('id', record.party_id)
             .single();
+
+        const forbidden = auth.forbidIfForeignBranch(partyRow?.branch_code);
+        if (forbidden) return forbidden;
 
         const party: Record<string, unknown> | null = partyRow ? { ...partyRow, branch_name: null } : null;
         if (party && partyRow?.branch_code) {
@@ -95,11 +102,17 @@ export async function GET(request: Request) {
     if (q.length < 1) return NextResponse.json([]);
 
     // Match by bill ref number, or by party name (resolve those party ids first).
-    const { data: matchingParties } = await supabase
+    let partyQuery = supabase
         .from('parties')
         .select('id')
         .ilike('name', `%${q}%`)
         .limit(25);
+
+    if (listBranch) {
+        partyQuery = partyQuery.eq('branch_code', listBranch);
+    }
+
+    const { data: matchingParties } = await partyQuery;
     const partyIds = (matchingParties ?? []).map((p) => p.id);
 
     const filters = [`bill_ref_no.ilike.%${q}%`];
@@ -107,13 +120,19 @@ export async function GET(request: Request) {
         filters.push(`party_id.in.(${partyIds.join(',')})`);
     }
 
-    const { data: bills, error: billsError } = await supabase
+    let billsQuery = supabase
         .from('party_billing_records')
-        .select('id, bill_ref_no, billing_date, amount, status, party_id, covered_cn_nos, created_at')
+        .select('id, bill_ref_no, billing_date, amount, status, party_id, covered_cn_nos, created_at, branch_code')
         .or(filters.join(','))
         .order('billing_date', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(20);
+
+    if (listBranch) {
+        billsQuery = billsQuery.eq('branch_code', listBranch);
+    }
+
+    const { data: bills, error: billsError } = await billsQuery;
 
     if (billsError) {
         console.error('[query/bills search]', billsError);
@@ -140,6 +159,7 @@ export async function GET(request: Request) {
         party_name: partyMap.get(bill.party_id)?.name ?? 'Unknown Party',
         party_code: partyMap.get(bill.party_id)?.code ?? null,
         covered_count: Array.isArray(bill.covered_cn_nos) ? bill.covered_cn_nos.length : 0,
+        branch_code: bill.branch_code ?? null,
     }));
 
     return NextResponse.json(result);

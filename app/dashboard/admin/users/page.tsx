@@ -105,8 +105,11 @@ export default function UserManagementPage() {
 
     const [editingUser, setEditingUser] = useState<UiUser | null>(null);
     const [editName, setEditName] = useState('');
+    const [editEmail, setEditEmail] = useState('');
     const [editDepartment, setEditDepartment] = useState('');
     const [editPhone, setEditPhone] = useState('');
+    const [editPassword, setEditPassword] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
 
     const headBranchCode = branches.find((b) => b.is_head_branch)?.code || branches[0]?.code || '';
 
@@ -157,28 +160,80 @@ export default function UserManagementPage() {
         void fetchBranches();
     }, []);
 
+    const GLOBAL_BRANCH_VALUE = '__GLOBAL__';
+
+    const deriveBranchAccess = (branchValue: string): BranchAccess => {
+        if (!branchValue || branchValue === GLOBAL_BRANCH_VALUE) return 'global';
+        if (headBranchCode && branchValue === headBranchCode) return 'main';
+        return 'branch';
+    };
+
+    const resolveCodePrefix = (branchValue: string): string => {
+        if (!branchValue || branchValue === GLOBAL_BRANCH_VALUE) {
+            return headBranchCode || '';
+        }
+        return branchValue;
+    };
+
+    const roleCodePrefix = (role: string) => {
+        if (role === 'admin') return 'ADM';
+        if (role === 'agent') return 'AGT';
+        return 'EMP';
+    };
+
+    /**
+     * Employee ID used for login — letters + numbers only (no hyphens).
+     * Format: {BRANCH}{ROLE}{NN} e.g. VZMADM01, PNJEMP02
+     * Sequence starts at 01 and increments for the same branch+role prefix.
+     */
+    const generateCode = (branchCode: string, role: string, existingUsers: UiUser[] = users) => {
+        if (!branchCode) return '';
+        const prefix = `${branchCode.toUpperCase()}${roleCodePrefix(role)}`;
+        const pattern = new RegExp(`^${prefix}(\\d+)$`, 'i');
+
+        let maxSeq = 0;
+        for (const user of existingUsers) {
+            const match = user.code.match(pattern);
+            if (match) {
+                const seq = parseInt(match[1], 10);
+                if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+        }
+
+        const nextSeq = maxSeq + 1;
+        const padded = String(nextSeq).padStart(2, '0');
+        return `${prefix}${padded}`;
+    };
+
     const filteredUsers = users.filter((user) =>
         user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const generateCode = (branchCode: string, role: string) => {
-        if (!branchCode) return '';
-        const rolePrefix = role === 'admin' ? 'ADM' : role === 'agent' ? 'AGT' : 'EMP';
-        const randomNum = Math.floor(100 + Math.random() * 900);
-        return `${branchCode}-${rolePrefix}-${randomNum}`;
+    const emailFromCode = (code: string) => {
+        if (!code) return '';
+        return `${code.toLowerCase()}@vgt.com`;
     };
 
     const handleBranchChange = (value: string) => {
         setSelectedBranch(value);
-        setGeneratedCode(generateCode(value, selectedRole));
+        setSelectedBranchAccess(deriveBranchAccess(value));
+        const nextCode = generateCode(resolveCodePrefix(value), selectedRole);
+        setGeneratedCode(nextCode);
+        if (mode === 'create') {
+            setEditEmail(emailFromCode(nextCode));
+        }
     };
 
     const handleRoleChange = (value: 'admin' | 'employee' | 'agent') => {
         setSelectedRole(value);
         if (selectedBranch) {
-            setGeneratedCode(generateCode(selectedBranch, value));
+            const nextCode = generateCode(resolveCodePrefix(selectedBranch), value);
+            setGeneratedCode(nextCode);
+            if (mode === 'create') {
+                setEditEmail(emailFromCode(nextCode));
+            }
         }
     };
 
@@ -189,23 +244,35 @@ export default function UserManagementPage() {
         setGeneratedCode('');
         setEditingUser(null);
         setEditName('');
+        setEditEmail('');
         setEditDepartment('');
         setEditPhone('');
+        setEditPassword('');
         setMode('create');
     };
 
     const openEditModel = (user: UiUser) => {
         setMode('edit');
         setEditingUser(user);
-        const branchMatch = user.branchCode
-            || branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code
-            || headBranchCode
-            || '';
-        setSelectedBranch(branchMatch);
+
+        let branchValue = '';
+        if (user.branchAccess === 'global') {
+            branchValue = GLOBAL_BRANCH_VALUE;
+        } else if (user.branchCode) {
+            branchValue = user.branchCode;
+        } else if (user.branchAccess === 'main') {
+            branchValue = headBranchCode;
+        } else {
+            branchValue = branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code
+                || '';
+        }
+
+        setSelectedBranch(branchValue);
         setSelectedRole(user.role);
-        setSelectedBranchAccess(user.branchAccess || 'global');
+        setSelectedBranchAccess(user.branchAccess || deriveBranchAccess(branchValue));
         setGeneratedCode(user.code);
         setEditName(user.name);
+        setEditEmail(user.email);
         setEditDepartment(user.department);
         setEditPhone(user.phone);
         setIsAddOpen(true);
@@ -215,16 +282,32 @@ export default function UserManagementPage() {
         e.preventDefault();
 
         if (mode === 'edit' && editingUser) {
+            setIsSaving(true);
             try {
+                const access = deriveBranchAccess(selectedBranch);
+                const resolvedBranchCode = access === 'global'
+                    ? null
+                    : String(selectedBranch || '').trim().toUpperCase();
+
+                if (access !== 'global' && !resolvedBranchCode) {
+                    toast.error('Please select a valid branch');
+                    setIsSaving(false);
+                    return;
+                }
+
+                if (access !== 'global' && !branches.some((b) => b.code === resolvedBranchCode)) {
+                    toast.error(`Branch "${resolvedBranchCode}" is not in the active branch list`);
+                    setIsSaving(false);
+                    return;
+                }
+
                 const payload = {
                     id: editingUser.id,
                     full_name: editName.trim(),
                     department: editDepartment || null,
                     phone: editPhone.trim() || null,
-                    branch_access: selectedBranchAccess,
-                    branch_code: selectedBranchAccess === 'global'
-                        ? null
-                        : (selectedBranch || null),
+                    branch_access: access,
+                    branch_code: resolvedBranchCode,
                 };
 
                 const res = await fetch('/api/admin/users', {
@@ -241,17 +324,88 @@ export default function UserManagementPage() {
                 toast.success('User updated successfully');
                 await fetchUsers();
                 setIsAddOpen(false);
+                resetForm();
             } catch (error) {
                 toast.error(error instanceof Error ? error.message : 'An error occurred while updating');
             } finally {
-                resetForm();
+                setIsSaving(false);
             }
             return;
         }
 
-        toast.info('Create functionality is currently limited to seed scripts');
-        setIsAddOpen(false);
-        resetForm();
+        if (!selectedBranch) {
+            toast.error('Please select a branch');
+            return;
+        }
+        if (!generatedCode) {
+            toast.error('Employee ID could not be generated');
+            return;
+        }
+        if (!editName.trim()) {
+            toast.error('Full name is required');
+            return;
+        }
+        if (!editEmail.trim()) {
+            toast.error('Email is required');
+            return;
+        }
+        if (!editPassword) {
+            toast.error('Initial password is required');
+            return;
+        }
+
+        const access = deriveBranchAccess(selectedBranch);
+        const resolvedBranchCode = access === 'global'
+            ? null
+            : String(selectedBranch || '').trim().toUpperCase();
+
+        if (access !== 'global' && !resolvedBranchCode) {
+            toast.error('Please select a valid branch');
+            return;
+        }
+
+        if (access !== 'global' && !branches.some((b) => b.code === resolvedBranchCode)) {
+            toast.error(`Branch "${resolvedBranchCode}" is not in the active branch list`);
+            return;
+        }
+
+        const sanitizedPhone = editPhone.replace(/[\s-]/g, '').trim();
+
+        setIsSaving(true);
+        try {
+            const payload = {
+                employee_code: generatedCode.toUpperCase(),
+                full_name: editName.trim(),
+                email: editEmail.trim().toLowerCase(),
+                password: editPassword,
+                role: selectedRole,
+                department: editDepartment || undefined,
+                phone: sanitizedPhone || undefined,
+                branch_access: access,
+                branch_code: resolvedBranchCode,
+            };
+
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            const result = await res.json();
+            if (!res.ok || !result.success) {
+                const detail = result.details?.[0]?.message;
+                throw new Error(detail || result.error || 'Failed to create user');
+            }
+
+            toast.success(`User created. Login ID: ${payload.employee_code}`);
+            await fetchUsers();
+            setIsAddOpen(false);
+            resetForm();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to create user');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handlePasswordReset = () => {
@@ -286,75 +440,62 @@ export default function UserManagementPage() {
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
-                                <div className="space-y-2">
-                                    <Label>Branch Access</Label>
+                                <div className="space-y-2 min-w-0">
+                                    <Label htmlFor="branch">Branch *</Label>
                                     <Select
-                                        value={selectedBranchAccess}
-                                        onValueChange={(value) => setSelectedBranchAccess(value as BranchAccess)}
+                                        onValueChange={handleBranchChange}
+                                        value={selectedBranch}
                                     >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select access" />
+                                        <SelectTrigger className="w-full min-w-0">
+                                            <SelectValue placeholder="Select Branch" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="global">Global (all branches)</SelectItem>
-                                            <SelectItem value="main">Main Branch (same rights as Global)</SelectItem>
-                                            <SelectItem value="branch">Branch Only</SelectItem>
+                                            <SelectItem value={GLOBAL_BRANCH_VALUE}>
+                                                Global (all branches)
+                                            </SelectItem>
+                                            {branches.length === 0 ? (
+                                                <SelectItem value="__none" disabled>
+                                                    No active branches found
+                                                </SelectItem>
+                                            ) : (
+                                                branches.map((b) => (
+                                                    <SelectItem key={b.code} value={b.code}>
+                                                        {b.name} ({b.code})
+                                                        {b.is_head_branch ? ' · Main' : ''}
+                                                    </SelectItem>
+                                                ))
+                                            )}
                                         </SelectContent>
                                     </Select>
                                     <p className="text-[11px] text-muted-foreground">
-                                        Global and Main Branch accounts can see every branch. Branch Only is limited to one branch.
+                                        {selectedBranchAccess === 'branch'
+                                            ? 'Branch only — limited to the selected branch.'
+                                            : selectedBranchAccess === 'main'
+                                                ? 'Main branch — same full access as Global.'
+                                                : 'Global — can access every branch.'}
                                     </p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="branch">
-                                            {selectedBranchAccess === 'branch' ? 'Assigned Branch *' : 'Home Branch'}
-                                        </Label>
-                                        <Select
-                                            onValueChange={handleBranchChange}
-                                            value={selectedBranch}
-                                            disabled={mode === 'edit' && selectedBranchAccess === 'global'}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select Branch" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {branches.length === 0 ? (
-                                                    <SelectItem value="__none" disabled>
-                                                        No active branches found
-                                                    </SelectItem>
-                                                ) : (
-                                                    branches.map((b) => (
-                                                        <SelectItem key={b.code} value={b.code}>
-                                                            {b.name} ({b.code}){b.is_head_branch ? ' · Main' : ''}
-                                                        </SelectItem>
-                                                    ))
-                                                )}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="role">Role</Label>
-                                        <Select
-                                            value={selectedRole}
-                                            onValueChange={(value) => handleRoleChange(value as 'admin' | 'employee' | 'agent')}
-                                            disabled={mode === 'edit'}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select role" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="admin">Admin</SelectItem>
-                                                <SelectItem value="employee">Employee</SelectItem>
-                                                <SelectItem value="agent">Agent</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                <div className="space-y-2 min-w-0">
+                                    <Label htmlFor="role">Role</Label>
+                                    <Select
+                                        value={selectedRole}
+                                        onValueChange={(value) => handleRoleChange(value as 'admin' | 'employee' | 'agent')}
+                                        disabled={mode === 'edit'}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select role" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="admin">Admin</SelectItem>
+                                            <SelectItem value="employee">Employee</SelectItem>
+                                            <SelectItem value="agent">Agent</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="code">Employee ID</Label>
+                                    <Label htmlFor="code">Employee ID (login ID)</Label>
                                     <div className="relative">
                                         <Input
                                             id="code"
@@ -365,6 +506,9 @@ export default function UserManagementPage() {
                                         />
                                         <Shield className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                     </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        No hyphens — user logs in with this ID (e.g. VZMEMP01, then VZMEMP02…).
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">
@@ -383,12 +527,19 @@ export default function UserManagementPage() {
                                     <Input
                                         id="email"
                                         type="email"
+                                        name="email"
                                         placeholder="john@company.com"
                                         required
-                                        value={editingUser?.email ?? ''}
+                                        value={editEmail}
                                         readOnly={mode === 'edit'}
-                                        onChange={() => undefined}
+                                        className={mode === 'edit' ? 'bg-slate-50' : undefined}
+                                        onChange={(e) => setEditEmail(e.target.value)}
                                     />
+                                    {mode === 'create' && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Auto-fills from Employee ID; you can change it if needed.
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
@@ -420,7 +571,17 @@ export default function UserManagementPage() {
                                 {mode === 'create' && (
                                     <div className="space-y-2">
                                         <Label htmlFor="password">Initial Password</Label>
-                                        <Input id="password" type="password" placeholder="••••••••" required />
+                                        <Input
+                                            id="password"
+                                            type="password"
+                                            placeholder="••••••••"
+                                            required
+                                            value={editPassword}
+                                            onChange={(e) => setEditPassword(e.target.value)}
+                                        />
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Min 8 chars with uppercase, lowercase, number, and special (@$!%*?&).
+                                        </p>
                                     </div>
                                 )}
 
@@ -441,9 +602,13 @@ export default function UserManagementPage() {
                                 )}
                             </div>
                             <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                                <Button type="submit" disabled={!generatedCode}>
-                                    {mode === 'create' ? 'Create User' : 'Save Changes'}
+                                <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} disabled={isSaving}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={!generatedCode || isSaving}>
+                                    {isSaving
+                                        ? (mode === 'create' ? 'Creating...' : 'Saving...')
+                                        : (mode === 'create' ? 'Create User' : 'Save Changes')}
                                 </Button>
                             </DialogFooter>
                         </form>

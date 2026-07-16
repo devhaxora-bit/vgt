@@ -7,6 +7,7 @@ import {
     getChallanNetPayable,
     getChallanPaymentStatus,
 } from '@/lib/server/challanBillingSnapshot';
+import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
 const parseMoney = (value: unknown) => {
@@ -24,10 +25,10 @@ export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ brokerId: string }> }
 ) {
-    const supabase = await createClient();
+    const auth = await requireAuthz();
+    if (!auth.ok) return auth.response;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = auth.supabase;
 
     const { brokerId } = await params;
     const { searchParams } = new URL(request.url);
@@ -45,19 +46,30 @@ export async function GET(
         return NextResponse.json({ error: 'Broker not found' }, { status: 404 });
     }
 
+    // Prefer broker.branch_code when migration applied; fall back to challan origin filter
+    if (broker.branch_code) {
+        const forbidden = auth.forbidIfForeignBranch(broker.branch_code);
+        if (forbidden) return forbidden;
+    }
+
     const { data: account } = await supabase
         .from('broker_ledger_accounts')
         .select('*')
         .eq('broker_id', brokerId)
         .single();
 
-    const allChallansQuery = supabase
+    let allChallansQuery = supabase
         .from('challans')
         .select('id, challan_no, date_from, truck_schedule_date, origin_branch_code, destination_branch_code, loading_point, destination_point, vehicle_no, driver_name, driver_mobile, owner_name, owner_mobile, owner_address, broker_name, broker_code, linked_cn_nos, total_hire_amount, extra_hire_amount, advance_amount, hire_amount, extra_km_charges, detent_charges, unloading_charges, total_extra_charges, less_tds, status, engagement_type, created_at')
         .eq('broker_id', brokerId)
         .eq('status', 'ACTIVE')
         .order('date_from', { ascending: false })
         .order('challan_no', { ascending: false });
+
+    const listBranch = auth.resolveListBranch(null);
+    if (listBranch) {
+        allChallansQuery = allChallansQuery.eq('origin_branch_code', listBranch);
+    }
 
     const { data: allChallans } = await allChallansQuery;
 
@@ -68,6 +80,11 @@ export async function GET(
         if (search && !String(record.challan_no || '').toLowerCase().includes(search.toLowerCase())) return false;
         return true;
     });
+
+    // Branch-scoped user viewing a shared legacy broker with no branch_code: require at least one in-scope challan
+    if (!broker.branch_code && auth.isBranchScoped && challans.length === 0) {
+        return NextResponse.json({ error: 'Forbidden: Outside your branch scope' }, { status: 403 });
+    }
 
     const { data: allBillingRecords } = await supabase
         .from('broker_challan_billing_records')

@@ -34,8 +34,8 @@ export class UserRepository implements IUserRepository {
 
     async findByEmployeeCode(employeeCode: string): Promise<UserWithAuth | null> {
         const supabase = await this.getClient();
+        const adminClient = createAdminClient();
 
-        // First get user profile
         const { data: user, error: userError } = await supabase
             .from('users')
             .select('*')
@@ -47,16 +47,10 @@ export class UserRepository implements IUserRepository {
             throw new Error(`Failed to find user: ${userError.message}`);
         }
 
-        // Map employee codes to emails
-        // In production, this should be stored in the users table or retrieved differently
-        const emailMap: Record<string, string> = {
-            'EMP001': 'admin@vgt.com',
-            'EMP002': 'employee@vgt.com',
-            'AGT001': 'agent@vgt.com',
-        };
-
-        const email = emailMap[user.employee_code] || `${user.employee_code.toLowerCase()}@vgt.com`;
-        console.log('✅ Using email for', user.employee_code, ':', email);
+        // Prefer real auth email so login works for admin-created users
+        const { data: authData } = await adminClient.auth.admin.getUserById(user.id);
+        const email = authData.user?.email
+            || `${String(user.employee_code).toLowerCase()}@vgt.com`;
 
         return {
             ...user,
@@ -86,43 +80,70 @@ export class UserRepository implements IUserRepository {
     }
 
     async create(data: CreateUserInput, createdBy: string): Promise<User> {
-        const supabase = await this.getClient();
         const adminClient = createAdminClient();
 
-        // Create auth user first (requires admin client)
+        // Auth insert fires handle_new_user() which creates a placeholder profile row
         const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
             email: data.email,
             password: data.password,
             email_confirm: true,
+            user_metadata: {
+                full_name: data.full_name,
+                employee_code: data.employee_code,
+                role: data.role,
+            },
         });
 
         if (authError || !authData.user) {
             throw new Error(`Failed to create auth user: ${authError?.message}`);
         }
 
-        // Create user profile
-        const { data: userData, error: userError } = await supabase
+        const branchAccess = (data.branch_access || 'global') as string;
+        let branchCode: string | null = null;
+
+        if (branchAccess !== 'global') {
+            const raw = String(data.branch_code || '').trim().toUpperCase();
+            // Guard against sentinel / empty values that would break the FK
+            if (!raw || raw === '__GLOBAL__' || raw === '__NONE__') {
+                await adminClient.auth.admin.deleteUser(authData.user.id);
+                throw new Error('A valid branch is required for Main / Branch Only users');
+            }
+
+            const { data: branchRow, error: branchError } = await adminClient
+                .from('branches')
+                .select('code')
+                .ilike('code', raw)
+                .maybeSingle();
+
+            if (branchError || !branchRow) {
+                await adminClient.auth.admin.deleteUser(authData.user.id);
+                throw new Error(
+                    `Branch "${raw}" was not found. Pick an existing branch and try again.`,
+                );
+            }
+
+            branchCode = branchRow.code;
+        }
+
+        // Update the trigger-created row with real employee details
+        const { data: userData, error: userError } = await adminClient
             .from('users')
-            .insert({
-                id: authData.user.id,
+            .update({
                 employee_code: data.employee_code,
                 full_name: data.full_name,
                 role: data.role,
                 department: data.department || null,
                 phone: data.phone || null,
-                branch_access: data.branch_access || 'global',
-                branch_code: data.branch_access === 'branch'
-                    ? (data.branch_code || null)
-                    : data.branch_access === 'main'
-                        ? (data.branch_code || null)
-                        : null,
+                branch_access: branchAccess,
+                branch_code: branchCode,
                 created_by: createdBy,
+                is_active: true,
             })
+            .eq('id', authData.user.id)
             .select()
             .single();
 
         if (userError) {
-            // Rollback: delete auth user if profile creation fails (requires admin client)
             await adminClient.auth.admin.deleteUser(authData.user.id);
             throw new Error(`Failed to create user profile: ${userError.message}`);
         }
@@ -132,9 +153,34 @@ export class UserRepository implements IUserRepository {
 
     async update(id: string, data: UpdateUserInput): Promise<User> {
         const supabase = await this.getClient();
+        const adminClient = createAdminClient();
+
+        const patch: UpdateUserInput = { ...data };
+
+        if (patch.branch_access === 'global') {
+            patch.branch_code = null;
+        } else if (patch.branch_code !== undefined && patch.branch_code !== null) {
+            const raw = String(patch.branch_code).trim().toUpperCase();
+            if (!raw || raw === '__GLOBAL__' || raw === '__NONE__') {
+                throw new Error('A valid branch is required for Main / Branch Only users');
+            }
+
+            const { data: branchRow, error: branchError } = await adminClient
+                .from('branches')
+                .select('code')
+                .ilike('code', raw)
+                .maybeSingle();
+
+            if (branchError || !branchRow) {
+                throw new Error(`Branch "${raw}" was not found. Pick an existing branch and try again.`);
+            }
+
+            patch.branch_code = branchRow.code;
+        }
+
         const { data: userData, error } = await supabase
             .from('users')
-            .update(data)
+            .update(patch)
             .eq('id', id)
             .select()
             .single();

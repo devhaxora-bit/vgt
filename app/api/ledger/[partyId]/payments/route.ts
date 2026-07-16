@@ -1,5 +1,5 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
@@ -97,22 +97,15 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ partyId: string }> }
 ) {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const auth = await requireAuthz({ adminOnly: true });
+    if (!auth.ok) return auth.response;
 
     const { partyId } = await params;
+    const partyAccess = await requirePartyBranchAccess(auth, partyId);
+    if (!partyAccess.ok) return partyAccess.response;
+
+    const supabase = auth.supabase;
+    const userId = auth.user.id;
 
     const { data: account, error: accountError } = await supabase
         .from('party_ledger_accounts')
@@ -244,7 +237,8 @@ export async function POST(
             narration: narration || null,
             related_billing_record_ids: normalizedBillingRecordIds.length > 0 ? normalizedBillingRecordIds : null,
             bill_allocations: normalizedBillAllocations,
-            created_by: user.id,
+            branch_code: partyAccess.entity.branch_code,
+            created_by: userId,
         })
         .select()
         .single();
