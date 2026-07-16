@@ -6,7 +6,9 @@ import {
     CheckCircle2,
     Crown,
     Info,
+    Pencil,
     RefreshCw,
+    Trash2,
     XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,11 +32,13 @@ type CnRangeHistoryItem = {
     range_start: number;
     range_end: number;
     next_cn_no: number;
-    status: 'active' | 'exhausted' | 'inactive';
+    status: 'active' | 'pending' | 'exhausted' | 'inactive';
     note?: string | null;
     created_at: string;
     assigned_by_name?: string | null;
     assigned_by_code?: string | null;
+    can_edit?: boolean;
+    can_delete?: boolean;
 };
 
 type BranchInfo = {
@@ -107,6 +111,9 @@ const getStatusBadge = (status: string) => {
     if (status === 'active') {
         return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Active</Badge>;
     }
+    if (status === 'pending') {
+        return <Badge className="bg-sky-50 text-sky-700 border-sky-200">Queued</Badge>;
+    }
     if (status === 'exhausted') {
         return <Badge className="bg-amber-50 text-amber-700 border-amber-200">Exhausted</Badge>;
     }
@@ -124,9 +131,12 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
     const [headBranch, setHeadBranch] = useState<HeadBranchInfo>(null);
     const [activeRange, setActiveRange] = useState<ActiveRange>(null);
     const [history, setHistory] = useState<CnRangeHistoryItem[]>([]);
+    const [pendingRanges, setPendingRanges] = useState<CnRangeHistoryItem[]>([]);
     const [remainingCount, setRemainingCount] = useState<number | null>(null);
     const [isLowCn, setIsLowCn] = useState(false);
     const [rangeForm, setRangeForm] = useState(defaultRangeForm);
+    const [editingRangeId, setEditingRangeId] = useState<string | null>(null);
+    const [editForm, setEditForm] = useState(defaultRangeForm);
     const [validation, setValidation] = useState<CnRangeValidation>(defaultValidation);
     const validationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -144,6 +154,7 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
             setHeadBranch(data.head_branch);
             setActiveRange(data.active_range);
             setHistory(data.history || []);
+            setPendingRanges(data.pending_ranges || []);
             setRemainingCount(data.remaining_count ?? null);
             setIsLowCn(Boolean(data.is_low_cn));
         } catch (err: unknown) {
@@ -250,7 +261,9 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
             }
 
             toast.success(
-                `CN range ${rangeForm.range_start}–${rangeForm.range_end} issued. Starting CN: ${data.next_cn_no}.`
+                activeRange
+                    ? `CN range ${rangeForm.range_start}–${rangeForm.range_end} queued. It will activate automatically after the current range is used up.`
+                    : `CN range ${rangeForm.range_start}–${rangeForm.range_end} issued. Starting CN: ${data.next_cn_no}.`
             );
 
             setRangeForm(defaultRangeForm);
@@ -258,6 +271,63 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
             await fetchData();
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to issue CN range');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleDeleteRange = async (item: CnRangeHistoryItem) => {
+        if (!item.can_delete) return;
+        if (!window.confirm(`Delete queued range ${formatRange(item.range_start, item.range_end)}?`)) return;
+
+        setSubmitting(true);
+        try {
+            const res = await fetch(`/api/references/branches/cn-ranges?id=${item.id}`, {
+                method: 'DELETE',
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to delete range');
+            toast.success('CN range deleted.');
+            await fetchData();
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to delete range');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const startEditRange = (item: CnRangeHistoryItem) => {
+        setEditingRangeId(item.id);
+        setEditForm({
+            range_start: String(item.range_start),
+            range_end: String(item.range_end),
+            note: item.note || '',
+        });
+    };
+
+    const handleUpdateRange = async () => {
+        if (!editingRangeId) return;
+
+        setSubmitting(true);
+        try {
+            const res = await fetch('/api/references/branches/cn-ranges', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    range_id: editingRangeId,
+                    range_start: editForm.range_start,
+                    range_end: editForm.range_end,
+                    note: editForm.note,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to update range');
+            toast.success('CN range updated.');
+            setEditingRangeId(null);
+            setEditForm(defaultRangeForm);
+            await fetchData();
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to update range');
         } finally {
             setSubmitting(false);
         }
@@ -442,9 +512,22 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                 <div>
                     <div className="font-semibold text-[#101828]">Issue New CN Range</div>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Assign the next official CN block for {branch.code}. The system auto-advances inside this range only.
+                        {activeRange
+                            ? `Assign the next CN block for ${branch.code}. It will be queued and activate automatically after the current range is finished.`
+                            : `Assign the next official CN block for ${branch.code}. The system auto-advances inside the active range only.`}
                     </p>
                 </div>
+
+                {pendingRanges.length > 0 && (
+                    <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 space-y-1">
+                        <div className="font-semibold">Queued ranges (activate in order)</div>
+                        {pendingRanges.map((range) => (
+                            <div key={range.id} className="font-mono">
+                                {formatRange(range.range_start, range.range_end)} · starts at {range.next_cn_no}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {activeRange && (
                     <div className="rounded bg-slate-50 border px-3 py-2 text-xs text-muted-foreground">
@@ -538,6 +621,7 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                                 <TableHead>Status</TableHead>
                                 <TableHead>Issued By</TableHead>
                                 <TableHead>Note</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -547,7 +631,33 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                                         {formatDateTime(item.created_at)}
                                     </TableCell>
                                     <TableCell className="font-mono font-semibold">
-                                        {formatRange(item.range_start, item.range_end)}
+                                        {editingRangeId === item.id ? (
+                                            <form
+                                                onSubmit={(e) => {
+                                                    e.preventDefault();
+                                                    void handleUpdateRange();
+                                                }}
+                                                className="flex items-center gap-2"
+                                            >
+                                                <Input
+                                                    type="number"
+                                                    className="h-8 w-24"
+                                                    value={editForm.range_start}
+                                                    onChange={(e) => setEditForm((prev) => ({ ...prev, range_start: e.target.value }))}
+                                                    required
+                                                />
+                                                <span>–</span>
+                                                <Input
+                                                    type="number"
+                                                    className="h-8 w-24"
+                                                    value={editForm.range_end}
+                                                    onChange={(e) => setEditForm((prev) => ({ ...prev, range_end: e.target.value }))}
+                                                    required
+                                                />
+                                            </form>
+                                        ) : (
+                                            formatRange(item.range_start, item.range_end)
+                                        )}
                                     </TableCell>
                                     <TableCell className="font-mono">{item.next_cn_no}</TableCell>
                                     <TableCell>{getStatusBadge(item.status)}</TableCell>
@@ -564,7 +674,46 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                                         )}
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                                        {item.note || '—'}
+                                        {editingRangeId === item.id ? (
+                                            <Input
+                                                value={editForm.note}
+                                                onChange={(e) => setEditForm((prev) => ({ ...prev, note: e.target.value }))}
+                                                placeholder="Note"
+                                            />
+                                        ) : (
+                                            item.note || '—'
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        {item.can_edit || item.can_delete ? (
+                                            <div className="flex justify-end gap-1">
+                                                {editingRangeId === item.id ? (
+                                                    <>
+                                                        <Button type="button" size="sm" variant="outline" onClick={() => setEditingRangeId(null)}>
+                                                            Cancel
+                                                        </Button>
+                                                        <Button type="button" size="sm" onClick={() => void handleUpdateRange()}>
+                                                            Save
+                                                        </Button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {item.can_edit && (
+                                                            <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEditRange(item)}>
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                        {item.can_delete && (
+                                                            <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => void handleDeleteRange(item)}>
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <span className="text-muted-foreground text-xs">—</span>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}

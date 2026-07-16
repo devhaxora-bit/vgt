@@ -44,6 +44,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Branch not found" }, { status: 404 });
     }
 
+    await supabase.rpc('ensure_active_cn_range', { p_branch_id: branch.id });
+
     const { data: cnRanges, error: cnRangesError } = await supabase
         .from('branch_cn_ranges')
         .select('id, range_start, range_end, next_cn_no, status')

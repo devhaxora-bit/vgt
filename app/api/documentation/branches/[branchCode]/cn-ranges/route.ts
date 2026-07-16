@@ -183,6 +183,9 @@ export async function GET(
     }
 
     const activeRange = (cnRanges || []).find((r) => r.status === 'active') || null;
+    const pendingRanges = (cnRanges || [])
+        .filter((r) => r.status === 'pending')
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     const remainingCount = activeRange
         ? countRemaining(Number(activeRange.next_cn_no), Number(activeRange.range_end))
         : null;
@@ -201,6 +204,8 @@ export async function GET(
             assigned_by: range.assigned_by,
             assigned_by_name: assigner?.full_name ?? null,
             assigned_by_code: assigner?.employee_code ?? null,
+            can_edit: range.status === 'pending' || range.status === 'inactive',
+            can_delete: range.status === 'pending' || range.status === 'inactive',
         };
     });
 
@@ -220,6 +225,15 @@ export async function GET(
             : null,
         remaining_count: remainingCount,
         is_low_cn: remainingCount !== null && remainingCount > 0 && remainingCount <= LOW_CN_THRESHOLD,
+        pending_ranges: pendingRanges.map((range) => ({
+            id: range.id,
+            range_start: Number(range.range_start),
+            range_end: Number(range.range_end),
+            next_cn_no: Number(range.next_cn_no),
+            status: range.status,
+            note: range.note,
+            created_at: range.created_at,
+        })),
         history,
     });
 }
