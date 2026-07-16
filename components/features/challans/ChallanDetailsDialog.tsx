@@ -32,6 +32,7 @@ import {
     PDF_TABLE_HEADER_TEXT_COLOR,
     VGT_LOGO_PATH,
 } from '@/lib/pdfLogo';
+import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 interface ChallanDetails {
     id: string;
@@ -495,7 +496,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 const imgData = canvas.toDataURL('image/png');
                 const pdf = new jsPDF('p', 'mm', 'a4');
                 pdf.addImage(imgData, 'PNG', 5, 5, 200, 287);
-                pdf.save(`challan-${c.challan_no}.pdf`);
+                await savePdfWithWatermarks(pdf, `challan-${c.challan_no}.pdf`);
             }
         } catch (err) {
             console.error(err);

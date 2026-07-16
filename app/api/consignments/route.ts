@@ -8,7 +8,7 @@ type ManagedCnRange = {
     range_start: number;
     range_end: number;
     next_cn_no: number;
-    status: 'active' | 'exhausted' | 'inactive';
+    status: 'active' | 'pending' | 'exhausted' | 'inactive';
 };
 
 const parseCnInteger = (value: unknown) => {
@@ -38,6 +38,8 @@ const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClie
     if (branchError || !branch) {
         return { error: `Booking branch ${branchCode} was not found.` };
     }
+
+    await supabase.rpc('ensure_active_cn_range', { p_branch_id: branch.id });
 
     const { data: cnRanges, error: cnRangesError } = await supabase
         .from('branch_cn_ranges')

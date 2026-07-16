@@ -52,8 +52,10 @@ export async function POST(request: Request) {
 
     const { data: conflictingRanges, error: conflictError } = await supabase
         .from('branch_cn_ranges')
-        .select('range_start, range_end, status, branch_id, branches!inner(code, name)')
+        .select('range_start, range_end, status, branch_id, branches!inner(code, name, is_active)')
         .neq('branch_id', branchId)
+        .in('status', ['active', 'pending'])
+        .eq('branches.is_active', true)
         .lte('range_start', rangeEnd)
         .gte('range_end', rangeStart);
 

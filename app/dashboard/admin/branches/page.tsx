@@ -54,7 +54,7 @@ type BranchCnRange = {
     range_start: number;
     range_end: number;
     next_cn_no: number;
-    status: 'active' | 'exhausted' | 'inactive';
+    status: 'active' | 'pending' | 'exhausted' | 'inactive';
 };
 
 type Branch = {
@@ -113,6 +113,14 @@ const getCnStatusText = (branch: Branch) => {
     }
     return 'No managed CN range yet';
 };
+
+const getBlockingCnRanges = (branch: Branch) =>
+    (branch.cn_ranges || []).filter((range) => range.status === 'active' || range.status === 'pending');
+
+const formatBlockingRangeMessage = (ranges: BranchCnRange[]) =>
+    ranges
+        .map((range) => `${range.range_start}–${range.range_end} (${range.status})`)
+        .join(', ');
 
 export default function BranchManagementPage() {
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -215,18 +223,27 @@ export default function BranchManagementPage() {
         setIsAddOpen(true);
     };
 
-    const handleDeleteBranch = async (id: string, name: string) => {
-        if (!confirm(`Are you sure you want to delete the branch "${name}"?`)) return;
+    const handleDeleteBranch = async (branch: Branch) => {
+        const blockingRanges = getBlockingCnRanges(branch);
+        if (blockingRanges.length > 0) {
+            toast.error(
+                `Cannot delete "${branch.name}". Remove CN ranges first from Documentation → CN Assigning: ${formatBlockingRangeMessage(blockingRanges)}.`,
+                { duration: 8000 },
+            );
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the branch "${branch.name}"?`)) return;
 
         try {
-            const res = await fetch(`/api/references/branches?id=${id}`, { method: 'DELETE' });
+            const res = await fetch(`/api/references/branches?id=${branch.id}`, { method: 'DELETE' });
 
             if (!res.ok) {
                 const data = await res.json();
                 throw new Error(data.error || 'Failed to delete branch');
             }
 
-            toast.success(`Branch "${name}" deleted successfully`);
+            toast.success(`Branch "${branch.name}" deleted successfully`);
             fetchBranches();
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to delete branch');
@@ -550,7 +567,7 @@ export default function BranchManagementPage() {
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem
                                                     className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
-                                                    onClick={() => handleDeleteBranch(branch.id, branch.name)}
+                                                    onClick={() => handleDeleteBranch(branch)}
                                                 >
                                                     <Trash2 className="mr-2 h-4 w-4" />
                                                     Delete

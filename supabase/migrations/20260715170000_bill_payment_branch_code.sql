@@ -37,6 +37,10 @@ BEGIN
   ALTER TABLE public.party_billing_records
     ADD COLUMN IF NOT EXISTS branch_code VARCHAR(20);
 
+  -- Backfill only touches branch_code; disable integrity triggers that
+  -- re-validate historical CN snapshots on any UPDATE.
+  ALTER TABLE public.party_billing_records DISABLE TRIGGER USER;
+
   UPDATE public.party_billing_records pbr
   SET branch_code = UPPER(BTRIM(p.branch_code))
   FROM public.parties p
@@ -48,6 +52,8 @@ BEGIN
   UPDATE public.party_billing_records
   SET branch_code = default_branch
   WHERE branch_code IS NULL OR BTRIM(branch_code) = '';
+
+  ALTER TABLE public.party_billing_records ENABLE TRIGGER USER;
 
   EXECUTE format(
     'ALTER TABLE public.party_billing_records ALTER COLUMN branch_code SET DEFAULT %L',
@@ -73,6 +79,8 @@ BEGIN
   ALTER TABLE public.party_payment_receipts
     ADD COLUMN IF NOT EXISTS branch_code VARCHAR(20);
 
+  ALTER TABLE public.party_payment_receipts DISABLE TRIGGER USER;
+
   UPDATE public.party_payment_receipts ppr
   SET branch_code = UPPER(BTRIM(p.branch_code))
   FROM public.parties p
@@ -84,6 +92,8 @@ BEGIN
   UPDATE public.party_payment_receipts
   SET branch_code = default_branch
   WHERE branch_code IS NULL OR BTRIM(branch_code) = '';
+
+  ALTER TABLE public.party_payment_receipts ENABLE TRIGGER USER;
 
   EXECUTE format(
     'ALTER TABLE public.party_payment_receipts ALTER COLUMN branch_code SET DEFAULT %L',
@@ -109,6 +119,8 @@ BEGIN
   ALTER TABLE public.broker_challan_billing_records
     ADD COLUMN IF NOT EXISTS branch_code VARCHAR(20);
 
+  ALTER TABLE public.broker_challan_billing_records DISABLE TRIGGER USER;
+
   UPDATE public.broker_challan_billing_records bcbr
   SET branch_code = UPPER(BTRIM(b.branch_code))
   FROM public.brokers b
@@ -120,6 +132,8 @@ BEGIN
   UPDATE public.broker_challan_billing_records
   SET branch_code = default_branch
   WHERE branch_code IS NULL OR BTRIM(branch_code) = '';
+
+  ALTER TABLE public.broker_challan_billing_records ENABLE TRIGGER USER;
 
   EXECUTE format(
     'ALTER TABLE public.broker_challan_billing_records ALTER COLUMN branch_code SET DEFAULT %L',
@@ -145,6 +159,8 @@ BEGIN
   ALTER TABLE public.broker_challan_payment_receipts
     ADD COLUMN IF NOT EXISTS branch_code VARCHAR(20);
 
+  ALTER TABLE public.broker_challan_payment_receipts DISABLE TRIGGER USER;
+
   UPDATE public.broker_challan_payment_receipts bcpr
   SET branch_code = UPPER(BTRIM(b.branch_code))
   FROM public.brokers b
@@ -156,6 +172,8 @@ BEGIN
   UPDATE public.broker_challan_payment_receipts
   SET branch_code = default_branch
   WHERE branch_code IS NULL OR BTRIM(branch_code) = '';
+
+  ALTER TABLE public.broker_challan_payment_receipts ENABLE TRIGGER USER;
 
   EXECUTE format(
     'ALTER TABLE public.broker_challan_payment_receipts ALTER COLUMN branch_code SET DEFAULT %L',

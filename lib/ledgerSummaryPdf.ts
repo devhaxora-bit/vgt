@@ -1,5 +1,6 @@
 import { formatBranchLabel } from '@/lib/formatBranchLabel';
 import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
+import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 export type LedgerSummaryPartyRow = {
     party_code: string;
@@ -279,7 +280,7 @@ export const downloadLedgerSummaryPdf = async (payload: LedgerSummaryPdfPayload)
         }
 
         const safePeriod = payload.periodLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'report';
-        pdf.save(`ledger-summary-${safePeriod}.pdf`);
+        await savePdfWithWatermarks(pdf, `ledger-summary-${safePeriod}.pdf`);
     } finally {
         iframe.remove();
     }

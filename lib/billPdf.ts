@@ -1,5 +1,6 @@
 import type { BillingVehicleCancelItem } from '@/lib/billingVehicleCancel';
 import { PDF_HEADER_LOGO_IMG_CSS, PDF_HEADER_TITLE_COLOR, PDF_TABLE_HEADER_BG, PDF_TABLE_HEADER_TEXT_COLOR } from '@/lib/pdfLogo';
+import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 export type BillPdfDetailRow = {
     cnNo: string;
@@ -579,6 +580,7 @@ export const renderBillPdfPages = async (
 export const downloadBillPdfFromDocument = async (
     doc: Document,
     fileName: string,
+    options?: { showCancelWatermark?: boolean },
 ): Promise<void> => {
     const pageElements = Array.from(doc.querySelectorAll<HTMLElement>('.page'));
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -602,5 +604,5 @@ export const downloadBillPdfFromDocument = async (
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 5, 5, 287, 200, undefined, 'FAST');
     }
 
-    pdf.save(fileName);
+    await savePdfWithWatermarks(pdf, fileName, { showCancel: options?.showCancelWatermark });
 };

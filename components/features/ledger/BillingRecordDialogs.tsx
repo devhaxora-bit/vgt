@@ -1021,7 +1021,9 @@ export function BillingRecordViewDialog({
             return;
         }
 
-        await downloadBillPdfFromDocument(doc, getBillDownloadName(record.bill_ref_no, record.id));
+        await downloadBillPdfFromDocument(doc, getBillDownloadName(record.bill_ref_no, record.id), {
+            showCancelWatermark: record.status === 'CANCELLED',
+        });
     };
 
     if (!party || !record) return null;

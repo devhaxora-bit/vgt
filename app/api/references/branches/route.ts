@@ -277,6 +277,30 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: 'Missing branch id' }, { status: 400 });
     }
 
+    const { data: blockingRanges, error: rangeError } = await supabase
+        .from('branch_cn_ranges')
+        .select('id, range_start, range_end, status')
+        .eq('branch_id', id)
+        .in('status', ['active', 'pending']);
+
+    if (rangeError) {
+        return NextResponse.json({ error: rangeError.message }, { status: 500 });
+    }
+
+    if (blockingRanges && blockingRanges.length > 0) {
+        const summary = blockingRanges
+            .map((range) => `${range.range_start}–${range.range_end} (${range.status})`)
+            .join(', ');
+
+        return NextResponse.json(
+            {
+                error: `Cannot delete this branch while CN ranges are still assigned: ${summary}. Remove them from Documentation → CN Assigning first.`,
+                blocking_ranges: blockingRanges,
+            },
+            { status: 409 },
+        );
+    }
+
     const { error } = await supabase
         .from('branches')
         .update({ is_active: false })
