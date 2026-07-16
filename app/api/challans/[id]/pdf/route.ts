@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jsPDF from 'jspdf';
+import { readFile } from 'fs/promises';
+import path from 'path';
 import { requireAuthz } from '@/lib/server/requireAuthz';
+import { applyPdfWatermarks } from '@/lib/pdfWatermark';
 
 export async function GET(
     _req: NextRequest,
@@ -223,6 +226,10 @@ export async function GET(
 
         addText('Agent', sig1X, signatureY + 3, 9, true);
         addText('Driver', sig2X, signatureY + 3, 9, true);
+
+        const logoBuffer = await readFile(path.join(process.cwd(), 'public', 'vgt_logo.png'));
+        const logoDataUrl = `data:image/png;base64,${logoBuffer.toString('base64')}`;
+        await applyPdfWatermarks(doc, { logoDataUrl, serverRawLogo: true });
 
         // Generate PDF as blob
         const pdfBytes = doc.output('arraybuffer');

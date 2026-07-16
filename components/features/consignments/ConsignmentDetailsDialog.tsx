@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatLoadWeightDisplay, normalizeLoadUnit, resolveLoadWeight } from '@/lib/loadWeightDisplay';
 import { loadPdfLogo, PDF_HEADER_TITLE_COLOR, PDF_LOGO_BOX_IMG_CSS, VGT_LOGO_PATH } from '@/lib/pdfLogo';
+import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 interface ConsignmentDetailsDialogProps {
     isOpen: boolean;
@@ -44,8 +45,8 @@ interface ConsignmentDetailsDialogProps {
 type CopyType = 'consigner' | 'consignee' | 'lorry' | 'office';
 
 const COPY_CONFIG: Record<CopyType, { label: string; paperTint: string }> = {
-    consigner: { label: 'CONSIGNOR COPY', paperTint: '#ffd9df' },
-    consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffffff' },
+    consigner: { label: 'CONSIGNOR COPY', paperTint: '#ffffff' },
+    consignee: { label: 'CONSIGNEE COPY', paperTint: '#ffd9df' },
     lorry: { label: 'LORRY COPY', paperTint: '#fff6a6' },
     office: { label: 'OFFICE COPY', paperTint: '#cdefff' },
 };
@@ -245,7 +246,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
 <style>
 @page { size: A4 landscape; margin: 5mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; }
+body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; background: ${config.paperTint}; }
 .page { position: relative; background: ${config.paperTint}; width: 274mm; min-height: 189mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; box-shadow: inset 0 0 0 2px #1d2f7a; }
 .row { display: flex; width: 100%; }
 .box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
@@ -533,7 +534,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         const canvas = await html2canvas(page, {
             scale: 3,
             useCORS: true,
-            backgroundColor: '#ffffff',
+            backgroundColor: config.paperTint,
             width: page.scrollWidth,
             height: page.scrollHeight,
             windowWidth: page.scrollWidth,
@@ -551,7 +552,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         pdf.addImage(imageData, 'PNG', 5, 5, 284, 198, undefined, 'FAST');
         const safeCopyLabel = config.label.toLowerCase().replace(/\s+/g, '-');
         const safeCn = String(c.cn_no || 'cns').replace(/[^a-zA-Z0-9-_]/g, '');
-        pdf.save(`${safeCn}-${safeCopyLabel}.pdf`);
+        await savePdfWithWatermarks(pdf, `${safeCn}-${safeCopyLabel}.pdf`, {
+            showCancel: Boolean(c.cancel_cn),
+        });
     };
 
     return (

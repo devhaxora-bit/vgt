@@ -1,5 +1,6 @@
 import { formatBranchLabel } from '@/lib/formatBranchLabel';
 import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
+import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 export type ChallanLedgerSummaryBrokerRow = {
     broker_code: string;
@@ -242,7 +243,7 @@ export const downloadChallanLedgerSummaryPdf = async (payload: ChallanLedgerSumm
         }
 
         const safePeriod = payload.periodLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'report';
-        pdf.save(`broker-challan-ledger-${safePeriod}.pdf`);
+        await savePdfWithWatermarks(pdf, `broker-challan-ledger-${safePeriod}.pdf`);
     } finally {
         iframe.remove();
     }

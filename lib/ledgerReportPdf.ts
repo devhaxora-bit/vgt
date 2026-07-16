@@ -5,6 +5,7 @@ import {
     PDF_TABLE_HEADER_BG,
     PDF_TABLE_HEADER_TEXT_COLOR,
 } from '@/lib/pdfLogo';
+import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 export type LedgerParty = {
     name: string;
@@ -885,7 +886,7 @@ export const downloadPartyLedgerReportPdf = async (
 
         const partyCode = String(payload.party.code || 'ledger').replace(/[^a-zA-Z0-9_-]/g, '') || 'ledger';
         const period = payload.periodLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'report';
-        pdf.save(`${partyCode}-ledger-${period}.pdf`);
+        await savePdfWithWatermarks(pdf, `${partyCode}-ledger-${period}.pdf`);
     } finally {
         iframe.remove();
     }
