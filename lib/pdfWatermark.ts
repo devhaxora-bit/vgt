@@ -2,22 +2,21 @@ import type { jsPDF } from 'jspdf';
 import { GState } from 'jspdf';
 import { loadPdfLogo } from '@/lib/pdfLogo';
 
-/** Pale tan from VGT letterhead watermark */
-export const VGT_WATERMARK_TAN = { r: 197, g: 139, b: 62 } as const;
 /** Subtle light red for cancelled / reversed documents */
 export const CANCEL_WATERMARK_RED = { r: 220, g: 140, b: 140 } as const;
 
-const LOGO_WATERMARK_OPACITY = 0.11;
+/** Low opacity so logo color stays the same but does not hide content */
+const LOGO_WATERMARK_OPACITY = 0.07;
 const CANCEL_WATERMARK_OPACITY = 0.14;
-const WATERMARK_ANGLE = 32;
+const CANCEL_WATERMARK_ANGLE = 32;
 /** Large centered logo — ~55% of the shorter page edge */
 const LOGO_SIZE_RATIO = 0.55;
 const CANCEL_FONT_SIZE = 72;
 
 export type PdfWatermarkOptions = {
-    /** Pre-loaded logo data URL. Falls back to client tan-tinted logo when omitted. */
+    /** Pre-loaded logo data URL. Falls back to client logo when omitted. */
     logoDataUrl?: string | null;
-    /** Raw header logo (e.g. server-side) — apply opacity via GState instead of baked-in tint */
+    /** @deprecated Opacity is always applied via GState; kept for callers */
     serverRawLogo?: boolean;
     /** Show faint large CANCEL text in the page center */
     showCancel?: boolean;
@@ -25,59 +24,10 @@ export type PdfWatermarkOptions = {
 
 let cachedWatermarkLogo: string | null = null;
 
-const tintLogoForWatermark = (src: string): Promise<string> => {
-    if (typeof document === 'undefined') return Promise.resolve(src);
-
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                resolve(src);
-                return;
-            }
-
-            ctx.drawImage(img, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const pixels = imageData.data;
-
-            for (let i = 0; i < pixels.length; i += 4) {
-                const alpha = pixels[i + 3];
-                if (alpha < 12) continue;
-
-                const r = pixels[i];
-                const g = pixels[i + 1];
-                const b = pixels[i + 2];
-                const isWhiteish = r > 235 && g > 235 && b > 235;
-
-                if (isWhiteish) {
-                    pixels[i + 3] = 0;
-                    continue;
-                }
-
-                pixels[i] = VGT_WATERMARK_TAN.r;
-                pixels[i + 1] = VGT_WATERMARK_TAN.g;
-                pixels[i + 2] = VGT_WATERMARK_TAN.b;
-                pixels[i + 3] = Math.round(alpha * LOGO_WATERMARK_OPACITY);
-            }
-
-            ctx.putImageData(imageData, 0, 0);
-            resolve(canvas.toDataURL('image/png'));
-        };
-        img.onerror = () => resolve(src);
-        img.src = src;
-    });
-};
-
-/** Tan-tinted low-opacity VGT logo for centered watermarks (browser). */
+/** Original VGT logo for centered watermarks (browser). */
 export const loadPdfWatermarkLogo = async (): Promise<string> => {
     if (cachedWatermarkLogo) return cachedWatermarkLogo;
-    const src = await loadPdfLogo();
-    cachedWatermarkLogo = await tintLogoForWatermark(src);
+    cachedWatermarkLogo = await loadPdfLogo();
     return cachedWatermarkLogo;
 };
 
@@ -106,17 +56,8 @@ const stampLogoWatermark = (
     const x = (pageWidth - logoWidth) / 2;
     const y = (pageHeight - logoHeight) / 2;
 
-    pdf.addImage(
-        logoDataUrl,
-        'PNG',
-        x,
-        y,
-        logoWidth,
-        logoHeight,
-        undefined,
-        'FAST',
-        WATERMARK_ANGLE,
-    );
+    // Straight (no tilt) — same logo colors, opacity via GState
+    pdf.addImage(logoDataUrl, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');
 };
 
 const stampCancelWatermark = (pdf: jsPDF, pageWidth: number, pageHeight: number) => {
@@ -125,7 +66,7 @@ const stampCancelWatermark = (pdf: jsPDF, pageWidth: number, pageHeight: number)
     pdf.setTextColor(CANCEL_WATERMARK_RED.r, CANCEL_WATERMARK_RED.g, CANCEL_WATERMARK_RED.b);
 
     pdf.text('CANCEL', pageWidth / 2, pageHeight / 2, {
-        angle: WATERMARK_ANGLE,
+        angle: CANCEL_WATERMARK_ANGLE,
         align: 'center',
         baseline: 'middle',
     });
@@ -135,7 +76,6 @@ const stampPageWatermarks = (
     pdf: jsPDF,
     logoDataUrl: string | null,
     showCancel: boolean,
-    serverRawLogo: boolean,
 ) => {
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
@@ -143,7 +83,7 @@ const stampPageWatermarks = (
     pdf.saveGraphicsState();
 
     if (logoDataUrl) {
-        pdf.setGState(new GState({ opacity: serverRawLogo ? LOGO_WATERMARK_OPACITY : 1 }));
+        pdf.setGState(new GState({ opacity: LOGO_WATERMARK_OPACITY }));
         stampLogoWatermark(pdf, logoDataUrl, pageWidth, pageHeight);
     }
 
@@ -163,12 +103,11 @@ export const applyPdfWatermarks = async (
 ): Promise<void> => {
     const logoDataUrl = await resolveLogoDataUrl(options.logoDataUrl);
     const showCancel = Boolean(options.showCancel);
-    const serverRawLogo = Boolean(options.serverRawLogo);
     const totalPages = pdf.getNumberOfPages();
 
     for (let page = 1; page <= totalPages; page += 1) {
         pdf.setPage(page);
-        stampPageWatermarks(pdf, logoDataUrl, showCancel, serverRawLogo);
+        stampPageWatermarks(pdf, logoDataUrl, showCancel);
     }
 };
 

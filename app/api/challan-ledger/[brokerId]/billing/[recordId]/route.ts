@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-    hasActiveLinkedChallanPayments,
-    prepareChallanBillingSnapshot,
-} from '@/lib/server/challanBillingSnapshot';
+import { prepareChallanBillingSnapshot } from '@/lib/server/challanBillingSnapshot';
 import { findDuplicateGlobalBillRefNo } from '@/lib/server/billRefDuplicates';
 import { requireAuthz, requireBrokerBranchAccess } from '@/lib/server/requireAuthz';
 
@@ -45,19 +42,6 @@ export async function PATCH(
     if (forbiddenRecord) return forbiddenRecord;
     if (record.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Only active billing records can be edited' }, { status: 400 });
-    }
-
-    const { hasLinkedPayments, error: linkedPaymentsError } = await hasActiveLinkedChallanPayments(supabase, {
-        brokerId,
-        billingRecordId: recordId,
-    });
-
-    if (linkedPaymentsError) {
-        return NextResponse.json({ error: linkedPaymentsError }, { status: 500 });
-    }
-
-    if (hasLinkedPayments) {
-        return NextResponse.json({ error: 'Bills with active linked payments cannot be edited. Reverse the linked payment first.' }, { status: 400 });
     }
 
     const { data: snapshotData, error: snapshotError } = await prepareChallanBillingSnapshot(supabase, {

@@ -302,10 +302,31 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .eway-entry-box { margin-top: 4px; padding: 4px 6px; }
 .eway-entry-box .val { font-size: 15px !important; }
 .eway-valid { font-size: 15px !important; color: #111 !important; }
+/* ARC-style repeating company-name watermark (consignee / white copy) */
+.name-wm {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    color: ${PDF_HEADER_TITLE_COLOR};
+    opacity: 0.07;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 7.5px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    line-height: 1.55;
+    text-transform: uppercase;
+    word-break: break-all;
+    white-space: pre-wrap;
+    padding: 2mm;
+}
+.page > *:not(.name-wm) { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
 <div class="page">
+    ${type === 'consignee' ? `<div class="name-wm" aria-hidden="true">${Array.from({ length: 48 }, () => 'VISAKHA GOLDEN TRANSPORT ').join('')}</div>` : ''}
     <div class="hdr">
         <div class="row" style="gap:10px; align-items:center;">
             <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
