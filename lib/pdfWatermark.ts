@@ -5,8 +5,8 @@ import { loadPdfLogo } from '@/lib/pdfLogo';
 /** Subtle light red for cancelled / reversed documents */
 export const CANCEL_WATERMARK_RED = { r: 220, g: 140, b: 140 } as const;
 
-/** Low opacity so logo color stays the same but does not hide content */
-const LOGO_WATERMARK_OPACITY = 0.07;
+/** Soft navy watermark — high enough to read as blue, low enough not to hide content */
+const LOGO_WATERMARK_OPACITY = 0.18;
 const CANCEL_WATERMARK_OPACITY = 0.14;
 const CANCEL_WATERMARK_ANGLE = 32;
 /** Large centered logo — ~55% of the shorter page edge */
@@ -53,10 +53,11 @@ const stampLogoWatermark = (
     const logoWidth = shortEdge * LOGO_SIZE_RATIO;
     const aspect = 0.42;
     const logoHeight = logoWidth * aspect;
+    // True page center (no vertical or horizontal offset)
     const x = (pageWidth - logoWidth) / 2;
     const y = (pageHeight - logoHeight) / 2;
 
-    // Straight (no tilt) — same logo colors, opacity via GState
+    // Straight (no tilt) — original navy logo colors, opacity via GState
     pdf.addImage(logoDataUrl, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');
 };
 

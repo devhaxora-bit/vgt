@@ -302,7 +302,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .eway-entry-box { margin-top: 4px; padding: 4px 6px; }
 .eway-entry-box .val { font-size: 15px !important; }
 .eway-valid { font-size: 15px !important; color: #111 !important; }
-/* ARC-style repeating company-name watermark (consignee / white copy) */
+/* ARC-style repeating company-name watermark — full-page dense fill (consignee / white copy) */
 .name-wm {
     position: absolute;
     inset: 0;
@@ -310,23 +310,33 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
     pointer-events: none;
     overflow: hidden;
     color: ${PDF_HEADER_TITLE_COLOR};
-    opacity: 0.07;
+    opacity: 0.08;
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 7.5px;
-    font-weight: 600;
-    letter-spacing: 0.6px;
-    line-height: 1.55;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    line-height: 1.45;
     text-transform: uppercase;
-    word-break: break-all;
-    white-space: pre-wrap;
-    padding: 2mm;
+    white-space: nowrap;
+    padding: 0;
+}
+.name-wm-line {
+    display: block;
+    width: 200%;
+    margin: 0;
+    padding: 0;
 }
 .page > *:not(.name-wm) { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
 <div class="page">
-    ${type === 'consignee' ? `<div class="name-wm" aria-hidden="true">${Array.from({ length: 48 }, () => 'VISAKHA GOLDEN TRANSPORT ').join('')}</div>` : ''}
+    ${type === 'consignee' ? (() => {
+        const phrase = 'VISAKHA GOLDEN TRANSPORT ';
+        const line = phrase.repeat(24);
+        const lines = Array.from({ length: 90 }, () => `<div class="name-wm-line">${line}</div>`).join('');
+        return `<div class="name-wm" aria-hidden="true">${lines}</div>`;
+    })() : ''}
     <div class="hdr">
         <div class="row" style="gap:10px; align-items:center;">
             <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
