@@ -205,7 +205,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .total-label { text-align: right; padding-right: 8px; color: #1d2f7a; font-size: 10.8px; white-space: nowrap !important; }
 .total-row .amount { font-size: 10.8px; font-weight: 900; }
 .bill-footer { flex-shrink: 0; }
-.words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 10px; font-weight: 600; line-height: 1.25; }
+.words-row { border-bottom: 1.2px solid #1d2f7a; padding: 7px 10px 8px; text-align: center; font-size: 13px; font-weight: 600; line-height: 1.25; }
 .notes-block { min-height: 38px; border-bottom: 1.2px solid #1d2f7a; padding: 6px 8px; font-size: 10px; font-weight: 700; line-height: 1.5; color: #111; }
 .remark-title { margin-bottom: 4px; font-weight: 800; color: #1d2f7a; }
 .footer-grid { display: grid; grid-template-columns: 65% 35%; }
