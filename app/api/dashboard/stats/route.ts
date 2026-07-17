@@ -87,7 +87,7 @@ export async function GET() {
         (() => {
             let query = supabase
                 .from('consignments')
-                .select('cn_no, booking_branch, bkg_date, total_freight, consignor_name, destination')
+                .select('cn_no, booking_branch, bkg_date, total_freight, consignor_name, delivery_point, dest_branch')
                 .eq('cancel_cn', false)
                 .order('bkg_date', { ascending: false })
                 .limit(5);
@@ -189,7 +189,7 @@ export async function GET() {
             bkg_date: row.bkg_date,
             total_freight: toMoney(row.total_freight),
             consignor_name: row.consignor_name,
-            destination: row.destination,
+            destination: row.delivery_point || row.dest_branch || null,
         })),
     });
 }
