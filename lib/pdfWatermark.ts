@@ -53,7 +53,8 @@ const stampLogoWatermark = (
     const logoWidth = shortEdge * LOGO_SIZE_RATIO;
     const aspect = 0.42;
     const logoHeight = logoWidth * aspect;
-    const x = (pageWidth - logoWidth) / 2;
+    /** ~10px left of true center (10px ≈ 2.65mm) */
+    const x = (pageWidth - logoWidth) / 2 - 2.65;
     const y = (pageHeight - logoHeight) / 2;
 
     // Straight (no tilt) — same logo colors, opacity via GState
