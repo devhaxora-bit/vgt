@@ -32,7 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatLoadWeightDisplay, normalizeLoadUnit, resolveLoadWeight } from '@/lib/loadWeightDisplay';
-import { loadPdfLogo, PDF_HEADER_TITLE_COLOR, PDF_LOGO_BOX_IMG_CSS, VGT_LOGO_PATH } from '@/lib/pdfLogo';
+import { loadPdfLogo, PDF_HEADER_TITLE_COLOR, PDF_LOGO_BOX_IMG_CSS, tintPdfLogoBackground, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 interface ConsignmentDetailsDialogProps {
@@ -205,7 +205,8 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const truckNo = c.vehicle_no || c.truck_no || '---';
         const issuingOffice = getFullBranchName(c.booking_branch || c.bkg_branch);
         const officerName = toUpperValue(issuingOfficerName);
-        const logoUrl = logoBase64 || `${window.location.origin}${VGT_LOGO_PATH}`;
+        const rawLogoUrl = logoBase64 || `${window.location.origin}${VGT_LOGO_PATH}`;
+        const logoUrl = await tintPdfLogoBackground(rawLogoUrl, config.paperTint);
         const consignorName = toUpperValue(consignor.name);
         const consignorAddress = toUpperValue(`${consignor.address}${consignor.pincode ? ', ' + consignor.pincode : ''}`);
         const consigneeName = toUpperValue(consignee.name);
@@ -260,16 +261,16 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .invoice-no-red { color: #cc1a1a; font-weight: 700; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
 .hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
-.logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:transparent; }
+.logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:${config.paperTint}; }
 .logo-box img { ${PDF_LOGO_BOX_IMG_CSS} }
 .top-grid { display: grid; grid-template-columns: 1.22fr 1.1fr 1.02fr 0.72fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
 .mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
 .right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }
 .right-stack > div:last-child { border-bottom: none; }
-.main-table { width:100%; border-collapse: collapse; }
-.main-table th, .main-table td { border:1px solid #1d2f7a; }
+.main-table { width:100%; border-collapse: collapse; background: ${config.paperTint}; }
+.main-table th, .main-table td { border:1px solid #1d2f7a; background: ${config.paperTint}; }
 .main-table td { padding: 4px 6px; vertical-align: top; }
-.main-table thead th { background: rgba(255,255,255,0.65); color: ${PDF_HEADER_TITLE_COLOR}; font-size: 12px; font-weight: 700; text-align: center; vertical-align: middle; padding: 6px 6px 16px 6px; line-height: 1.1; }
+.main-table thead th { background: ${config.paperTint}; color: ${PDF_HEADER_TITLE_COLOR}; font-size: 12px; font-weight: 700; text-align: center; vertical-align: middle; padding: 6px 6px 16px 6px; line-height: 1.1; }
 .main-table thead .subhead-cell { font-size: 11px; height: 24px; padding: 0 4px; line-height: 24px; vertical-align: middle; box-sizing: border-box; }
 .main-table th:last-child, .main-table td:last-child { border-right: 1px solid #1d2f7a !important; }
 .charges-list { font-size: 12px; line-height: 1.4; }
