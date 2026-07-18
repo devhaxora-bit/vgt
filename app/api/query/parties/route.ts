@@ -109,7 +109,7 @@ export async function GET(request: Request) {
                 .from('consignments')
                 .select(CN_SELECT_FIELDS)
                 .eq('billing_party_id', id)
-                .eq('cancel_cn', false)
+                .eq('cancel_cn', false).is('deleted_at', null)
                 .order('bkg_date', { ascending: false })
                 .order('cn_no', { ascending: false })
                 .limit(100),

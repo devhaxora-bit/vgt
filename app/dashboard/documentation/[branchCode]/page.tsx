@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/utils/supabase/client';
+import { hasFullBranchAccess } from '@/lib/branchAccess';
 import { toast } from 'sonner';
 
 type Branch = {
@@ -29,6 +30,8 @@ type DocItem = {
     description: string;
     href: string;
     adminOnly: boolean;
+    /** Only global/main admins (not branch-scoped) */
+    fullAccessOnly?: boolean;
 };
 
 export default function BranchDocumentationPage() {
@@ -36,6 +39,7 @@ export default function BranchDocumentationPage() {
     const branchCode = String(params.branchCode || '').toUpperCase();
     const [branch, setBranch] = useState<Branch | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [isFullAccessAdmin, setIsFullAccessAdmin] = useState(false);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -48,10 +52,13 @@ export default function BranchDocumentationPage() {
                 if (user) {
                     const { data: profile } = await supabase
                         .from('users')
-                        .select('role')
+                        .select('role, branch_access')
                         .eq('id', user.id)
                         .single();
                     setIsAdmin(profile?.role === 'admin');
+                    setIsFullAccessAdmin(
+                        profile?.role === 'admin' && hasFullBranchAccess(profile),
+                    );
                 }
 
                 const res = await fetch('/api/references/branches?includeCnConfig=1');
@@ -86,9 +93,21 @@ export default function BranchDocumentationPage() {
             href: `/dashboard/documentation/${branchCode}/cn-assigning`,
             adminOnly: true,
         },
+        {
+            id: 'cn-soft-delete',
+            title: 'CN Soft-Delete',
+            description: 'Search CNs, soft-delete them (audit retained), and release the CN number for reuse. Main/global admin only.',
+            href: `/dashboard/documentation/${branchCode}/cn-soft-delete`,
+            adminOnly: true,
+            fullAccessOnly: true,
+        },
     ];
 
-    const visibleItems = docItems.filter((item) => !item.adminOnly || isAdmin);
+    const visibleItems = docItems.filter((item) => {
+        if (item.fullAccessOnly) return isFullAccessAdmin;
+        if (item.adminOnly) return isAdmin;
+        return true;
+    });
 
     if (loading) {
         return (

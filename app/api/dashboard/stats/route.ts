@@ -56,7 +56,7 @@ export async function GET() {
             let query = supabase
                 .from('consignments')
                 .select('*', { count: 'exact', head: true })
-                .eq('cancel_cn', false)
+                .eq('cancel_cn', false).is('deleted_at', null)
                 .gte('bkg_date', monthStartIso());
             if (listBranch) query = query.eq('booking_branch', listBranch);
             return query;
@@ -88,7 +88,7 @@ export async function GET() {
             let query = supabase
                 .from('consignments')
                 .select('cn_no, booking_branch, bkg_date, total_freight, consignor_name, delivery_point, dest_branch')
-                .eq('cancel_cn', false)
+                .eq('cancel_cn', false).is('deleted_at', null)
                 .order('bkg_date', { ascending: false })
                 .limit(5);
             if (listBranch) query = query.eq('booking_branch', listBranch);

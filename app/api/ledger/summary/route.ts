@@ -85,7 +85,7 @@ export async function GET(request: Request) {
         let cnsQuery = supabase
             .from('consignments')
             .select('billing_party_id, total_freight')
-            .eq('cancel_cn', false)
+            .eq('cancel_cn', false).is('deleted_at', null)
             .limit(10000);
         if (branch) cnsQuery = cnsQuery.eq('booking_branch', branch);
         if (dateFrom) cnsQuery = cnsQuery.gte('bkg_date', dateFrom);

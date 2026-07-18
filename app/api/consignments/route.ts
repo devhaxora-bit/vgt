@@ -98,6 +98,7 @@ export async function GET(request: Request) {
     let query = auth.supabase
         .from("consignments")
         .select("*")
+        .is("deleted_at", null)
         .order("cn_no", { ascending: false });
 
     if (listBranch) {

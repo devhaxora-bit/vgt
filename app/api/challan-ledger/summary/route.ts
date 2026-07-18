@@ -245,7 +245,7 @@ export async function GET(request: Request) {
     const { data: allConsignments } = await supabase
         .from('consignments')
         .select('cn_no, total_freight')
-        .eq('cancel_cn', false)
+        .eq('cancel_cn', false).is('deleted_at', null)
         .limit(10000);
 
     let unchallanedCnsCount = 0;
