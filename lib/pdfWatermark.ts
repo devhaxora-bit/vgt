@@ -53,9 +53,9 @@ const stampLogoWatermark = (
     const logoWidth = shortEdge * LOGO_SIZE_RATIO;
     const aspect = 0.42;
     const logoHeight = logoWidth * aspect;
-    // True page center (no vertical or horizontal offset)
-    const x = (pageWidth - logoWidth) / 2;
-    const y = (pageHeight - logoHeight) / 2;
+    /** 10px left, 5px down from true center (px → mm @ 96dpi) */
+    const x = (pageWidth - logoWidth) / 2 - 2.65;
+    const y = (pageHeight - logoHeight) / 2 + 1.32;
 
     // Straight (no tilt) — original navy logo colors, opacity via GState
     pdf.addImage(logoDataUrl, 'PNG', x, y, logoWidth, logoHeight, undefined, 'FAST');

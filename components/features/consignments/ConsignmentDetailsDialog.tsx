@@ -162,7 +162,7 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
             if (Number.isNaN(parsed.getTime())) return dateValue;
             const day = String(parsed.getDate()).padStart(2, '0');
             const month = String(parsed.getMonth() + 1).padStart(2, '0');
-            const year = String(parsed.getFullYear()).slice(-2);
+            const year = String(parsed.getFullYear());
             return `${day}/${month}/${year}`;
         };
 
