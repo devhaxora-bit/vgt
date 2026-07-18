@@ -36,13 +36,16 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import { BRANCH_ADMIN_ALLOWED_PATHS, isBranchScopedAccess } from '@/lib/branchAccess'
+import { BRANCH_ADMIN_ALLOWED_PATHS, hasFullBranchAccess, isBranchScopedAccess } from '@/lib/branchAccess'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 interface User {
     full_name: string;
     employee_code: string;
     role: string;
     branch_access?: string | null;
+    branch_code?: string | null;
+    branch_name?: string | null;
 }
 
 export default function DashboardNav() {
@@ -69,12 +72,27 @@ export default function DashboardNav() {
             if (authUser) {
                 const { data: profile } = await supabase
                     .from('users')
-                    .select('full_name, employee_code, role, branch_access')
+                    .select('full_name, employee_code, role, branch_access, branch_code')
                     .eq('id', authUser.id)
                     .single();
 
                 if (profile) {
-                    setUser(profile);
+                    let branchName: string | null = null;
+                    const branchCode = String(profile.branch_code || '').trim().toUpperCase() || null;
+                    if (branchCode) {
+                        const { data: branch } = await supabase
+                            .from('branches')
+                            .select('name')
+                            .ilike('code', branchCode)
+                            .maybeSingle();
+                        branchName = branch?.name || null;
+                    }
+
+                    setUser({
+                        ...profile,
+                        branch_code: branchCode,
+                        branch_name: branchName,
+                    });
                 } else {
                     // Fallback to auth data if profile is missing
                     setUser({
@@ -82,6 +100,8 @@ export default function DashboardNav() {
                         employee_code: 'UNC-000',
                         role: 'admin', // Default to admin so they can fix their profile
                         branch_access: 'global',
+                        branch_code: null,
+                        branch_name: null,
                     });
                 }
             }
@@ -220,11 +240,16 @@ export default function DashboardNav() {
     ];
 
     const isBranchAdmin = user?.role?.toLowerCase() === 'admin' && isBranchScopedAccess(user);
+    const canSeeMoreMenu = hasFullBranchAccess(user);
 
     const filteredNavItems = navItems
         .filter((item) => {
             if (item.title === 'Admin') {
                 return user?.role?.toLowerCase() === 'admin';
+            }
+            // Documentation / More — only global & main branch users
+            if (item.title === 'More') {
+                return canSeeMoreMenu;
             }
             return true;
         })
@@ -410,9 +435,15 @@ export default function DashboardNav() {
                             <span className="hidden lg:inline">{user?.employee_code} - {user?.full_name}</span>
                             <span className="lg:hidden">{user?.employee_code}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" title={user?.branch_code ? formatBranchLabel(user.branch_code, user.branch_name) : 'All Branches'}>
                             <MapPin className="h-3.5 w-3.5" />
-                            <span>MRG</span>
+                            <span>
+                                {user?.branch_code
+                                    ? (user.branch_name
+                                        ? `${user.branch_code} — ${user.branch_name}`
+                                        : user.branch_code)
+                                    : 'All Branches'}
+                            </span>
                         </div>
                         <div className="flex items-center gap-1 md:gap-2 bg-background px-2 py-0.5 rounded-full border shadow-sm text-foreground">
                             <Clock className="h-3 w-3 text-primary" />
