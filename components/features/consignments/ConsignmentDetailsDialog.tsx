@@ -66,6 +66,22 @@ const getFullBranchName = (code?: string) => {
     return BRANCH_MAP[upperCode] || upperCode;
 };
 
+/** ARC-style repeating name tile for consignee (white) CN PDFs — html2canvas-safe PNG pattern. */
+const createNameWatermarkPattern = (): string | null => {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 260;
+    canvas.height = 13;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(29, 47, 122, 0.16)';
+    ctx.font = '700 7.5px Arial, Helvetica, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('VISAKHA GOLDEN TRANSPORT', 0, canvas.height / 2);
+    return canvas.toDataURL('image/png');
+};
+
 export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin = false }: ConsignmentDetailsDialogProps) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [copyType, setCopyType] = React.useState<CopyType>('consignee');
@@ -239,6 +255,12 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         const basicFreightValue = Number(c.basic_freight || freight.basic_freight || 0);
         const rateLabel = freightRateValue > 0 ? 'Per Tonne:' : 'Fixed:';
         const rateValue = freightRateValue > 0 ? freightRateValue.toFixed(2) : basicFreightValue.toFixed(2);
+        const isWhiteCopy = type === 'consignee';
+        const nameWatermarkPattern = isWhiteCopy ? createNameWatermarkPattern() : null;
+        const surfaceBg = isWhiteCopy ? 'transparent' : config.paperTint;
+        const pageBackground = nameWatermarkPattern
+            ? `${config.paperTint} url("${nameWatermarkPattern}") repeat`
+            : config.paperTint;
 
         const html = `<!DOCTYPE html>
 <html>
@@ -248,9 +270,9 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
 @page { size: A4 landscape; margin: 5mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; background: ${config.paperTint}; }
-.page { position: relative; background: ${config.paperTint}; width: 274mm; min-height: 189mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; box-shadow: inset 0 0 0 2px #1d2f7a; }
+.page { position: relative; background: ${pageBackground}; background-size: 260px 13px; width: 274mm; min-height: 189mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; box-shadow: inset 0 0 0 2px #1d2f7a; }
 .row { display: flex; width: 100%; }
-.box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; }
+.box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; background: ${surfaceBg}; }
 .tiny { font-size: 11px; line-height: 1.25; }
 .mini { font-size: 10px; line-height: 1.2; }
 .lbl { font-size: 11px; font-weight: 700; color: ${PDF_HEADER_TITLE_COLOR}; }
@@ -260,17 +282,17 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .lr-red { color: #cc1a1a; font-weight: 900; font-size: 23px; letter-spacing: 1px; }
 .invoice-no-red { color: #cc1a1a; font-weight: 700; }
 .line { border-bottom: 1px solid #1d2f7a; min-height: 24px; display: flex; align-items: center; }
-.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; }
-.logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:${config.paperTint}; }
+.hdr { border-bottom: 2px solid #1d2f7a; padding: 8px 10px 28px; background: ${surfaceBg}; }
+.logo-box { width: 120px; height: 60px; display:flex; align-items:center; justify-content:center; background:${surfaceBg}; }
 .logo-box img { ${PDF_LOGO_BOX_IMG_CSS} }
 .top-grid { display: grid; grid-template-columns: 1.22fr 1.1fr 1.02fr 0.72fr; gap: 6px; padding: 6px; border-bottom: 1px solid #1d2f7a; }
 .mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
 .right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }
 .right-stack > div:last-child { border-bottom: none; }
-.main-table { width:100%; border-collapse: collapse; background: ${config.paperTint}; }
-.main-table th, .main-table td { border:1px solid #1d2f7a; background: ${config.paperTint}; }
+.main-table { width:100%; border-collapse: collapse; background: ${surfaceBg}; }
+.main-table th, .main-table td { border:1px solid #1d2f7a; background: ${surfaceBg}; }
 .main-table td { padding: 4px 6px; vertical-align: top; }
-.main-table thead th { background: ${config.paperTint}; color: ${PDF_HEADER_TITLE_COLOR}; font-size: 12px; font-weight: 700; text-align: center; vertical-align: middle; padding: 6px 6px 16px 6px; line-height: 1.1; }
+.main-table thead th { background: ${surfaceBg}; color: ${PDF_HEADER_TITLE_COLOR}; font-size: 12px; font-weight: 700; text-align: center; vertical-align: middle; padding: 6px 6px 16px 6px; line-height: 1.1; }
 .main-table thead .subhead-cell { font-size: 11px; height: 24px; padding: 0 4px; line-height: 24px; vertical-align: middle; box-sizing: border-box; }
 .main-table th:last-child, .main-table td:last-child { border-right: 1px solid #1d2f7a !important; }
 .charges-list { font-size: 12px; line-height: 1.4; }
@@ -303,41 +325,10 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .eway-entry-box { margin-top: 4px; padding: 4px 6px; }
 .eway-entry-box .val { font-size: 15px !important; }
 .eway-valid { font-size: 15px !important; color: #111 !important; }
-/* ARC-style repeating company-name watermark — full-page dense fill (consignee / white copy) */
-.name-wm {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    overflow: hidden;
-    color: ${PDF_HEADER_TITLE_COLOR};
-    opacity: 0.08;
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-    line-height: 1.45;
-    text-transform: uppercase;
-    white-space: nowrap;
-    padding: 0;
-}
-.name-wm-line {
-    display: block;
-    width: 200%;
-    margin: 0;
-    padding: 0;
-}
-.page > *:not(.name-wm) { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
 <div class="page">
-    ${type === 'consignee' ? (() => {
-        const phrase = 'VISAKHA GOLDEN TRANSPORT ';
-        const line = phrase.repeat(24);
-        const lines = Array.from({ length: 90 }, () => `<div class="name-wm-line">${line}</div>`).join('');
-        return `<div class="name-wm" aria-hidden="true">${lines}</div>`;
-    })() : ''}
     <div class="hdr">
         <div class="row" style="gap:10px; align-items:center;">
             <div class="logo-box"><img src="${logoUrl}" alt="VGT Logo" /></div>
