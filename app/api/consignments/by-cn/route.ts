@@ -32,6 +32,7 @@ async function runCnSearch(
         .from('consignments')
         .select(fields)
         .ilike('cn_no', `%${search}%`)
+        .is('deleted_at', null)
         .order('cn_no', { ascending: false })
         .limit(20);
 

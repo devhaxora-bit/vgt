@@ -356,7 +356,7 @@ export async function prepareBillingSnapshot(
         .from('consignments')
         .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no, freight_included, parent_cn_id')
         .eq('billing_party_id', partyId)
-        .eq('cancel_cn', false)
+        .eq('cancel_cn', false).is('deleted_at', null)
         .in('cn_no', normalizedCoveredCnNos);
 
     if (error) {

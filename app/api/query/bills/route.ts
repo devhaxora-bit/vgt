@@ -89,7 +89,7 @@ export async function GET(request: Request) {
                 .from('consignments')
                 .select(CN_SELECT_FIELDS)
                 .eq('billing_party_id', record.party_id)
-                .eq('cancel_cn', false);
+                .eq('cancel_cn', false).is('deleted_at', null);
             consignments = data ?? [];
         }
 

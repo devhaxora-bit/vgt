@@ -25,6 +25,7 @@ export async function GET(request: Request) {
         .from('consignments')
         .select('*')
         .eq('id', id)
+        .is('deleted_at', null)
         .single();
 
     if (error || !consignment) {
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
         .from('consignments')
         .select(CHILD_SELECT_FIELDS)
         .eq('parent_cn_id', id)
+        .is('deleted_at', null)
         .order('cn_no', { ascending: true });
 
     // If this CN is itself a child, resolve its parent CN number

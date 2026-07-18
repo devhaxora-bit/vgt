@@ -219,7 +219,7 @@ export async function GET(
     const { data: allConsignments } = await supabase
         .from('consignments')
         .select('id, cn_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, total_freight, vehicle_no, cancel_cn')
-        .eq('cancel_cn', false)
+        .eq('cancel_cn', false).is('deleted_at', null)
         .order('bkg_date', { ascending: false })
         .limit(5000);
 
