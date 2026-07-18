@@ -33,7 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatLoadWeightDisplay, normalizeLoadUnit, resolveLoadWeight } from '@/lib/loadWeightDisplay';
 import { loadPdfLogo, PDF_HEADER_TITLE_COLOR, PDF_LOGO_BOX_IMG_CSS, tintPdfLogoBackground, VGT_LOGO_PATH } from '@/lib/pdfLogo';
-import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
+import { applyPdfWatermarks } from '@/lib/pdfWatermark';
 
 interface ConsignmentDetailsDialogProps {
     isOpen: boolean;
@@ -246,8 +246,9 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
 <style>
 @page { size: A4 landscape; margin: 5mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; background: ${config.paperTint}; }
-.page { position: relative; background: ${config.paperTint}; width: 274mm; min-height: 189mm; margin: 0 auto; padding-right: 2.5mm; padding-bottom: 8mm; overflow: hidden; border: 2px solid #1d2f7a; }
+html, body { background: ${config.paperTint}; }
+body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #111; }
+.page { position: relative; background: ${config.paperTint}; width: 274mm; min-height: 189mm; margin: 0 auto; padding: 0 2.5mm 8mm 0; overflow: visible; border: 2.5px solid #1d2f7a; box-sizing: border-box; }
 .row { display: flex; width: 100%; }
 .box { border: 1px solid #1d2f7a; border-radius: 6px; padding: 4px 6px; background: ${config.paperTint}; }
 .tiny { font-size: 11px; line-height: 1.25; }
@@ -282,12 +283,14 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
 .mid-grid { display:grid; grid-template-columns: 1.8fr 0.58fr 0.82fr; gap: 6px; padding: 6px; border-bottom:1px solid #1d2f7a; }
 .right-stack > div { border-bottom: 1px solid #1d2f7a; padding: 4px 5px; min-height: 28px; }
 .right-stack > div:last-child { border-bottom: none; }
-.main-table { width:100%; border-collapse: collapse; background: ${config.paperTint}; }
-.main-table th, .main-table td { border:1px solid #1d2f7a; background: ${config.paperTint}; }
+.main-table-wrap { border: 1.5px solid #1d2f7a; margin: 0; background: ${config.paperTint}; }
+.main-table { width:100%; border-collapse: separate; border-spacing: 0; background: ${config.paperTint}; }
+.main-table th, .main-table td { border-right:1px solid #1d2f7a; border-bottom:1px solid #1d2f7a; background: ${config.paperTint}; }
+.main-table th:last-child, .main-table td:last-child { border-right: none; }
+.main-table tbody tr:last-child > td { border-bottom: none; }
 .main-table td { padding: 4px 6px; vertical-align: top; }
 .main-table thead th { background: ${config.paperTint}; color: ${PDF_HEADER_TITLE_COLOR}; font-size: 12px; font-weight: 700; text-align: center; vertical-align: middle; padding: 6px 6px 16px 6px; line-height: 1.1; }
 .main-table thead .subhead-cell { font-size: 11px; height: 24px; padding: 0 4px; line-height: 24px; vertical-align: middle; box-sizing: border-box; }
-.main-table th:last-child, .main-table td:last-child { border-right: 1px solid #1d2f7a !important; }
 .charges-list { font-size: 12px; line-height: 1.4; }
 .charge-label { color: ${PDF_HEADER_TITLE_COLOR}; font-weight: 700; }
 .charge-val { color: #111; font-weight: 700; }
@@ -464,6 +467,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         </div>
     </div>
 
+    <div class="main-table-wrap">
     <table class="main-table">
         <thead>
             <tr>
@@ -522,6 +526,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             </tr>
         </tbody>
     </table>
+    </div>
 
     <div class="footer">
         <div style="font-size:19px; font-weight:700;"><span class="lbl" style="font-size:19px;">Value .</span> <span class="val ink">${Number(invoiceAmountValue).toFixed(2)}</span></div>
@@ -564,6 +569,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
         }
 
         const page = doc.querySelector('.page') as HTMLElement | null;
+        const tableWrap = doc.querySelector('.main-table-wrap') as HTMLElement | null;
         if (!page) return;
 
         const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -575,10 +581,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             scale: 3,
             useCORS: true,
             backgroundColor: config.paperTint,
-            width: page.scrollWidth,
-            height: page.scrollHeight,
-            windowWidth: page.scrollWidth,
-            windowHeight: page.scrollHeight,
+            logging: false,
         });
 
         const imageData = canvas.toDataURL('image/png');
@@ -589,12 +592,36 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
             compress: true,
         });
 
-        pdf.addImage(imageData, 'PNG', 5, 5, 284, 198, undefined, 'FAST');
-        const safeCopyLabel = config.label.toLowerCase().replace(/\s+/g, '-');
-        const safeCn = String(c.cn_no || 'cns').replace(/[^a-zA-Z0-9-_]/g, '');
-        await savePdfWithWatermarks(pdf, `${safeCn}-${safeCopyLabel}.pdf`, {
+        // Fill A4 landscape like previous CN PDFs (297×210 with ~5mm margin)
+        const drawX = 5;
+        const drawY = 5;
+        const drawW = 287;
+        const drawH = 200;
+        pdf.addImage(imageData, 'PNG', drawX, drawY, drawW, drawH, undefined, 'FAST');
+
+        await applyPdfWatermarks(pdf, {
             showCancel: Boolean(c.cancel_cn),
         });
+
+        // Outer frame + table frame drawn last so edges stay visible
+        pdf.setDrawColor(29, 47, 122);
+        pdf.setLineWidth(0.55);
+        pdf.rect(drawX + 0.3, drawY + 0.3, drawW - 0.6, drawH - 0.6);
+
+        if (tableWrap) {
+            const pageRect = page.getBoundingClientRect();
+            const tableRect = tableWrap.getBoundingClientRect();
+            const x = drawX + ((tableRect.left - pageRect.left) / pageRect.width) * drawW;
+            const y = drawY + ((tableRect.top - pageRect.top) / pageRect.height) * drawH;
+            const w = (tableRect.width / pageRect.width) * drawW;
+            const h = (tableRect.height / pageRect.height) * drawH;
+            pdf.setLineWidth(0.4);
+            pdf.rect(x + 0.2, y + 0.2, Math.max(0, w - 0.4), Math.max(0, h - 0.4));
+        }
+
+        const safeCopyLabel = config.label.toLowerCase().replace(/\s+/g, '-');
+        const safeCn = String(c.cn_no || 'cns').replace(/[^a-zA-Z0-9-_]/g, '');
+        pdf.save(`${safeCn}-${safeCopyLabel}.pdf`);
     };
 
     return (
@@ -607,8 +634,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                         position: 'fixed',
                         left: '-10000px',
                         top: 0,
-                        width: '1400px',
-                        height: '1000px',
+                        width: '1800px',
+                        height: '1400px',
                         border: 'none',
                         opacity: 0,
                         pointerEvents: 'none',
