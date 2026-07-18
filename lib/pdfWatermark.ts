@@ -5,8 +5,8 @@ import { loadPdfLogo } from '@/lib/pdfLogo';
 /** Subtle light red for cancelled / reversed documents */
 export const CANCEL_WATERMARK_RED = { r: 220, g: 140, b: 140 } as const;
 
-/** Soft navy watermark — high enough to read as blue, low enough not to hide content */
-const LOGO_WATERMARK_OPACITY = 0.18;
+/** Soft navy watermark — readable as blue, stays behind form text */
+const LOGO_WATERMARK_OPACITY = 0.12;
 const CANCEL_WATERMARK_OPACITY = 0.14;
 const CANCEL_WATERMARK_ANGLE = 32;
 /** Large centered logo — ~55% of the shorter page edge */
