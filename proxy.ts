@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import {
     BRANCH_ADMIN_ALLOWED_PATHS,
-    canAccessAdminPath,
+    canAccessMasterDataPath,
     hasFullBranchAccess,
     isBranchScopedAccess,
 } from '@/lib/branchAccess'
@@ -138,28 +138,17 @@ export async function proxy(request: NextRequest) {
 
     const pathname = request.nextUrl.pathname
 
-    // Branch admin — block System Admin pages they shouldn't open by URL
+    // Restrict /dashboard/admin to allowed admin / master-data paths
     if (
         user &&
         profile &&
         pathname.startsWith('/dashboard/admin') &&
-        !canAccessAdminPath(profile, pathname)
+        !canAccessMasterDataPath(profile, pathname)
     ) {
         const redirectUrl = request.nextUrl.clone()
-        redirectUrl.pathname = BRANCH_ADMIN_ALLOWED_PATHS[0]
-        redirectUrl.search = ''
-        return NextResponse.redirect(redirectUrl)
-    }
-
-    // Non-admin cannot open /dashboard/admin at all
-    if (
-        user &&
-        profile &&
-        pathname.startsWith('/dashboard/admin') &&
-        String(profile.role || '').toLowerCase() !== 'admin'
-    ) {
-        const redirectUrl = request.nextUrl.clone()
-        redirectUrl.pathname = '/dashboard'
+        redirectUrl.pathname = canAccessMasterDataPath(profile, BRANCH_ADMIN_ALLOWED_PATHS[0])
+            ? BRANCH_ADMIN_ALLOWED_PATHS[0]
+            : '/dashboard'
         redirectUrl.search = ''
         return NextResponse.redirect(redirectUrl)
     }

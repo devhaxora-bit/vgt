@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { canManageMasterData } from '@/lib/branchAccess';
 import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 interface Vehicle {
@@ -56,6 +57,7 @@ const inputCls = 'h-9 text-sm';
 
 export default function VehiclesAdminPage() {
     const userScope = useCurrentUserScope();
+    const canManage = canManageMasterData({ role: userScope.role, branch_access: userScope.branchAccess });
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -245,6 +247,7 @@ export default function VehiclesAdminPage() {
                                             <Badge variant={v.is_active ? 'default' : 'secondary'}>{v.is_active ? 'Active' : 'Inactive'}</Badge>
                                         </TableCell>
                                         <TableCell className="text-right sticky right-0 bg-white border-l">
+                                            {canManage ? (
                                             <div className="flex justify-end gap-2">
                                                 <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:bg-blue-50 border-blue-200" onClick={() => openEdit(v)}>
                                                     <Edit className="h-3.5 w-3.5" /> Edit
@@ -253,6 +256,9 @@ export default function VehiclesAdminPage() {
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">View only</span>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}

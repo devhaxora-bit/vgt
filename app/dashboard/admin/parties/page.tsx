@@ -35,11 +35,15 @@ import {
 import { Party } from '@/lib/types/party.types';
 import { getParties, deleteParty } from '@/lib/services/party.service';
 import { toast } from 'sonner';
+import { canManageMasterData } from '@/lib/branchAccess';
+import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 type SortField = 'code' | 'name' | 'branch_code' | 'city' | 'gstin';
 type SortDir = 'asc' | 'desc';
 
 export default function PartiesPage() {
+    const userScope = useCurrentUserScope();
+    const canManage = canManageMasterData({ role: userScope.role, branch_access: userScope.branchAccess });
     const [searchTerm, setSearchTerm] = useState('');
     
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -277,6 +281,7 @@ export default function PartiesPage() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-right sticky right-0 bg-white z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.02)] border-l group-hover:bg-slate-50/80 transition-colors">
+                                                    {canManage ? (
                                                     <div className="flex justify-end gap-2">
                                                         <Button
                                                             variant="outline"
@@ -296,6 +301,9 @@ export default function PartiesPage() {
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
                                                     </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">View only</span>
+                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         ))

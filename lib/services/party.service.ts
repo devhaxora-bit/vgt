@@ -3,9 +3,13 @@ import { Party, PartyInput } from '../types/party.types';
 const jsonOrThrow = async (res: Response): Promise<unknown> => {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-        const message = typeof body === 'object' && body && 'error' in body
-            ? String((body as { error?: string }).error || 'Request failed')
-            : 'Request failed';
+        const record = typeof body === 'object' && body ? (body as Record<string, unknown>) : {};
+        const message = String(
+            record.error
+            || record.message
+            || record.msg
+            || `Request failed (${res.status})`,
+        );
         throw new Error(message);
     }
     return body;
@@ -54,6 +58,7 @@ export const getNextPartyCode = async (): Promise<string> => {
 export const createParty = async (party: PartyInput): Promise<Party> => {
     const res = await fetch('/api/parties', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(party),
     });
@@ -67,6 +72,7 @@ export const updateParty = async (
 ): Promise<Party> => {
     const res = await fetch(`/api/parties/${id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(party),
     });
@@ -75,7 +81,10 @@ export const updateParty = async (
 };
 
 export const deleteParty = async (id: string): Promise<boolean> => {
-    const res = await fetch(`/api/parties/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/parties/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+    });
     await jsonOrThrow(res);
     return true;
 };

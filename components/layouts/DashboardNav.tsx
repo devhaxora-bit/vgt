@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import { BRANCH_ADMIN_ALLOWED_PATHS, hasFullBranchAccess, isBranchScopedAccess } from '@/lib/branchAccess'
+import { BRANCH_ADMIN_ALLOWED_PATHS, canCreateMasterData, hasFullBranchAccess, isBranchScopedAccess, isFullAccessEmployee } from '@/lib/branchAccess'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 interface User {
@@ -240,12 +240,15 @@ export default function DashboardNav() {
     ];
 
     const isBranchAdmin = user?.role?.toLowerCase() === 'admin' && isBranchScopedAccess(user);
+    const isMasterDataCreator = isFullAccessEmployee(user);
+    const canSeeAdminMenu = canCreateMasterData(user);
     const canSeeMoreMenu = hasFullBranchAccess(user);
+    const filterToMasterPaths = isBranchAdmin || isMasterDataCreator;
 
     const filteredNavItems = navItems
         .filter((item) => {
             if (item.title === 'Admin') {
-                return user?.role?.toLowerCase() === 'admin';
+                return canSeeAdminMenu;
             }
             // Documentation / More — only global & main branch users
             if (item.title === 'More') {
@@ -254,7 +257,7 @@ export default function DashboardNav() {
             return true;
         })
         .map((item) => {
-            if (item.title !== 'Admin' || !isBranchAdmin) {
+            if (item.title !== 'Admin' || !filterToMasterPaths) {
                 return item;
             }
 

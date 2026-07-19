@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { canManageMasterData } from '@/lib/branchAccess';
 import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 interface Broker {
@@ -43,6 +44,7 @@ const emptyForm = { code: '', name: '', mobile: '', address: '', branch_code: ''
 
 export default function BrokersAdminPage() {
     const userScope = useCurrentUserScope();
+    const canManage = canManageMasterData({ role: userScope.role, branch_access: userScope.branchAccess });
     const [brokers, setBrokers] = useState<Broker[]>([]);
     const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -269,6 +271,7 @@ export default function BrokersAdminPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-right sticky right-0 bg-white border-l">
+                                            {canManage ? (
                                             <div className="flex justify-end gap-2">
                                                 <Button
                                                     variant="outline" size="sm"
@@ -285,6 +288,9 @@ export default function BrokersAdminPage() {
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">View only</span>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}

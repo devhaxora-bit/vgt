@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/brokers — create a broker
 export async function POST(req: NextRequest) {
-    const auth = await requireAuthz({ adminOnly: true });
+    const auth = await requireAuthz({ masterDataCreate: true });
     if (!auth.ok) return auth.response;
 
     const body = await req.json();
