@@ -32,20 +32,51 @@ export const isBranchAdminAllowedPath = (pathname: string): boolean => {
     );
 };
 
+type AccessUser = {
+    role?: string | null;
+    branch_access?: BranchAccess | string | null;
+} | null | undefined;
+
+const normalizeRole = (user: AccessUser): string =>
+    String(user?.role || '').toLowerCase();
+
+/** Full-access (global/main) employees may create master data only. */
+export const isFullAccessEmployee = (user: AccessUser): boolean =>
+    normalizeRole(user) === 'employee' && hasFullBranchAccess(user);
+
+/** Admins: edit/delete parties, brokers, vehicles. */
+export const canManageMasterData = (user: AccessUser): boolean =>
+    normalizeRole(user) === 'admin';
+
+/** Admins + full-access employees: create parties, brokers, vehicles. */
+export const canCreateMasterData = (user: AccessUser): boolean =>
+    canManageMasterData(user) || isFullAccessEmployee(user);
+
 export const canAccessAdminPath = (
-    user: {
-        role?: string | null;
-        branch_access?: BranchAccess | string | null;
-    } | null | undefined,
+    user: AccessUser,
     pathname: string,
 ): boolean => {
-    if (String(user?.role || '').toLowerCase() !== 'admin') {
+    if (normalizeRole(user) !== 'admin') {
         return false;
     }
     if (hasFullBranchAccess(user)) {
         return true;
     }
     return isBranchAdminAllowedPath(pathname);
+};
+
+/**
+ * Page access for admin master-data routes.
+ * Full-access employees get parties/brokers/vehicles only (add via UI, no edit/delete).
+ */
+export const canAccessMasterDataPath = (
+    user: AccessUser,
+    pathname: string,
+): boolean => {
+    if (canAccessAdminPath(user, pathname)) {
+        return true;
+    }
+    return isFullAccessEmployee(user) && isBranchAdminAllowedPath(pathname);
 };
 
 export const branchAccessLabel = (

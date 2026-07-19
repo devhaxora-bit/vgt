@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/parties — create (admin)
 export async function POST(req: NextRequest) {
-    const auth = await requireAuthz({ adminOnly: true });
+    const auth = await requireAuthz({ masterDataCreate: true });
     if (!auth.ok) return auth.response;
 
     const body = await req.json();
@@ -177,7 +177,18 @@ export async function POST(req: NextRequest) {
         .single();
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        const message = String(error.message || '');
+        const isRls =
+            error.code === '42501'
+            || /row-level security|unauthorized|permission denied/i.test(message);
+        return NextResponse.json(
+            {
+                error: isRls
+                    ? 'Not allowed to create party for this branch. Ask a main/global admin to apply the latest DB permissions, or confirm your user is an active admin.'
+                    : message,
+            },
+            { status: isRls ? 403 : 400 },
+        );
     }
 
     return NextResponse.json(data, { status: 201 });

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import {
     canAccessAdminPath,
+    canAccessMasterDataPath,
+    canCreateMasterData,
     hasFullBranchAccess,
     isBranchScopedAccess,
 } from '@/lib/branchAccess';
@@ -208,6 +210,11 @@ type RequireAuthzOptions = {
     adminOnly?: boolean;
     /** Require global/main (full) branch access */
     fullAccessOnly?: boolean;
+    /**
+     * Allow create on parties/brokers/vehicles for admins
+     * and full-access (global/main) employees.
+     */
+    masterDataCreate?: boolean;
 };
 
 const normalizeBranch = (value: string | null | undefined): string | null => {
@@ -249,6 +256,16 @@ export async function requireAuthz(
         return {
             ok: false,
             response: NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 }),
+        };
+    }
+
+    if (options.masterDataCreate && !canCreateMasterData(profile)) {
+        return {
+            ok: false,
+            response: NextResponse.json(
+                { error: 'Forbidden: Master data create access required' },
+                { status: 403 },
+            ),
         };
     }
 
@@ -347,3 +364,4 @@ export async function requireAuthz(
 
 /** Page-level admin path check usable from proxy / layouts */
 export const canAccessDashboardAdminPath = canAccessAdminPath;
+export const canAccessDashboardMasterDataPath = canAccessMasterDataPath;

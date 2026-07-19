@@ -7,6 +7,10 @@ import {
     isBranchScopedAccess,
     isBranchAdminAllowedPath,
     canAccessAdminPath,
+    canAccessMasterDataPath,
+    canCreateMasterData,
+    canManageMasterData,
+    isFullAccessEmployee,
 } from '../lib/branchAccess';
 
 let passed = 0;
@@ -44,7 +48,9 @@ assert(isBranchAdminAllowedPath('/dashboard/admin/parties?x=1') === true, 'parti
 const branchAdmin = { role: 'admin', branch_access: 'branch' };
 const globalAdmin = { role: 'admin', branch_access: 'global' };
 const mainAdmin = { role: 'admin', branch_access: 'main' };
-const employee = { role: 'employee', branch_access: 'branch' };
+const branchEmployee = { role: 'employee', branch_access: 'branch' };
+const mainEmployee = { role: 'employee', branch_access: 'main' };
+const globalEmployee = { role: 'employee', branch_access: 'global' };
 
 assert(canAccessAdminPath(branchAdmin, '/dashboard/admin/parties') === true, 'branch admin → parties');
 assert(canAccessAdminPath(branchAdmin, '/dashboard/admin/brokers') === true, 'branch admin → brokers');
@@ -54,8 +60,31 @@ assert(canAccessAdminPath(branchAdmin, '/dashboard/admin/branches') === false, '
 assert(canAccessAdminPath(branchAdmin, '/dashboard/admin') === false, 'branch admin ✗ hub');
 assert(canAccessAdminPath(globalAdmin, '/dashboard/admin/users') === true, 'global admin → users');
 assert(canAccessAdminPath(mainAdmin, '/dashboard/admin/branches') === true, 'main admin → branches');
-assert(canAccessAdminPath(employee, '/dashboard/admin/parties') === false, 'employee ✗ admin pages');
+assert(canAccessAdminPath(branchEmployee, '/dashboard/admin/parties') === false, 'branch employee ✗ admin pages');
+assert(canAccessAdminPath(mainEmployee, '/dashboard/admin/parties') === false, 'main employee ✗ canAccessAdminPath');
 assert(canAccessAdminPath(null, '/dashboard/admin/parties') === false, 'null ✗ admin');
+
+assert(isFullAccessEmployee(mainEmployee) === true, 'main employee is full-access employee');
+assert(isFullAccessEmployee(globalEmployee) === true, 'global employee is full-access employee');
+assert(isFullAccessEmployee(branchEmployee) === false, 'branch employee is not full-access employee');
+assert(isFullAccessEmployee(mainAdmin) === false, 'admin is not full-access employee');
+
+assert(canCreateMasterData(mainEmployee) === true, 'main employee can create masters');
+assert(canCreateMasterData(globalEmployee) === true, 'global employee can create masters');
+assert(canCreateMasterData(branchEmployee) === false, 'branch employee ✗ create masters');
+assert(canCreateMasterData(branchAdmin) === true, 'branch admin can create masters');
+
+assert(canManageMasterData(mainEmployee) === false, 'main employee ✗ edit/delete masters');
+assert(canManageMasterData(globalEmployee) === false, 'global employee ✗ edit/delete masters');
+assert(canManageMasterData(mainAdmin) === true, 'main admin can edit/delete masters');
+
+assert(canAccessMasterDataPath(mainEmployee, '/dashboard/admin/parties') === true, 'main employee → parties');
+assert(canAccessMasterDataPath(mainEmployee, '/dashboard/admin/brokers') === true, 'main employee → brokers');
+assert(canAccessMasterDataPath(mainEmployee, '/dashboard/admin/vehicles') === true, 'main employee → vehicles');
+assert(canAccessMasterDataPath(mainEmployee, '/dashboard/admin/users') === false, 'main employee ✗ users');
+assert(canAccessMasterDataPath(mainEmployee, '/dashboard/admin') === false, 'main employee ✗ hub');
+assert(canAccessMasterDataPath(globalEmployee, '/dashboard/admin/parties') === true, 'global employee → parties');
+assert(canAccessMasterDataPath(branchEmployee, '/dashboard/admin/parties') === false, 'branch employee ✗ parties path');
 
 console.log('\n--- requireAuthz entity helpers (compile check) ---');
 import {
