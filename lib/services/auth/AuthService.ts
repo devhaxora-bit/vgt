@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/utils/supabase/admin';
 import type { LoginInput, LoginResponse, Result, UserWithAuth } from '../../types/user.types';
 import type { IUserRepository } from '../../repositories/UserRepository';
 
@@ -16,7 +17,9 @@ export class AuthService implements IAuthService {
             const supabase = await createClient();
 
             // Find user by employee code
-            const user = await this.userRepository.findByEmployeeCode(credentials.employee_code);
+            const user = await this.userRepository.findByEmployeeCode(
+                String(credentials.employee_code || '').trim().toUpperCase(),
+            );
 
             if (!user) {
                 return { success: false, error: 'Invalid employee code or password' };
@@ -32,16 +35,41 @@ export class AuthService implements IAuthService {
                 return { success: false, error: 'Account is deactivated. Contact administrator.' };
             }
 
-            // Authenticate with Supabase
-            console.log('🔐 Attempting to sign in with email:', user.email);
+            // Authenticate with Supabase — must use the auth account linked to this profile id
+            const adminClient = createAdminClient();
+            const { data: linkedAuth, error: linkedAuthError } = await adminClient.auth.admin.getUserById(user.id);
+
+            if (linkedAuthError || !linkedAuth.user?.email) {
+                console.error('❌ Profile has no linked auth user:', user.employee_code, user.id, linkedAuthError?.message);
+                return {
+                    success: false,
+                    error: 'Login is not linked for this employee. Ask an admin to repair the account.',
+                };
+            }
+
+            console.log('🔐 Attempting to sign in with email:', linkedAuth.user.email);
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                email: user.email,
+                email: linkedAuth.user.email,
                 password: credentials.password,
             });
 
-            if (authError || !authData.session) {
+            if (authError || !authData.session || !authData.user) {
                 console.error('❌ Sign in failed:', authError?.message || 'No session returned');
                 return { success: false, error: 'Invalid employee code or password' };
+            }
+
+            // Guard against rare email→different-uuid mismatches
+            if (authData.user.id !== user.id) {
+                console.error('❌ Auth/profile id mismatch:', {
+                    employee_code: user.employee_code,
+                    profileId: user.id,
+                    authId: authData.user.id,
+                });
+                await supabase.auth.signOut();
+                return {
+                    success: false,
+                    error: 'Account is misconfigured (auth/profile mismatch). Ask an admin to repair the account.',
+                };
             }
 
             // Create session record

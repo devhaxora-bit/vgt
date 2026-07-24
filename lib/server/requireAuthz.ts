@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/utils/supabase/admin';
 import {
     canAccessAdminPath,
     canAccessMasterDataPath,
@@ -239,11 +240,14 @@ export async function requireAuthz(
         };
     }
 
-    const { data: profile, error } = await supabase
+    // Load profile with service role after JWT is verified.
+    // Avoids false "User profile not found" when users RLS self-select is missing.
+    const admin = createAdminClient();
+    const { data: profile, error } = await admin
         .from('users')
         .select('id, role, branch_access, branch_code, full_name, employee_code')
         .eq('id', authUser.id)
-        .single();
+        .maybeSingle();
 
     if (error || !profile) {
         return {

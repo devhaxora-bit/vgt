@@ -50,7 +50,7 @@ import {
 
 interface Party {
     id: string; name: string; code: string; type: string;
-    phone?: string; gstin?: string; address?: string;
+    phone?: string; gstin?: string; address?: string; pincode?: string | null;
     branch_code?: string; branch_name?: string | null;
 }
 

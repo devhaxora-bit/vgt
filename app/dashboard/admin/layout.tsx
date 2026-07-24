@@ -10,7 +10,7 @@ import {
     canAccessMasterDataPath,
     canManageMasterData,
     isBranchScopedAccess,
-    isFullAccessEmployee,
+    isEmployee,
 } from '@/lib/branchAccess';
 
 export default function AdminLayout({
@@ -62,7 +62,7 @@ export default function AdminLayout({
                 }
 
                 setIsBranchAdmin(isBranchScopedAccess(userProfile) && canManageMasterData(userProfile));
-                setIsMasterDataCreator(isFullAccessEmployee(userProfile));
+                setIsMasterDataCreator(isEmployee(userProfile) && !canManageMasterData(userProfile));
                 setIsAuthorized(true);
             } catch (error) {
                 console.error('Admin check failed:', error);
@@ -97,7 +97,7 @@ export default function AdminLayout({
             : 'System Administration';
 
     const subtitle = isMasterDataCreator
-        ? 'Add parties, brokers, and vehicles. Editing is limited to admins.'
+        ? 'Add parties, brokers, and vehicles. Branch users can create for their branch only; main/global users can create for any branch. Editing is limited to admins.'
         : isBranchAdmin
             ? 'Manage parties, brokers, and vehicles for your branch.'
             : 'Manage users, branches, and system configurations.';
