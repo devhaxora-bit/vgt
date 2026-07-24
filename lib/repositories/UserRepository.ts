@@ -17,15 +17,15 @@ export class UserRepository implements IUserRepository {
     }
 
     async findById(id: string): Promise<User | null> {
-        const supabase = await this.getClient();
-        const { data, error } = await supabase
+        // Service role: profile bootstrap must not depend on users RLS self-select.
+        const adminClient = createAdminClient();
+        const { data, error } = await adminClient
             .from('users')
             .select('*')
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
         if (error) {
-            if (error.code === 'PGRST116') return null; // Not found
             throw new Error(`Failed to find user: ${error.message}`);
         }
 
@@ -47,14 +47,20 @@ export class UserRepository implements IUserRepository {
             throw new Error(`Failed to find user: ${userError.message}`);
         }
 
-        // Prefer real auth email so login works for admin-created users
-        const { data: authData } = await adminClient.auth.admin.getUserById(user.id);
-        const email = authData.user?.email
-            || `${String(user.employee_code).toLowerCase()}@vgt.com`;
+        // Prefer real auth email so login works for admin-created users.
+        // Do NOT guess email when no auth row exists for this profile id —
+        // that can sign into a different auth user and cause "User profile not found".
+        const { data: authData, error: authLookupError } = await adminClient.auth.admin.getUserById(user.id);
+        if (authLookupError || !authData.user?.email) {
+            return {
+                ...user,
+                email: '',
+            };
+        }
 
         return {
             ...user,
-            email,
+            email: authData.user.email,
         };
     }
 

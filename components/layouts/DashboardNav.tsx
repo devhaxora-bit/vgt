@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import { BRANCH_ADMIN_ALLOWED_PATHS, canCreateMasterData, hasFullBranchAccess, isBranchScopedAccess, isFullAccessEmployee } from '@/lib/branchAccess'
+import { BRANCH_ADMIN_ALLOWED_PATHS, canCreateMasterData, hasFullBranchAccess, isBranchScopedAccess, isEmployee } from '@/lib/branchAccess'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 interface User {
@@ -240,10 +240,10 @@ export default function DashboardNav() {
     ];
 
     const isBranchAdmin = user?.role?.toLowerCase() === 'admin' && isBranchScopedAccess(user);
-    const isMasterDataCreator = isFullAccessEmployee(user);
+    const isMasterDataEmployee = isEmployee(user);
     const canSeeAdminMenu = canCreateMasterData(user);
     const canSeeMoreMenu = hasFullBranchAccess(user);
-    const filterToMasterPaths = isBranchAdmin || isMasterDataCreator;
+    const filterToMasterPaths = isBranchAdmin || isMasterDataEmployee;
 
     const filteredNavItems = navItems
         .filter((item) => {

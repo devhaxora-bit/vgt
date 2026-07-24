@@ -16,7 +16,7 @@ export const isBranchScopedAccess = (
 };
 
 /**
- * Admin menu + pages allowed for branch-scoped admins.
+ * Admin menu + pages allowed for branch-scoped admins and employees.
  * Global/Main admins keep the full System Administration area.
  */
 export const BRANCH_ADMIN_ALLOWED_PATHS = [
@@ -40,17 +40,27 @@ type AccessUser = {
 const normalizeRole = (user: AccessUser): string =>
     String(user?.role || '').toLowerCase();
 
-/** Full-access (global/main) employees may create master data only. */
+export const isEmployee = (user: AccessUser): boolean =>
+    normalizeRole(user) === 'employee';
+
+/** Full-access (global/main) employees — can create masters for any branch. */
 export const isFullAccessEmployee = (user: AccessUser): boolean =>
-    normalizeRole(user) === 'employee' && hasFullBranchAccess(user);
+    isEmployee(user) && hasFullBranchAccess(user);
+
+/** Branch-only employees — can create masters for their own branch only. */
+export const isBranchEmployee = (user: AccessUser): boolean =>
+    isEmployee(user) && isBranchScopedAccess(user);
 
 /** Admins: edit/delete parties, brokers, vehicles. */
 export const canManageMasterData = (user: AccessUser): boolean =>
     normalizeRole(user) === 'admin';
 
-/** Admins + full-access employees: create parties, brokers, vehicles. */
+/**
+ * Admins + all employees may create parties/brokers/vehicles.
+ * Branch scope is enforced by API/RLS (own branch vs any branch).
+ */
 export const canCreateMasterData = (user: AccessUser): boolean =>
-    canManageMasterData(user) || isFullAccessEmployee(user);
+    canManageMasterData(user) || isEmployee(user);
 
 export const canAccessAdminPath = (
     user: AccessUser,
@@ -66,8 +76,9 @@ export const canAccessAdminPath = (
 };
 
 /**
- * Page access for admin master-data routes.
- * Full-access employees get parties/brokers/vehicles only (add via UI, no edit/delete).
+ * Page access for party / broker / vehicle routes.
+ * - Admins: existing admin rules
+ * - Employees: those three pages only (add-only in UI)
  */
 export const canAccessMasterDataPath = (
     user: AccessUser,
@@ -76,7 +87,7 @@ export const canAccessMasterDataPath = (
     if (canAccessAdminPath(user, pathname)) {
         return true;
     }
-    return isFullAccessEmployee(user) && isBranchAdminAllowedPath(pathname);
+    return isEmployee(user) && isBranchAdminAllowedPath(pathname);
 };
 
 export const branchAccessLabel = (

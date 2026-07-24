@@ -42,6 +42,7 @@ interface PartyInfo {
     phone?: string;
     gstin?: string;
     address?: string;
+    pincode?: string | null;
     branch_code?: string;
 }
 
@@ -223,6 +224,23 @@ const formatAddressLine2 = (line1: string, line2: string) => {
     }
 
     return normalizedLine2;
+};
+
+/** Append party.pincode when it is not already present in the address lines. */
+const withPartyPincode = (line1: string, stateLine: string, pincode?: string | null) => {
+    const pin = String(pincode || '').trim();
+    if (!pin) return { addressLine1: line1, addressStateLine: stateLine };
+
+    const combined = `${line1} ${stateLine}`;
+    if (combined.includes(pin)) {
+        return { addressLine1: line1, addressStateLine: stateLine };
+    }
+
+    if (stateLine) {
+        return { addressLine1: line1, addressStateLine: `${stateLine} - ${pin}` };
+    }
+
+    return { addressLine1: line1, addressStateLine: pin };
 };
 
 const parseMoney = (value: unknown) => {
@@ -937,8 +955,13 @@ export function BillingRecordViewDialog({
         const partyName = toUpperText(party.name).startsWith('M/S')
             ? toUpperText(party.name)
             : `M/S. ${toUpperText(party.name)}`;
-        const [addressLine1, addressLine2] = splitAddressLines(party.address);
-        const addressStateLine = formatAddressLine2(addressLine1, addressLine2);
+        const [rawAddressLine1, addressLine2] = splitAddressLines(party.address);
+        const rawAddressStateLine = formatAddressLine2(rawAddressLine1, addressLine2);
+        const { addressLine1, addressStateLine } = withPartyPincode(
+            rawAddressLine1,
+            rawAddressStateLine,
+            party.pincode,
+        );
         const amountWords = numberToWords(displayTotal).replace(/^Rupees\s+/i, '').trim();
         const isDefaultNarration = !record.narration ||
             record.narration.trim() === 'Freight bill' ||
@@ -1094,7 +1117,9 @@ export function BillingRecordViewDialog({
                             <div className="text-base font-black text-primary">{party.name}</div>
                             <div className="text-sm text-muted-foreground">Code: {party.code || '—'}</div>
                             <div className="text-sm text-muted-foreground">GSTIN: {party.gstin || '—'}</div>
-                            <div className="text-sm text-muted-foreground whitespace-pre-wrap">{party.address || 'Address not available'}</div>
+                            <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                {[party.address, party.pincode].filter(Boolean).join(', ') || 'Address not available'}
+                            </div>
                         </CardContent></Card>
                         <Card><CardContent className="p-4 space-y-2">
                             <div className="flex items-center justify-between">
