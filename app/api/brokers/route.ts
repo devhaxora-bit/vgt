@@ -47,11 +47,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!branchCode) {
-        return NextResponse.json({ error: 'Branch is required' }, { status: 400 });
+        return NextResponse.json({ error: 'Select a branch before saving the broker' }, { status: 400 });
     }
 
     if (!auth.canAccessBranch(branchCode)) {
-        return NextResponse.json({ error: 'Forbidden: Outside your branch scope' }, { status: 403 });
+        return NextResponse.json(
+            { error: `You can only create brokers for your branch (${auth.branchCode})` },
+            { status: 403 },
+        );
     }
 
     const { data, error } = await auth.supabase
@@ -67,13 +70,29 @@ export async function POST(req: NextRequest) {
         .single();
 
     if (error) {
-        if (error.code === '23505') {
+        const message = String(error.message || '');
+        if (
+            error.code === '23505'
+            || /duplicate key|unique constraint/i.test(message)
+        ) {
             return NextResponse.json(
-                { error: `Broker code ${code} already exists for branch ${branchCode}.` },
+                { error: `Broker code ${code} already exists for branch ${branchCode}` },
                 { status: 409 },
             );
         }
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        if (
+            error.code === '42501'
+            || /row-level security|permission denied/i.test(message)
+        ) {
+            return NextResponse.json(
+                { error: 'You do not have permission to create a broker for this branch' },
+                { status: 403 },
+            );
+        }
+        return NextResponse.json(
+            { error: 'Could not save broker. Please try again' },
+            { status: 400 },
+        );
     }
     return NextResponse.json(data, { status: 201 });
 }

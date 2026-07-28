@@ -1,5 +1,27 @@
 import { Party, PartyInput } from '../types/party.types';
 
+export type PartyGstinLookup = Party & {
+    alreadyLinkedToBranch?: boolean;
+    checkBranch?: string | null;
+};
+
+export type CreatePartyConflict = {
+    code: 'GSTIN_EXISTS_OTHER_BRANCH' | 'GSTIN_EXISTS_SAME_BRANCH' | string;
+    error: string;
+    existingParty: Party;
+    targetBranch?: string;
+};
+
+export class PartyCreateConflictError extends Error {
+    readonly conflict: CreatePartyConflict;
+
+    constructor(conflict: CreatePartyConflict) {
+        super(conflict.error);
+        this.name = 'PartyCreateConflictError';
+        this.conflict = conflict;
+    }
+}
+
 const jsonOrThrow = async (res: Response): Promise<unknown> => {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -38,14 +60,16 @@ export const getPartyByCode = async (code: string): Promise<Party | null> => {
 export const getPartyByGstin = async (
     gstin: string,
     excludeId?: string,
-): Promise<Party | null> => {
+    forBranch?: string,
+): Promise<PartyGstinLookup | null> => {
     const params = new URLSearchParams({ gstin: gstin.toUpperCase().trim() });
     if (excludeId) params.set('excludeId', excludeId);
+    if (forBranch) params.set('forBranch', forBranch);
 
     const res = await fetch(`/api/parties?${params.toString()}`);
     if (!res.ok) return null;
     const data = await res.json();
-    return data ? (data as Party) : null;
+    return data ? (data as PartyGstinLookup) : null;
 };
 
 export const getNextPartyCode = async (): Promise<string> => {
@@ -61,6 +85,38 @@ export const createParty = async (party: PartyInput): Promise<Party> => {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(party),
+    });
+
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const record = typeof body === 'object' && body ? (body as Record<string, unknown>) : {};
+        if (
+            res.status === 409
+            && typeof record.code === 'string'
+            && record.existingParty
+            && typeof record.existingParty === 'object'
+        ) {
+            throw new PartyCreateConflictError({
+                code: record.code,
+                error: String(record.error || 'GSTIN already exists'),
+                existingParty: record.existingParty as Party,
+                targetBranch: typeof record.targetBranch === 'string' ? record.targetBranch : undefined,
+            });
+        }
+        throw new Error(String(record.error || record.message || `Request failed (${res.status})`));
+    }
+    return body as Party;
+};
+
+export const linkPartyToBranch = async (
+    partyId: string,
+    branchCode: string,
+): Promise<Party> => {
+    const res = await fetch('/api/parties', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkPartyId: partyId, branch_code: branchCode }),
     });
     const data = await jsonOrThrow(res);
     return data as Party;

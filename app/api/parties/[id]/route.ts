@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthz } from '@/lib/server/requireAuthz';
+import { friendlyPartyDbError } from '@/lib/server/partyDbErrors';
 import { PartySchema } from '@/lib/types/party.types';
 
 const normalizeBranch = (value: unknown): string =>
@@ -32,7 +33,7 @@ export async function PUT(
     const parsed = PartySchema.partial().safeParse(body);
     if (!parsed.success) {
         return NextResponse.json(
-            { error: parsed.error.issues[0]?.message || 'Invalid party data' },
+            { error: parsed.error.issues[0]?.message || 'Check the party details and try again' },
             { status: 400 },
         );
     }
@@ -47,11 +48,14 @@ export async function PUT(
     }
 
     if (!branchCode) {
-        return NextResponse.json({ error: 'Branch is required' }, { status: 400 });
+        return NextResponse.json({ error: 'Select a branch before saving the party' }, { status: 400 });
     }
 
     if (!auth.canAccessBranch(branchCode)) {
-        return NextResponse.json({ error: 'Forbidden: Outside your branch scope' }, { status: 403 });
+        return NextResponse.json(
+            { error: `You can only update parties for your branch (${auth.branchCode})` },
+            { status: 403 },
+        );
     }
 
     if (input.code && input.code !== existing.code) {
@@ -64,19 +68,19 @@ export async function PUT(
 
         if (codeTaken) {
             return NextResponse.json(
-                { error: `Party code "${input.code}" is already used by "${codeTaken.name}"` },
+                { error: `Party code ${input.code} is already used by ${codeTaken.name}` },
                 { status: 409 },
             );
         }
     }
 
     if (input.gstin) {
+        // Match global unique index idx_parties_gstin_unique (not per-branch).
         const { data: existingGstin } = await auth.supabase
             .from('parties')
             .select('id, name, code')
             .eq('is_active', true)
             .eq('gstin', input.gstin.toUpperCase())
-            .eq('branch_code', branchCode)
             .neq('id', id)
             .limit(1)
             .maybeSingle();
@@ -84,7 +88,7 @@ export async function PUT(
         if (existingGstin) {
             return NextResponse.json(
                 {
-                    error: `A party with GSTIN "${input.gstin}" already exists: "${existingGstin.name}" (${existingGstin.code})`,
+                    error: `GSTIN already used by ${existingGstin.name} (${existingGstin.code})`,
                 },
                 { status: 409 },
             );
@@ -106,7 +110,10 @@ export async function PUT(
         .single();
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        const { message, status } = friendlyPartyDbError(error, 'update', {
+            code: input.code || existing.code,
+        });
+        return NextResponse.json({ error: message }, { status });
     }
 
     return NextResponse.json(data);
@@ -141,7 +148,8 @@ export async function DELETE(
         .eq('id', id);
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        const { message, status } = friendlyPartyDbError(error, 'delete');
+        return NextResponse.json({ error: message }, { status });
     }
 
     return NextResponse.json({ success: true });
