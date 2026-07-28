@@ -31,11 +31,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     if (!branchCode) {
-        return NextResponse.json({ error: 'Branch is required' }, { status: 400 });
+        return NextResponse.json({ error: 'Select a branch before saving the broker' }, { status: 400 });
     }
 
     if (!auth.canAccessBranch(branchCode)) {
-        return NextResponse.json({ error: 'Forbidden: Outside your branch scope' }, { status: 403 });
+        return NextResponse.json(
+            { error: `You can only update brokers for your branch (${auth.branchCode})` },
+            { status: 403 },
+        );
     }
 
     const { data, error } = await auth.supabase
@@ -54,13 +57,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         .single();
 
     if (error) {
-        if (error.code === '23505') {
+        const message = String(error.message || '');
+        if (error.code === '23505' || /duplicate key|unique constraint/i.test(message)) {
             return NextResponse.json(
-                { error: 'Broker code already exists for that branch.' },
+                { error: 'Broker code already exists for that branch' },
                 { status: 409 },
             );
         }
-        return NextResponse.json({ error: error.message }, { status: 400 });
+        return NextResponse.json(
+            { error: 'Could not update broker. Please try again' },
+            { status: 400 },
+        );
     }
     return NextResponse.json(data);
 }
@@ -90,6 +97,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('id', id);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) {
+        return NextResponse.json(
+            { error: 'Could not remove broker. Please try again' },
+            { status: 400 },
+        );
+    }
     return NextResponse.json({ success: true });
 }

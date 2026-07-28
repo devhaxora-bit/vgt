@@ -668,6 +668,12 @@ function NewConsignmentForm() {
 
         if (!isEditMode) {
             const isRangeManaged = cnSequenceState.mode === 'range';
+            const parsedCn = parseInt(String(cnNo).trim(), 10);
+
+            if (Number.isNaN(parsedCn)) {
+                toast.error('CN No. must be a number.');
+                return;
+            }
 
             if (isRangeManaged && cnSequenceState.status !== 'ready') {
                 toast.error(cnSequenceState.message || 'This branch does not have an active CN number available.');
@@ -677,10 +683,13 @@ function NewConsignmentForm() {
             if (
                 isRangeManaged
                 && cnSequenceState.status === 'ready'
-                && typeof cnSequenceState.nextNo === 'number'
-                && Number(cnNo) !== cnSequenceState.nextNo
+                && typeof cnSequenceState.rangeStart === 'number'
+                && typeof cnSequenceState.rangeEnd === 'number'
+                && (parsedCn < cnSequenceState.rangeStart || parsedCn > cnSequenceState.rangeEnd)
             ) {
-                toast.error(`CN ${cnNo} is no longer the next available number for this branch. Please refresh the branch selection.`);
+                toast.error(
+                    `CN ${parsedCn} is outside the assigned range ${cnSequenceState.rangeStart}-${cnSequenceState.rangeEnd} for this branch.`,
+                );
                 return;
             }
 
@@ -1033,10 +1042,18 @@ function NewConsignmentForm() {
                                         <div className="flex gap-2">
                                             <div className="relative flex-1">
                                                 <Input
-                                                    className="h-9 font-mono font-bold bg-slate-50"
+                                                    className="h-9 font-mono font-bold bg-white"
                                                     value={cnNo}
-                                                    readOnly={!isEditMode && cnSequenceState.mode === 'range'}
-                                                    onChange={(e) => setCnNo(e.target.value)}
+                                                    inputMode="numeric"
+                                                    placeholder={
+                                                        !isEditMode && cnSequenceState.nextNo
+                                                            ? String(cnSequenceState.nextNo)
+                                                            : 'Enter CN No'
+                                                    }
+                                                    onChange={(e) => {
+                                                        const next = e.target.value.replace(/\D/g, '');
+                                                        setCnNo(next);
+                                                    }}
                                                 />
                                             </div>
                                             <DatePicker className="w-40 h-9" value={cnDate} onChange={(val) => setCnDate(val)} />
@@ -1062,6 +1079,10 @@ function NewConsignmentForm() {
                                                             <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Branch Range</Badge>
                                                             <span className="text-xs text-muted-foreground">
                                                                 Assigned range {cnSequenceState.rangeStart} - {cnSequenceState.rangeEnd}
+                                                                {typeof cnSequenceState.nextNo === 'number'
+                                                                    ? ` · Suggested next: ${cnSequenceState.nextNo}`
+                                                                    : ''}
+                                                                {' '}(editable within range)
                                                             </span>
                                                             {typeof cnSequenceState.remainingCount === 'number'
                                                                 && cnSequenceState.remainingCount > LOW_CN_THRESHOLD && (

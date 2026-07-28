@@ -288,19 +288,19 @@ export async function POST(request: Request) {
         }
 
         if (submittedCnNo === null) {
-            return NextResponse.json({ error: 'CN number must be numeric for range-managed branches.' }, { status: 400 });
+            return NextResponse.json(
+                { error: 'CN number must be numeric for range-managed branches.' },
+                { status: 400 },
+            );
         }
 
-        if (branchCnContext.expectedCn === null || branchCnContext.expectedCn > Number(branchCnContext.activeRange.range_end)) {
-            return NextResponse.json({
-                error: `CN range ${branchCnContext.activeRange.range_start}-${branchCnContext.activeRange.range_end} is exhausted for branch ${bookingBranchCode}. Update Branch Management with a new range before creating more CNs.`,
-            }, { status: 409 });
-        }
+        const rangeStart = Number(branchCnContext.activeRange.range_start);
+        const rangeEnd = Number(branchCnContext.activeRange.range_end);
 
-        if (submittedCnNo !== branchCnContext.expectedCn) {
+        if (submittedCnNo < rangeStart || submittedCnNo > rangeEnd) {
             return NextResponse.json({
-                error: `CN Number "${insertData.cn_no}" is not the next available CN for branch ${bookingBranchCode}. Expected ${branchCnContext.expectedCn}.`,
-            }, { status: 409 });
+                error: `CN ${submittedCnNo} is outside the assigned range ${rangeStart}-${rangeEnd} for branch ${bookingBranchCode}.`,
+            }, { status: 400 });
         }
 
         const { error: advanceError } = await supabase.rpc('advance_branch_cn_sequence', {
@@ -309,7 +309,20 @@ export async function POST(request: Request) {
         });
 
         if (advanceError) {
-            return NextResponse.json({ error: advanceError.message }, { status: 409 });
+            const raw = String(advanceError.message || '');
+            let friendly = raw;
+            if (/already used/i.test(raw)) {
+                friendly = `CN ${submittedCnNo} is already used. Enter a different CN number.`;
+            } else if (/outside the assigned range/i.test(raw)) {
+                friendly = `CN ${submittedCnNo} is outside the assigned range ${rangeStart}-${rangeEnd} for branch ${bookingBranchCode}.`;
+            } else if (/exhausted/i.test(raw)) {
+                friendly = `CN range ${rangeStart}-${rangeEnd} is exhausted for branch ${bookingBranchCode}.`;
+            } else if (/no active cn range/i.test(raw)) {
+                friendly = `No active CN range is configured for branch ${bookingBranchCode}.`;
+            } else if (/authentication required/i.test(raw)) {
+                friendly = 'Please sign in again and retry.';
+            }
+            return NextResponse.json({ error: friendly }, { status: 409 });
         }
     } else {
         if (submittedCnNo === null) {
@@ -325,8 +338,17 @@ export async function POST(request: Request) {
 
     if (error) {
         console.error("Failed to create consignment:", error);
-
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const raw = String(error.message || '');
+        if (error.code === '23505' || /duplicate|unique/i.test(raw)) {
+            return NextResponse.json(
+                { error: `CN ${insertData.cn_no} is already used. Enter a different CN number.` },
+                { status: 409 },
+            );
+        }
+        return NextResponse.json(
+            { error: 'Could not save consignment. Please try again.' },
+            { status: 500 },
+        );
     }
 
     if (branchCnContext.mode === 'legacy' && submittedCnNo !== null) {

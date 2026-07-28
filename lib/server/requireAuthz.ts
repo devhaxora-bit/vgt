@@ -267,7 +267,7 @@ export async function requireAuthz(
         return {
             ok: false,
             response: NextResponse.json(
-                { error: 'Forbidden: Master data create access required' },
+                { error: 'You do not have permission to create this record' },
                 { status: 403 },
             ),
         };
@@ -339,7 +339,11 @@ export async function requireAuthz(
     const forbidIfForeignBranch = (value: string | null | undefined): NextResponse | null => {
         if (canAccessBranch(value)) return null;
         return NextResponse.json(
-            { error: 'Forbidden: Outside your branch scope' },
+            {
+                error: branchCode
+                    ? `You can only access records for your branch (${branchCode})`
+                    : 'You can only access records for your branch',
+            },
             { status: 403 },
         );
     };
