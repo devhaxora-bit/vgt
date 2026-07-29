@@ -31,7 +31,7 @@ import {
     resolveBillRateDisplay,
 } from '@/lib/billFreightDisplay';
 import { downloadBillPdfFromDocument, renderBillPdfPages } from '@/lib/billPdf';
-import { formatBillCnNo, isFreightIncludedCn, shouldBlankIncludedCnAmounts } from '@/lib/formatBillCnNo';
+import { formatBillCnNo, formatBillIncludeRateLabel, isFreightIncludedCn } from '@/lib/formatBillCnNo';
 import { loadPdfLogo, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 
 interface PartyInfo {
@@ -416,11 +416,29 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
         const breakdown = getConsignmentChargeBreakdown(consignment);
         const isIncluded = Boolean(consignment.freight_included && consignment.parent_cn_id);
         const receivesAddedCharges = index === lastBillableIndex;
-        const mergedOtherCharges = isIncluded
-            ? 0
-            : roundMoney(breakdown.other + (receivesAddedCharges ? addedOtherChargesAmount : 0));
+        const freight = isIncluded ? 0 : breakdown.freight;
+        const unloading = breakdown.unloading;
+        const detention = breakdown.detention;
+        const extraKm = breakdown.extraKm;
+        const loading = breakdown.loading;
+        const doorCollection = breakdown.doorCollection;
+        const doorDelivery = breakdown.doorDelivery;
+        const trafficChallan = breakdown.trafficChallan;
+        const mergedOtherCharges = roundMoney(
+            breakdown.other + (receivesAddedCharges && !isIncluded ? addedOtherChargesAmount : 0),
+        );
+        const childExtrasTotal = roundMoney(
+            unloading
+            + detention
+            + extraKm
+            + loading
+            + doorCollection
+            + doorDelivery
+            + trafficChallan
+            + mergedOtherCharges,
+        );
         const mergedTotalAmount = isIncluded
-            ? 0
+            ? childExtrasTotal
             : roundMoney(breakdown.total + (receivesAddedCharges ? addedOtherChargesAmount : 0));
 
         return {
@@ -444,14 +462,14 @@ const buildLiveSnapshotRows = (record: BillingRecord, consignments: Consignment[
             actual_weight: parseMoney(consignment.actual_weight),
             freight_rate: isIncluded ? 0 : roundMoney(parseMoney(consignment.freight_rate)),
             is_fixed_rate: isIncluded ? false : isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
-            freight: isIncluded ? 0 : breakdown.freight,
-            unloading: isIncluded ? 0 : breakdown.unloading,
-            detention: isIncluded ? 0 : breakdown.detention,
-            extra_km: isIncluded ? 0 : breakdown.extraKm,
-            loading: isIncluded ? 0 : breakdown.loading,
-            door_collection: isIncluded ? 0 : breakdown.doorCollection,
-            door_delivery: isIncluded ? 0 : breakdown.doorDelivery,
-            traffic_challan: isIncluded ? 0 : breakdown.trafficChallan,
+            freight,
+            unloading,
+            detention,
+            extra_km: extraKm,
+            loading,
+            door_collection: doorCollection,
+            door_delivery: doorDelivery,
+            traffic_challan: trafficChallan,
             other_charges: mergedOtherCharges,
             total_amount: mergedTotalAmount,
         };
@@ -536,8 +554,11 @@ const buildSnapshotBreakup = (
     }
 
     const totals = rows.reduce((summary, row) => {
-        if (isFreightIncludedCn(row)) return summary;
-        summary.freightTotal += row.freight;
+        const isChild = isFreightIncludedCn(row);
+        // Child freight is on parent — still count any extra charges on the child row.
+        if (!isChild) {
+            summary.freightTotal += row.freight;
+        }
         summary.unloadingTotal += row.unloading;
         summary.detentionTotal += row.detention;
         summary.extraKmTotal += row.extra_km;
@@ -594,9 +615,17 @@ const getBillDownloadName = (billRefNo?: string | null, recordId?: string) => {
 
 const formatTableAmount = (value: number) => (Math.abs(value) < 0.01 ? '' : fmt(value));
 
+/** Child CN charge columns: always show a number (0 when nothing entered). */
+const formatChildTableAmount = (value: number) => fmt(value || 0);
+
 const formatSignedTableAmount = (value: number) => {
     if (Math.abs(value) < 0.01) return '';
     const absoluteValue = fmt(Math.abs(value));
+    return value < 0 ? `-${absoluteValue}` : absoluteValue;
+};
+
+const formatChildSignedTableAmount = (value: number) => {
+    const absoluteValue = fmt(Math.abs(value || 0));
     return value < 0 ? `-${absoluteValue}` : absoluteValue;
 };
 
@@ -971,31 +1000,34 @@ export function BillingRecordViewDialog({
         const narrationHtml = `<div class="remark-title">Remarks :</div><div>${narrationValue}</div>`;
         const detailRows = billDetailRows.length > 0
             ? billDetailRows.map((row) => {
-                const blankAmounts = shouldBlankIncludedCnAmounts(row);
+                const isChild = isFreightIncludedCn(row);
+                const includeRateLabel = formatBillIncludeRateLabel(row);
+                const amountFmt = isChild ? formatChildTableAmount : formatTableAmount;
+                const signedFmt = isChild ? formatChildSignedTableAmount : formatSignedTableAmount;
                 return {
                 cnNo: formatBillCnNo(row.cn_no, row),
-                isFreightIncluded: isFreightIncludedCn(row),
+                isFreightIncluded: isChild,
                 date: fmtDotDate(row.bkg_date),
                 invoiceNo: row.invoice_no || row.cn_no || '—',
                 vehicleNo: toUpperText(row.vehicle_no) || '—',
                 loadingStation: toUpperText(row.loading_station || row.booking_branch) || '—',
                 deliveryStation: toUpperText(row.delivery_station) || '—',
                 chargeWt: resolveBillChargeWeightDisplay(row),
-                rate: blankAmounts ? '' : formatBillRateDisplay({
+                rate: includeRateLabel || formatBillRateDisplay({
                     freightRate: row.freight_rate,
                     basicFreight: row.basic_freight,
                     loadUnit: row.load_unit,
                     isFixedRate: row.is_fixed_rate,
                 }),
-                freight: blankAmounts ? '' : formatTableAmount(row.freight),
-                unloading: blankAmounts ? '' : formatTableAmount(row.unloading),
-                detention: blankAmounts ? '' : formatTableAmount(row.detention),
-                extraKm: blankAmounts ? '' : formatTableAmount(row.extra_km),
-                loading: blankAmounts ? '' : formatTableAmount(row.loading),
-                otherCharges: blankAmounts ? '' : formatSignedTableAmount(
+                freight: amountFmt(row.freight),
+                unloading: amountFmt(row.unloading),
+                detention: amountFmt(row.detention),
+                extraKm: amountFmt(row.extra_km),
+                loading: amountFmt(row.loading),
+                otherCharges: signedFmt(
                     row.other_charges + row.door_collection + row.door_delivery + row.traffic_challan,
                 ),
-                totalAmount: blankAmounts ? '' : formatSignedTableAmount(row.total_amount),
+                totalAmount: signedFmt(row.total_amount),
             };
             })
             : [{
@@ -1201,11 +1233,12 @@ export function BillingRecordViewDialog({
                                         {billDetailRows.length > 0 ? (
                                             <>
                                                 {billDetailRows.map((row, index) => {
-                                                    const blankAmounts = shouldBlankIncludedCnAmounts(row);
+                                                    const isChild = isFreightIncludedCn(row);
+                                                    const includeRateLabel = formatBillIncludeRateLabel(row);
                                                     return (
                                                         <tr key={`${row.cn_no}-${index}`} className="border-b last:border-0">
                                                             <td className="p-2 text-xs">{index + 1}</td>
-                                                            <td className={`p-2 font-mono text-xs font-bold ${isFreightIncludedCn(row) ? 'text-blue-700' : 'text-primary'}`}>
+                                                            <td className="p-2 font-mono text-xs font-bold text-primary">
                                                                 {formatBillCnNo(row.cn_no, row)}
                                                             </td>
                                                             <td className="p-2 text-xs">{fmtDate(row.bkg_date)}</td>
@@ -1214,19 +1247,35 @@ export function BillingRecordViewDialog({
                                                             <td className="p-2 text-xs">{row.loading_station || row.booking_branch || '—'}</td>
                                                             <td className="p-2 text-xs">{row.delivery_station || '—'}</td>
                                                             <td className="p-2 text-right text-xs font-mono">{resolveBillChargeWeightDisplay(row)}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : resolveBillRateDisplay(row, '0.00')}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.freight)}`}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.unloading)}`}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.detention)}`}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.extra_km)}`}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.loading)}`}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.door_collection)}`}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">{blankAmounts ? '—' : `₹${fmt(row.door_delivery)}`}</td>
-                                                            <td className="p-2 text-right text-xs font-mono">
-                                                                {blankAmounts ? '—' : `${row.other_charges < 0 ? '-' : ''}₹${fmt(Math.abs(row.other_charges))}`}
+                                                            <td className={`p-2 text-right text-xs font-mono ${isChild ? 'text-blue-700 font-bold' : ''}`}>
+                                                                {includeRateLabel || resolveBillRateDisplay(row, '0.00')}
                                                             </td>
                                                             <td className="p-2 text-right text-xs font-mono">
-                                                                {blankAmounts ? '—' : `${row.total_amount < 0 ? '-' : ''}₹${fmt(Math.abs(row.total_amount))}`}
+                                                                {isChild ? `₹${fmt(row.freight || 0)}` : `₹${fmt(row.freight)}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {isChild ? `₹${fmt(row.unloading || 0)}` : `₹${fmt(row.unloading)}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {isChild ? `₹${fmt(row.detention || 0)}` : `₹${fmt(row.detention)}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {isChild ? `₹${fmt(row.extra_km || 0)}` : `₹${fmt(row.extra_km)}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {isChild ? `₹${fmt(row.loading || 0)}` : `₹${fmt(row.loading)}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {isChild ? `₹${fmt(row.door_collection || 0)}` : `₹${fmt(row.door_collection)}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {isChild ? `₹${fmt(row.door_delivery || 0)}` : `₹${fmt(row.door_delivery)}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {`${row.other_charges < 0 ? '-' : ''}₹${fmt(Math.abs(row.other_charges || 0))}`}
+                                                            </td>
+                                                            <td className="p-2 text-right text-xs font-mono">
+                                                                {`${row.total_amount < 0 ? '-' : ''}₹${fmt(Math.abs(row.total_amount || 0))}`}
                                                             </td>
                                                         </tr>
                                                     );

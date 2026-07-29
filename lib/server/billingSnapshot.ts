@@ -175,11 +175,30 @@ const buildConsignmentSnapshot = (
         const breakdown = getConsignmentChargeBreakdown(consignment);
         const isIncluded = Boolean(consignment.freight_included && consignment.parent_cn_id);
         const receivesAddedCharges = index === lastBillableIndex;
-        const mergedOtherCharges = isIncluded
-            ? 0
-            : roundMoney(breakdown.other + (receivesAddedCharges ? addedOtherChargesAmount : 0));
+        // Child/included CNs: freight stays on parent; keep any extra charges entered on the child.
+        const freight = isIncluded ? 0 : breakdown.freight;
+        const unloading = breakdown.unloading;
+        const detention = breakdown.detention;
+        const extraKm = breakdown.extraKm;
+        const loading = breakdown.loading;
+        const doorCollection = breakdown.doorCollection;
+        const doorDelivery = breakdown.doorDelivery;
+        const trafficChallan = breakdown.trafficChallan;
+        const mergedOtherCharges = roundMoney(
+            breakdown.other + (receivesAddedCharges && !isIncluded ? addedOtherChargesAmount : 0),
+        );
+        const childExtrasTotal = roundMoney(
+            unloading
+            + detention
+            + extraKm
+            + loading
+            + doorCollection
+            + doorDelivery
+            + trafficChallan
+            + mergedOtherCharges,
+        );
         const mergedTotalAmount = isIncluded
-            ? 0
+            ? childExtrasTotal
             : roundMoney(breakdown.total + (receivesAddedCharges ? addedOtherChargesAmount : 0));
 
         return {
@@ -201,22 +220,34 @@ const buildConsignmentSnapshot = (
             basic_freight: isIncluded ? 0 : roundMoney(parseMoney(consignment.basic_freight)),
             is_fixed_rate: isIncluded ? false : isFixedFreightRate(consignment.freight_rate, consignment.basic_freight),
             freight_rate: isIncluded ? 0 : roundMoney(parseMoney(consignment.freight_rate)),
-            freight: isIncluded ? 0 : breakdown.freight,
-            unloading: isIncluded ? 0 : breakdown.unloading,
-            detention: isIncluded ? 0 : breakdown.detention,
-            extra_km: isIncluded ? 0 : breakdown.extraKm,
-            loading: isIncluded ? 0 : breakdown.loading,
-            door_collection: isIncluded ? 0 : breakdown.doorCollection,
-            door_delivery: isIncluded ? 0 : breakdown.doorDelivery,
-            traffic_challan: isIncluded ? 0 : breakdown.trafficChallan,
+            freight,
+            unloading,
+            detention,
+            extra_km: extraKm,
+            loading,
+            door_collection: doorCollection,
+            door_delivery: doorDelivery,
+            traffic_challan: trafficChallan,
             other_charges: mergedOtherCharges,
             total_amount: mergedTotalAmount,
         };
     });
 
     const cnTotalAmount = roundMoney(consignments.reduce((sum, consignment) => {
-        if (consignment.freight_included && consignment.parent_cn_no) return sum;
-        return sum + getConsignmentChargeBreakdown(consignment).total;
+        const breakdown = getConsignmentChargeBreakdown(consignment);
+        if (consignment.freight_included && consignment.parent_cn_id) {
+            return sum + roundMoney(
+                breakdown.unloading
+                + breakdown.detention
+                + breakdown.extraKm
+                + breakdown.loading
+                + breakdown.doorCollection
+                + breakdown.doorDelivery
+                + breakdown.trafficChallan
+                + breakdown.other,
+            );
+        }
+        return sum + breakdown.total;
     }, 0));
 
     return {
