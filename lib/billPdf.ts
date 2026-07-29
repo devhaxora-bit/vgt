@@ -105,14 +105,14 @@ const billTableHeadHtml = () => `
 
 const detailRowHtml = (row: BillPdfDetailRow) => `
     <tr class="item-row">
-        <td class="center cn-cell${row.isFreightIncluded ? ' incl' : ''}">${safe(row.cnNo)}</td>
+        <td class="center cn-cell">${safe(row.cnNo)}</td>
         <td class="center">${safe(row.date)}</td>
         <td class="center invoice-cell">${safe(row.invoiceNo)}</td>
         <td class="center name-cell">${safe(row.vehicleNo)}</td>
         <td class="center name-cell">${safe(row.loadingStation)}</td>
         <td class="center name-cell">${safe(row.deliveryStation)}</td>
         <td class="center">${safe(row.chargeWt)}</td>
-        <td class="center">${safe(row.rate)}</td>
+        <td class="center rate-cell${row.isFreightIncluded ? ' incl' : ''}">${safe(row.rate)}</td>
         <td class="amount">${safe(row.freight)}</td>
         <td class="amount">${safe(row.detention)}</td>
         <td class="amount">${safe(row.loading)}</td>
@@ -192,9 +192,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.invoice-cell, .name-cell, .cn-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
+.invoice-cell, .name-cell, .cn-cell, .rate-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .invoice-cell { word-break: break-all !important; }
-.cn-cell.incl { color: #1d4ed8; font-weight: 800; font-size: 9.6px; line-height: 1.2; }
+.rate-cell.incl { color: #1d4ed8; font-weight: 800; font-size: 9.6px; line-height: 1.2; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 8px; }
 .blank-row td { font-weight: 400; }

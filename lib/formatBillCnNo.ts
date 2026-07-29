@@ -3,18 +3,26 @@ export type BillCnIncludeInfo = {
     parent_cn_no?: string | null;
 };
 
-/** Bill/PDF label for CNS numbers when freight is included in a parent CN. */
-export const formatBillCnNo = (cnNo: string, include?: BillCnIncludeInfo | null): string => {
+/** Always the original CN number (child rows no longer replace this with INCL). */
+export const formatBillCnNo = (cnNo: string, _include?: BillCnIncludeInfo | null): string => {
     const normalizedCn = String(cnNo || '').trim();
-    if (include?.freight_included && include.parent_cn_no) {
-        return `INCL ${String(include.parent_cn_no).trim()}`;
-    }
     return normalizedCn || '—';
+};
+
+/** Rate-column label for child CNs whose freight is included in a parent. */
+export const formatBillIncludeRateLabel = (include?: BillCnIncludeInfo | null): string | null => {
+    if (include?.freight_included && include.parent_cn_no) {
+        const parent = String(include.parent_cn_no).trim();
+        if (parent) return `INCL ${parent}`;
+    }
+    return null;
 };
 
 export const isFreightIncludedCn = (include?: BillCnIncludeInfo | null): boolean =>
     Boolean(include?.freight_included && include.parent_cn_no);
 
-/** Included CNs bill through the parent — hide charge columns so row totals match bill TOTAL. */
-export const shouldBlankIncludedCnAmounts = (include?: BillCnIncludeInfo | null): boolean =>
-    isFreightIncludedCn(include);
+/**
+ * @deprecated Child CN amounts are now shown (value or 0). Kept for call-site compatibility.
+ */
+export const shouldBlankIncludedCnAmounts = (_include?: BillCnIncludeInfo | null): boolean =>
+    false;
