@@ -4,8 +4,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, FileText, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { Plus, Search, FileText, ArrowDown, ArrowUp, ArrowUpDown, X, RotateCcw } from 'lucide-react';
 import { compareCnNo } from '@/lib/sortLinkedConsignments';
+import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -57,10 +58,13 @@ interface Challan {
 
 export default function ChallanListPage() {
     const router = useRouter();
+    const userScope = useCurrentUserScope();
     const [challans, setChallans] = useState<Challan[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState('ALL');
+    const [branchFilter, setBranchFilter] = useState('all');
+    const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const debouncedSearch = useDebounce(searchTerm, 300);
@@ -74,12 +78,34 @@ export default function ChallanListPage() {
     const [sortField, setSortField] = useState<'challan_no' | 'date_from' | 'vehicle_no' | 'total_hire_amount'>('challan_no');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+    // Default branch filter to logged-in user's branch (user can switch to All Branches)
+    useEffect(() => {
+        if (!userScope.ready) return;
+        const code = defaultBranchFilterValue(userScope);
+        setBranchFilter((prev) => (prev === 'all' && code !== 'all' ? code : prev));
+    }, [userScope.ready, userScope.branchCode]);
+
+    useEffect(() => {
+        fetch('/api/references/branches')
+            .then((r) => r.json())
+            .then((data: { code: string; name: string }[]) => {
+                setBranchOptions(
+                    (data || []).map((b) => ({
+                        value: b.code.toUpperCase(),
+                        label: `${b.code} - ${b.name}`.toUpperCase(),
+                    })),
+                );
+            })
+            .catch(() => {/* ignore */});
+    }, []);
+
     const fetchChallans = useCallback(async () => {
         setLoading(true);
         try {
             const params = new URLSearchParams();
             if (debouncedSearch) params.append('search', debouncedSearch);
             if (typeFilter !== 'ALL') params.append('type', typeFilter);
+            if (branchFilter !== 'all') params.append('branch', branchFilter);
             if (dateFrom) params.append('dateFrom', dateFrom);
             if (dateTo) params.append('dateTo', dateTo);
 
@@ -93,11 +119,12 @@ export default function ChallanListPage() {
         } finally {
             setLoading(false);
         }
-    }, [dateFrom, dateTo, debouncedSearch, typeFilter]);
+    }, [dateFrom, dateTo, debouncedSearch, typeFilter, branchFilter]);
 
     useEffect(() => {
+        if (!userScope.ready) return;
         fetchChallans();
-    }, [fetchChallans]);
+    }, [fetchChallans, userScope.ready]);
 
     useEffect(() => {
         const loadCurrentUser = async () => {
@@ -112,6 +139,19 @@ export default function ChallanListPage() {
         };
         void loadCurrentUser();
     }, []);
+
+    const clearDateFilters = () => {
+        setDateFrom('');
+        setDateTo('');
+    };
+
+    const resetFilters = () => {
+        setSearchTerm('');
+        setTypeFilter('ALL');
+        setBranchFilter(defaultBranchFilterValue(userScope));
+        setDateFrom('');
+        setDateTo('');
+    };
 
     const handleViewDetails = (challan: Challan) => {
         setSelectedChallan(challan);
@@ -157,6 +197,13 @@ export default function ChallanListPage() {
         return list;
     }, [challans, sortField, sortDir]);
 
+    const hasActiveFilters =
+        searchTerm !== '' ||
+        typeFilter !== 'ALL' ||
+        !!dateFrom ||
+        !!dateTo ||
+        branchFilter !== defaultBranchFilterValue(userScope);
+
     return (
         <div className="p-6 space-y-6 animate-fadeIn">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -177,7 +224,7 @@ export default function ChallanListPage() {
 
             {/* Filters */}
             <Card>
-                <CardContent className="p-4 grid gap-4 grid-cols-1 md:grid-cols-4 items-end">
+                <CardContent className="p-4 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-5 items-end">
                     <div className="space-y-2">
                         <span className="text-xs font-medium text-muted-foreground">Search Challan</span>
                         <div className="relative">
@@ -189,6 +236,27 @@ export default function ChallanListPage() {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <span className="text-xs font-medium text-muted-foreground">Branch</span>
+                        <Select
+                            value={branchFilter}
+                            onValueChange={setBranchFilter}
+                            disabled={userScope.isBranchScoped}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Branch" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {!userScope.isBranchScoped && (
+                                    <SelectItem value="all">All Branches</SelectItem>
+                                )}
+                                {branchOptions.map((b) => (
+                                    <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     <div className="space-y-2">
@@ -206,7 +274,18 @@ export default function ChallanListPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <span className="text-xs font-medium text-muted-foreground">Date From</span>
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">Date From</span>
+                            {(dateFrom || dateTo) && (
+                                <button
+                                    type="button"
+                                    onClick={clearDateFilters}
+                                    className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    <X className="h-3 w-3" /> Clear dates
+                                </button>
+                            )}
+                        </div>
                         <Input
                             type="date"
                             value={dateFrom}
@@ -222,6 +301,14 @@ export default function ChallanListPage() {
                             onChange={(e) => setDateTo(e.target.value)}
                         />
                     </div>
+
+                    {hasActiveFilters && (
+                        <div className="lg:col-span-5 flex justify-end">
+                            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={resetFilters}>
+                                <RotateCcw className="h-3.5 w-3.5" /> Reset filters
+                            </Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

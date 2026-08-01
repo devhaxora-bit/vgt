@@ -54,36 +54,56 @@ export async function GET(request: Request) {
         parentCnNo = parent?.cn_no ?? null;
     }
 
-    // Billing status: is this CN covered by an active party bill?
-    let bill = null;
+    // All bills that cover this CN (any status — active or cancelled)
     const { data: billRows } = await supabase
         .from('party_billing_records')
         .select('id, bill_ref_no, billing_date, amount, status, party_id')
         .contains('covered_cn_nos', [consignment.cn_no])
-        .eq('status', 'ACTIVE')
-        .order('billing_date', { ascending: false })
-        .limit(1);
+        .order('billing_date', { ascending: false });
 
-    if (billRows && billRows.length > 0) {
-        const row = billRows[0];
-        let partyName: string | null = null;
-        if (row.party_id) {
-            const { data: party } = await supabase
-                .from('parties')
-                .select('name')
-                .eq('id', row.party_id)
-                .maybeSingle();
-            partyName = party?.name ?? null;
-        }
-        bill = {
-            id: row.id,
-            bill_ref_no: row.bill_ref_no,
-            billing_date: row.billing_date,
-            amount: toNumber(row.amount),
-            status: row.status,
-            party_name: partyName,
-        };
+    // Resolve unique party names in one pass
+    const uniquePartyIds = [...new Set((billRows ?? []).map((r) => r.party_id).filter(Boolean))];
+    const partyNameMap = new Map<string, string>();
+    if (uniquePartyIds.length > 0) {
+        const { data: partyRows } = await supabase
+            .from('parties')
+            .select('id, name')
+            .in('id', uniquePartyIds);
+        for (const p of partyRows ?? []) partyNameMap.set(p.id, p.name);
     }
+
+    const bills = (billRows ?? []).map((row) => ({
+        id: row.id,
+        bill_ref_no: row.bill_ref_no,
+        billing_date: row.billing_date,
+        amount: toNumber(row.amount),
+        status: row.status,
+        party_name: row.party_id ? (partyNameMap.get(row.party_id) ?? null) : null,
+    }));
+
+    // Keep legacy `bill` field pointing to the latest active bill for backwards compat
+    const bill = bills.find((b) => b.status === 'ACTIVE') ?? bills[0] ?? null;
+
+    // Challans linked to this CN (via linked_cn_nos array)
+    const { data: challanRows } = await supabase
+        .from('challans')
+        .select('id, challan_no, challan_type, engagement_type, status, date_from, date_to, vehicle_no, broker_name, origin_branch_code, total_hire_amount, extra_hire_amount')
+        .contains('linked_cn_nos', [consignment.cn_no])
+        .order('date_from', { ascending: false });
+
+    const challans = (challanRows ?? []).map((ch) => ({
+        id: ch.id,
+        challan_no: ch.challan_no,
+        challan_type: ch.challan_type,
+        engagement_type: ch.engagement_type,
+        status: ch.status,
+        date_from: ch.date_from,
+        date_to: ch.date_to,
+        vehicle_no: ch.vehicle_no,
+        broker_name: ch.broker_name,
+        branch: ch.origin_branch_code,
+        total_hire: toNumber(ch.total_hire_amount) + toNumber(ch.extra_hire_amount),
+    }));
 
     const childCount = children?.length ?? 0;
 
@@ -92,5 +112,7 @@ export async function GET(request: Request) {
         children: children ?? [],
         parent_cn_no: parentCnNo,
         bill,
+        bills,
+        challans,
     });
 }
