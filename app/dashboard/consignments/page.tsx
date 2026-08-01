@@ -237,27 +237,35 @@ export default function ConsignmentsPage() {
     const [deliveryBranch, setDeliveryBranch] = useState<string>('all');
     const [bookingType, setBookingType] = useState<string>('all');
     const [deliveryType, setDeliveryType] = useState<string>('all');
-    const [dateFrom, setDateFrom] = useState<Date | undefined>(new Date('2026-01-17'));
-    const [dateTo, setDateTo] = useState<Date | undefined>(new Date('2026-01-19'));
+    const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+    const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
 
-    // Applied Filters State (updates only on Search click)
-    const [appliedFilters, setAppliedFilters] = useState({
+    // Applied Filters State (updates only on Search click). Dates optional = show all.
+    const [appliedFilters, setAppliedFilters] = useState<{
+        cnNo: string;
+        bkgBranch: string;
+        deliveryBranch: string;
+        bookingType: string;
+        deliveryType: string;
+        dateFrom: Date | undefined;
+        dateTo: Date | undefined;
+    }>({
         cnNo: '',
         bkgBranch: 'all',
         deliveryBranch: 'all',
         bookingType: 'all',
         deliveryType: 'all',
-        dateFrom: new Date('2025-01-01'), // Broader range
-        dateTo: new Date('2026-12-31')    // Broader range
+        dateFrom: undefined,
+        dateTo: undefined,
     });
 
-    // Default booking-branch filter to logged-in user's branch
+    // Default booking-branch filter to logged-in user's branch (user can switch to All Branches)
     useEffect(() => {
-        if (!userScope.ready || !userScope.branchCode) return;
-        const code = userScope.branchCode;
-        setBkgBranch((prev) => (prev === 'all' ? code : prev));
+        if (!userScope.ready) return;
+        const code = defaultBranchFilterValue(userScope);
+        setBkgBranch((prev) => (prev === 'all' && code !== 'all' ? code : prev));
         setAppliedFilters((prev) => (
-            prev.bkgBranch === 'all' ? { ...prev, bkgBranch: code } : prev
+            prev.bkgBranch === 'all' && code !== 'all' ? { ...prev, bkgBranch: code } : prev
         ));
     }, [userScope.ready, userScope.branchCode]);
 
@@ -508,8 +516,8 @@ export default function ConsignmentsPage() {
             deliveryBranch: deliveryBranch,
             bookingType: bookingType,
             deliveryType: deliveryType,
-            dateFrom: dateFrom || new Date('2026-01-17'),
-            dateTo: dateTo || new Date('2026-01-19')
+            dateFrom: dateFrom,
+            dateTo: dateTo,
         });
     };
 
@@ -517,6 +525,12 @@ export default function ConsignmentsPage() {
         if (e.key === 'Enter') {
             handleSearch();
         }
+    };
+
+    const clearDateFilters = () => {
+        setDateFrom(undefined);
+        setDateTo(undefined);
+        setAppliedFilters((prev) => ({ ...prev, dateFrom: undefined, dateTo: undefined }));
     };
 
     const resetFilters = () => {
@@ -527,18 +541,16 @@ export default function ConsignmentsPage() {
         setDeliveryBranch('all');
         setBookingType('all');
         setDeliveryType('all');
-        const defaultFrom = new Date('2026-01-17');
-        const defaultTo = new Date('2026-01-19');
-        setDateFrom(defaultFrom);
-        setDateTo(defaultTo);
+        setDateFrom(undefined);
+        setDateTo(undefined);
         setAppliedFilters({
             cnNo: '',
             bkgBranch: defaultBranch,
             deliveryBranch: 'all',
             bookingType: 'all',
             deliveryType: 'all',
-            dateFrom: defaultFrom,
-            dateTo: defaultTo
+            dateFrom: undefined,
+            dateTo: undefined,
         });
         setKpiFilter('none');
     };
@@ -670,7 +682,18 @@ export default function ConsignmentsPage() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label className="text-xs font-bold text-muted-foreground/70 tracking-tight">Booking Date Range</Label>
+                            <div className="flex items-center justify-between gap-2">
+                                <Label className="text-xs font-bold text-muted-foreground/70 tracking-tight">Booking Date Range</Label>
+                                {(dateFrom || dateTo) && (
+                                    <button
+                                        type="button"
+                                        onClick={clearDateFilters}
+                                        className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        <X className="h-3 w-3" /> Clear dates
+                                    </button>
+                                )}
+                            </div>
                             <div className="flex items-center gap-2 bg-background/80 rounded-md border h-10 px-3 overflow-hidden group focus-within:ring-2 focus-within:ring-primary/20">
                                 <CalendarIcon className="h-4 w-4 text-muted-foreground shrink-0" />
                                 <Popover>
