@@ -1,9 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Printer, RotateCcw, MapPin, User, Package, Receipt, Building2, Link2, Wallet } from 'lucide-react';
+import { Printer, RotateCcw, MapPin, User, Package, Receipt, Building2, Link2, Wallet, Truck, Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { ConsignmentDetailsDialog } from '@/components/features/consignments/ConsignmentDetailsDialog';
+import { BillingRecordViewDialog } from '@/components/features/ledger/BillingRecordDialogs';
 import {
     DocumentSheet,
     SheetSection,
@@ -13,7 +15,7 @@ import {
     type SheetColumn,
 } from './DocumentSheet';
 import { money, num, upper, fmtDate, toNum } from './queryFormat';
-import type { QueryCnsDetail, QueryConsignment } from '@/lib/types/query.types';
+import type { QueryCnsDetail, QueryConsignment, QueryCnsChallan, QueryLinkedBill } from '@/lib/types/query.types';
 
 type Cn = Record<string, unknown>;
 
@@ -31,6 +33,14 @@ const str = (value: unknown) => {
 
 export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; reset: () => void }) {
     const [printOpen, setPrintOpen] = React.useState(false);
+    const [billOpen, setBillOpen] = React.useState(false);
+    const [billDetail, setBillDetail] = React.useState<{
+        party: Record<string, unknown> | null;
+        record: Record<string, unknown> | null;
+        consignments: QueryConsignment[];
+    } | null>(null);
+    const [loadingBillId, setLoadingBillId] = React.useState<string | null>(null);
+
     const consignment = detail.consignment;
     const c = consignment;
 
@@ -38,9 +48,34 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
     const loadUnit = upper(get(c, 'load_unit')) || 'MT';
 
     const children = detail.children ?? [];
+    const challans = detail.challans ?? [];
+    const bills = detail.bills ?? (detail.bill ? [detail.bill] : []);
     const isChild = Boolean(get(c, 'parent_cn_id'));
     const freightPending = Boolean(get(c, 'freight_pending'));
-    const bill = detail.bill;
+
+    const handleOpenBill = async (targetBill: QueryLinkedBill) => {
+        if (!targetBill.id) return;
+        setLoadingBillId(targetBill.id);
+        try {
+            const res = await fetch(`/api/query/bills?id=${encodeURIComponent(targetBill.id)}`);
+            if (!res.ok) throw new Error('Could not load bill');
+            const data = await res.json() as {
+                record: Record<string, unknown>;
+                party: Record<string, unknown>;
+                consignments: QueryConsignment[];
+            };
+            setBillDetail({
+                party: data.party ?? null,
+                record: data.record ?? null,
+                consignments: data.consignments ?? [],
+            });
+            setBillOpen(true);
+        } catch {
+            // fall through
+        } finally {
+            setLoadingBillId(null);
+        }
+    };
 
     const childColumns: SheetColumn<QueryConsignment>[] = [
         { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{r.cn_no}</span> },
@@ -53,6 +88,33 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
         },
         { key: 'pkg', header: 'Pkg', align: 'right', cell: (r) => num(r.total_qty ?? r.no_of_pkg) },
         { key: 'wt', header: 'Charged Wt', align: 'right', cell: (r) => num(r.charged_weight) },
+    ];
+
+    const challanColumns: SheetColumn<QueryCnsChallan>[] = [
+        { key: 'no', header: 'Challan No', cell: (r) => <span className="font-mono font-semibold">{r.challan_no}</span> },
+        { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date_from) },
+        { key: 'vehicle', header: 'Vehicle', cell: (r) => upper(r.vehicle_no) || '—' },
+        { key: 'broker', header: 'Broker', cell: (r) => upper(r.broker_name) || '—' },
+        { key: 'branch', header: 'Branch', cell: (r) => upper(r.branch) || '—' },
+        {
+            key: 'status',
+            header: 'Status',
+            cell: (r) => (
+                <Badge
+                    variant="outline"
+                    className={
+                        r.status === 'settled'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : r.status === 'cancelled'
+                                ? 'border-red-200 bg-red-50 text-red-700'
+                                : 'border-amber-200 bg-amber-50 text-amber-700'
+                    }
+                >
+                    {r.status ?? '—'}
+                </Badge>
+            ),
+        },
+        { key: 'hire', header: 'Total Hire', align: 'right', cell: (r) => money(r.total_hire, true), className: 'font-mono' },
     ];
 
     const chargeRows: ChargeRow[] = [
@@ -107,6 +169,18 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
                         <Button variant="outline" size="sm" className="gap-1.5" onClick={reset}>
                             <RotateCcw className="h-4 w-4" /> New search
                         </Button>
+                        {bills.length === 1 && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5"
+                                onClick={() => handleOpenBill(bills[0])}
+                                disabled={loadingBillId === bills[0].id}
+                            >
+                                <Download className="h-4 w-4" />
+                                {loadingBillId === bills[0].id ? 'Loading…' : 'Download Bill'}
+                            </Button>
+                        )}
                         <Button size="sm" className="gap-1.5" onClick={() => setPrintOpen(true)}>
                             <Printer className="h-4 w-4" /> Official copy
                         </Button>
@@ -206,21 +280,21 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
                             value={
                                 <span
                                     className={
-                                        bill
+                                        bills.length > 0
                                             ? 'text-emerald-600'
                                             : freightPending
                                                 ? 'text-amber-600'
                                                 : 'text-muted-foreground'
                                     }
                                 >
-                                    {bill ? 'Billed' : freightPending ? 'Freight Pending' : 'Not Billed'}
+                                    {bills.length > 0
+                                        ? `Billed (${bills.length} bill${bills.length === 1 ? '' : 's'})`
+                                        : freightPending
+                                            ? 'Freight Pending'
+                                            : 'Not Billed'}
                                 </span>
                             }
                         />
-                        <SheetField label="Bill Ref No" value={bill?.bill_ref_no ?? undefined} mono accent />
-                        <SheetField label="Billed On" value={bill ? fmtDate(bill.billing_date) : undefined} />
-                        <SheetField label="Billed To" value={upper(bill?.party_name)} />
-                        <SheetField label="Bill Amount" value={bill ? money(bill.amount, true) : undefined} mono />
                         <SheetField label="Freight Pending" value={freightPending ? 'Yes' : 'No'} />
                         <SheetField label="Advance Received" value={money(get(c, 'advance_amount'))} mono />
                         <SheetField
@@ -232,7 +306,58 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
                             }
                         />
                     </SheetInfoGrid>
+
+                    {bills.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                            {bills.map((b) => (
+                                <div
+                                    key={b.id}
+                                    className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2.5"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                        <div>
+                                            <p className="font-mono text-sm font-semibold">{b.bill_ref_no ?? '—'}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {fmtDate(b.billing_date)} · {upper(b.party_name) || '—'} ·{' '}
+                                                <span className={b.status === 'ACTIVE' ? 'text-emerald-600' : 'text-red-500'}>
+                                                    {b.status}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-mono text-sm font-semibold">{money(b.amount, true)}</span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-1 text-xs"
+                                            onClick={() => handleOpenBill(b)}
+                                            disabled={loadingBillId === b.id}
+                                        >
+                                            <Download className="h-3.5 w-3.5" />
+                                            {loadingBillId === b.id ? 'Loading…' : 'Download'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </SheetSection>
+
+                {challans.length > 0 ? (
+                    <SheetSection
+                        title="Linked Challans"
+                        icon={<Truck className="h-3.5 w-3.5" />}
+                        right={`${challans.length} challan${challans.length === 1 ? '' : 's'}`}
+                    >
+                        <SheetDataTable
+                            columns={challanColumns}
+                            rows={challans}
+                            getRowKey={(r) => r.id}
+                        />
+                    </SheetSection>
+                ) : null}
 
                 {children.length > 0 ? (
                     <SheetSection
@@ -264,6 +389,18 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
                 consignment={consignment}
                 isAdmin={false}
             />
+
+            {billDetail && (
+                <BillingRecordViewDialog
+                    open={billOpen}
+                    onClose={() => { setBillOpen(false); setBillDetail(null); }}
+                    party={billDetail.party as never}
+                    record={billDetail.record as never}
+                    consignments={billDetail.consignments as never}
+                    isAdmin={false}
+                    onEdit={() => setBillOpen(false)}
+                />
+            )}
         </>
     );
 }

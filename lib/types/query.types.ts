@@ -120,12 +120,29 @@ export interface QueryLinkedPayment {
     status: string;
 }
 
-/** Full CNS lookup payload: the consignment plus its included children and billing status. */
+export interface QueryCnsChallan {
+    id: string;
+    challan_no: string;
+    challan_type?: string | null;
+    engagement_type?: string | null;
+    status?: string | null;
+    date_from?: string | null;
+    date_to?: string | null;
+    vehicle_no?: string | null;
+    broker_name?: string | null;
+    branch?: string | null;
+    total_hire: number;
+}
+
+/** Full CNS lookup payload: the consignment plus its included children, all linked bills, and linked challans. */
 export interface QueryCnsDetail {
     consignment: Record<string, unknown>;
     children: QueryConsignment[];
     parent_cn_no: string | null;
+    /** @deprecated use bills[] instead */
     bill: QueryLinkedBill | null;
+    bills: QueryLinkedBill[];
+    challans: QueryCnsChallan[];
 }
 
 /** Full challan lookup payload: the challan plus its hire settlement and payment status. */
