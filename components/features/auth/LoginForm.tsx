@@ -95,15 +95,15 @@ export function LoginForm() {
                                 </FormLabel>
                                 <FormControl>
                                     <div className="relative group">
-                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#475467] group-focus-within:text-[#FF6154] transition-colors" />
+                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#66758a] group-focus-within:text-[#285dcc] transition-colors" />
                                         <Input
                                             placeholder="Enter your employee ID"
-                                            className="pl-10 h-12 bg-[#F2F4F7] border-[#EAECF0] text-[#101828] placeholder:text-[#475467] focus:bg-white focus:border-[#FF6154] transition-all input-glow rounded-full"
+                                            className="pl-10 h-12 bg-[#F3F6FA] border-[#DFE6EF] text-[#09244B] placeholder:text-[#7A8798] focus:bg-white focus:border-[#285DCC] transition-all rounded-full"
                                             {...field}
                                         />
                                     </div>
                                 </FormControl>
-                                <FormMessage className="text-[#FF6154]" />
+                                <FormMessage className="text-red-600" />
                             </FormItem>
                         )}
                     />
@@ -119,16 +119,16 @@ export function LoginForm() {
                                 </FormLabel>
                                 <FormControl>
                                     <div className="relative group">
-                                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#475467] group-focus-within:text-[#FF6154] transition-colors" />
+                                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#66758a] group-focus-within:text-[#285dcc] transition-colors" />
                                         <Input
                                             type="password"
                                             placeholder="Enter your password"
-                                            className="pl-10 h-12 bg-[#F2F4F7] border-[#EAECF0] text-[#101828] placeholder:text-[#475467] focus:bg-white focus:border-[#FF6154] transition-all input-glow rounded-full"
+                                            className="pl-10 h-12 bg-[#F3F6FA] border-[#DFE6EF] text-[#09244B] placeholder:text-[#7A8798] focus:bg-white focus:border-[#285DCC] transition-all rounded-full"
                                             {...field}
                                         />
                                     </div>
                                 </FormControl>
-                                <FormMessage className="text-[#FF6154]" />
+                                <FormMessage className="text-red-600" />
                             </FormItem>
                         )}
                     />
@@ -145,8 +145,8 @@ export function LoginForm() {
                                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                                     <FormControl>
                                         <div className="relative group">
-                                            <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#475467] z-10 pointer-events-none" />
-                                            <SelectTrigger className="pl-10 h-12 bg-[#F2F4F7] border-[#EAECF0] text-[#101828] focus:bg-white focus:border-[#FF6154] transition-all rounded-full">
+                                            <Shield className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#66758a] z-10 pointer-events-none" />
+                                            <SelectTrigger className="pl-10 h-12 bg-[#F3F6FA] border-[#DFE6EF] text-[#09244B] focus:bg-white focus:border-[#285DCC] transition-all rounded-full">
                                                 <SelectValue placeholder="Select your role" />
                                             </SelectTrigger>
                                         </div>
@@ -163,7 +163,7 @@ export function LoginForm() {
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <FormMessage className="text-[#FF6154]" />
+                                <FormMessage className="text-red-600" />
                             </FormItem>
                         )}
                     />
@@ -179,7 +179,7 @@ export function LoginForm() {
                                         <Checkbox
                                             checked={field.value}
                                             onCheckedChange={field.onChange}
-                                            className="border-[#EAECF0] data-[state=checked]:bg-[#FF6154] data-[state=checked]:border-[#FF6154]"
+                                            className="border-[#D5DEEA] data-[state=checked]:bg-[#285DCC] data-[state=checked]:border-[#285DCC]"
                                         />
                                     </FormControl>
                                     <FormLabel className="text-sm font-normal text-[#475467] cursor-pointer">
@@ -191,7 +191,7 @@ export function LoginForm() {
 
                         <button
                             type="button"
-                            className="text-sm text-[#FF6154] hover:text-[#FF7B6D] transition-colors font-medium"
+                            className="text-sm text-[#285DCC] hover:text-[#1748AE] transition-colors font-medium"
                         >
                             Forgot password?
                         </button>
@@ -200,7 +200,7 @@ export function LoginForm() {
                     {/* Submit Button */}
                     <Button
                         type="submit"
-                        className="w-full h-12 text-base font-semibold bg-white text-[#FF6154] hover:bg-[#FFF0EF] transition-all shadow-lg hover:shadow-xl border border-[#FF6154] rounded-full"
+                        className="w-full h-12 text-base font-semibold bg-[#285DCC] text-white hover:bg-[#1748AE] transition-all shadow-lg hover:shadow-xl rounded-full"
                         disabled={isLoading}
                     >
                         {isLoading ? (
@@ -218,7 +218,7 @@ export function LoginForm() {
                         Don&apos;t have an account?{' '}
                         <button
                             type="button"
-                            className="text-[#FF6154] hover:text-[#FF7B6D] font-medium transition-colors"
+                            className="text-[#285DCC] hover:text-[#1748AE] font-medium transition-colors"
                         >
                             Request Access
                         </button>
