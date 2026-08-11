@@ -32,11 +32,18 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Party } from '@/lib/types/party.types';
 import { getParties, deleteParty } from '@/lib/services/party.service';
 import { toast } from 'sonner';
 import { canManageMasterData } from '@/lib/branchAccess';
-import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
+import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
 
 type SortField = 'code' | 'name' | 'branch_code' | 'city' | 'gstin';
 type SortDir = 'asc' | 'desc';
@@ -52,12 +59,14 @@ export default function PartiesPage() {
     const [parties, setParties] = useState<Party[]>([]);
     const [sortField, setSortField] = useState<SortField>('code');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
+    const [branchFilter, setBranchFilter] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
 
-    const fetchParties = async () => {
+    const fetchParties = async (branch = branchFilter) => {
+        if (!branch) return;
         setIsLoading(true);
         try {
-            const data = await getParties();
+            const data = await getParties(undefined, branch);
             setParties(data);
         } catch (error) {
             console.error('Failed to fetch parties:', error);
@@ -68,14 +77,23 @@ export default function PartiesPage() {
     };
 
     useEffect(() => {
-        fetchParties();
-    }, []);
+        if (!userScope.ready || branchFilter !== null) return;
+        setBranchFilter(defaultBranchFilterValue(userScope));
+    }, [userScope.ready, userScope.branchCode, branchFilter]);
+
+    useEffect(() => {
+        if (!branchFilter) return;
+        void fetchParties(branchFilter);
+    }, [branchFilter]);
 
     useEffect(() => {
         fetch('/api/references/branches')
             .then(r => r.json())
             .then((data: { code: string; name: string }[]) => {
-                setBranchOptions(data.map(b => ({ value: b.code, label: `${b.code} – ${b.name}` })));
+                setBranchOptions(data.map(b => ({
+                    value: String(b.code || '').trim().toUpperCase(),
+                    label: `${b.code} – ${b.name}`,
+                })));
             })
             .catch(console.error);
     }, []);
@@ -193,11 +211,30 @@ export default function PartiesPage() {
                             </span>
                         </CardTitle>
                         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                            <Select
+                                value={branchFilter ?? undefined}
+                                onValueChange={setBranchFilter}
+                                disabled={!userScope.ready || userScope.isBranchScoped}
+                            >
+                                <SelectTrigger className="h-9 w-[200px]">
+                                    <SelectValue placeholder={userScope.ready ? 'Branch' : 'Loading...'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {!userScope.isBranchScoped && (
+                                        <SelectItem value="all">All Branches</SelectItem>
+                                    )}
+                                    {branchOptions.map((b) => (
+                                        <SelectItem key={b.value} value={b.value.toUpperCase()}>
+                                            {b.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <Button
                                 variant="outline"
                                 size="sm"
                                 className="h-9 gap-2"
-                                onClick={fetchParties}
+                                onClick={() => fetchParties()}
                                 disabled={isLoading}
                             >
                                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />

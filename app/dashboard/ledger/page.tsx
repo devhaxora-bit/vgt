@@ -81,7 +81,7 @@ export default function LedgerPage() {
     const [parties, setParties] = useState<LedgerParty[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [branchFilter, setBranchFilter] = useState('all');
+    const [branchFilter, setBranchFilter] = useState<string | null>(null);
     const [outstandingOnly, setOutstandingOnly] = useState(false);
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
@@ -98,6 +98,7 @@ export default function LedgerPage() {
     };
 
     const fetchLedger = useCallback(async () => {
+        if (!branchFilter) return;
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
@@ -119,21 +120,24 @@ export default function LedgerPage() {
         }
     }, [branchFilter, outstandingOnly, dateFrom, dateTo, billingFilter, paymentFilter]);
 
-    useEffect(() => { fetchLedger(); }, [fetchLedger]);
+    useEffect(() => { if (branchFilter) fetchLedger(); }, [fetchLedger, branchFilter]);
 
     useEffect(() => {
         fetch('/api/references/branches')
             .then(r => r.json())
             .then((data: { code: string; name: string }[]) => {
-                setBranchOptions(data.map(b => ({ value: b.code, label: `${b.code} - ${b.name}` })));
+                setBranchOptions(data.map(b => ({
+                    value: String(b.code || '').trim().toUpperCase(),
+                    label: `${b.code} - ${b.name}`,
+                })));
             })
             .catch(console.error);
     }, []);
 
     useEffect(() => {
-        if (!userScope.ready || !userScope.branchCode) return;
-        setBranchFilter((prev) => (prev === 'all' ? userScope.branchCode! : prev));
-    }, [userScope.ready, userScope.branchCode]);
+        if (!userScope.ready || branchFilter !== null) return;
+        setBranchFilter(defaultBranchFilterValue(userScope));
+    }, [userScope.ready, userScope.branchCode, branchFilter]);
 
     const filtered = useMemo(() => {
         let list = parties.filter(hasLedgerActivity);
@@ -188,7 +192,7 @@ export default function LedgerPage() {
     };
 
     const activeFilterCount = [
-        branchFilter !== 'all',
+        !!branchFilter && branchFilter !== defaultBranchFilterValue(userScope),
         outstandingOnly,
         !!dateFrom,
         !!dateTo,
@@ -430,11 +434,13 @@ export default function LedgerPage() {
                             />
                         </div>
                         <Select
-                            value={branchFilter}
+                            value={branchFilter ?? undefined}
                             onValueChange={setBranchFilter}
-                            disabled={userScope.isBranchScoped}
+                            disabled={!userScope.ready || userScope.isBranchScoped}
                         >
-                            <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
+                            <SelectTrigger className="h-9 w-40">
+                                <SelectValue placeholder={userScope.ready ? 'Branch' : 'Loading...'} />
+                            </SelectTrigger>
                             <SelectContent>
                                 {!userScope.isBranchScoped && (
                                     <SelectItem value="all">All Branches</SelectItem>

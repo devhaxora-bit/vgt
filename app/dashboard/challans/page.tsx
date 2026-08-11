@@ -63,7 +63,7 @@ export default function ChallanListPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState('ALL');
-    const [branchFilter, setBranchFilter] = useState('all');
+    const [branchFilter, setBranchFilter] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
@@ -78,12 +78,11 @@ export default function ChallanListPage() {
     const [sortField, setSortField] = useState<'challan_no' | 'date_from' | 'vehicle_no' | 'total_hire_amount'>('challan_no');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-    // Default branch filter to logged-in user's branch (user can switch to All Branches)
+    // Default to logged-in user's branch; All Branches only if admin selects it
     useEffect(() => {
-        if (!userScope.ready) return;
-        const code = defaultBranchFilterValue(userScope);
-        setBranchFilter((prev) => (prev === 'all' && code !== 'all' ? code : prev));
-    }, [userScope.ready, userScope.branchCode]);
+        if (!userScope.ready || branchFilter !== null) return;
+        setBranchFilter(defaultBranchFilterValue(userScope));
+    }, [userScope.ready, userScope.branchCode, branchFilter]);
 
     useEffect(() => {
         fetch('/api/references/branches')
@@ -100,6 +99,7 @@ export default function ChallanListPage() {
     }, []);
 
     const fetchChallans = useCallback(async () => {
+        if (!branchFilter) return;
         setLoading(true);
         try {
             const params = new URLSearchParams();
@@ -122,9 +122,9 @@ export default function ChallanListPage() {
     }, [dateFrom, dateTo, debouncedSearch, typeFilter, branchFilter]);
 
     useEffect(() => {
-        if (!userScope.ready) return;
+        if (!branchFilter) return;
         fetchChallans();
-    }, [fetchChallans, userScope.ready]);
+    }, [fetchChallans, branchFilter]);
 
     useEffect(() => {
         const loadCurrentUser = async () => {
@@ -202,7 +202,7 @@ export default function ChallanListPage() {
         typeFilter !== 'ALL' ||
         !!dateFrom ||
         !!dateTo ||
-        branchFilter !== defaultBranchFilterValue(userScope);
+        (!!branchFilter && branchFilter !== defaultBranchFilterValue(userScope));
 
     return (
         <div className="p-6 space-y-6 animate-fadeIn">
@@ -241,12 +241,12 @@ export default function ChallanListPage() {
                     <div className="space-y-2">
                         <span className="text-xs font-medium text-muted-foreground">Branch</span>
                         <Select
-                            value={branchFilter}
+                            value={branchFilter ?? undefined}
                             onValueChange={setBranchFilter}
-                            disabled={userScope.isBranchScoped}
+                            disabled={!userScope.ready || userScope.isBranchScoped}
                         >
                             <SelectTrigger>
-                                <SelectValue placeholder="Branch" />
+                                <SelectValue placeholder={userScope.ready ? 'Branch' : 'Loading...'} />
                             </SelectTrigger>
                             <SelectContent>
                                 {!userScope.isBranchScoped && (

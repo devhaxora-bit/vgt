@@ -37,9 +37,10 @@ const jsonOrThrow = async (res: Response): Promise<unknown> => {
     return body;
 };
 
-export const getParties = async (search?: string): Promise<Party[]> => {
+export const getParties = async (search?: string, branch?: string): Promise<Party[]> => {
     const params = new URLSearchParams();
     if (search?.trim()) params.set('q', search.trim());
+    if (branch && branch !== 'all') params.set('branch', branch);
 
     const res = await fetch(`/api/parties?${params.toString()}`);
     if (!res.ok) {

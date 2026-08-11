@@ -52,11 +52,17 @@ export function ChallanBillingChallanPicker({
     value,
     onChange,
     billedChallanNos = [],
+    emptyMessage = 'No unbilled challans found',
+    triggerPlaceholder = 'Select Covered Challans',
+    amountMode = 'hire',
 }: {
     challans: ChallanBillingChallanOption[];
     value: string[];
     onChange: (next: string[]) => void;
     billedChallanNos?: string[];
+    emptyMessage?: string;
+    triggerPlaceholder?: string;
+    amountMode?: 'hire' | 'balance';
 }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -95,7 +101,17 @@ export function ChallanBillingChallanPicker({
         onChange([...value, challanNo]);
     };
 
-    const selectedTotal = selectedChallans.reduce((sum, ch) => sum + getFullHire(ch), 0);
+    const getDisplayAmount = (challan: ChallanBillingChallanOption) => {
+        if (amountMode === 'balance') {
+            const balance = Number(challan.balance_amount);
+            if (!Number.isNaN(balance)) return balance;
+            const net = Number(challan.net_payable_amount);
+            if (!Number.isNaN(net)) return net;
+        }
+        return getFullHire(challan);
+    };
+
+    const selectedTotal = selectedChallans.reduce((sum, ch) => sum + getDisplayAmount(ch), 0);
 
     return (
         <div className="space-y-2">
@@ -103,7 +119,7 @@ export function ChallanBillingChallanPicker({
                 <PopoverTrigger asChild>
                     <Button type="button" variant="outline" className="w-full justify-between h-9 font-normal">
                         <span className="truncate">
-                            {value.length > 0 ? `${value.length} challan${value.length > 1 ? 's' : ''} selected` : 'Select Covered Challans'}
+                            {value.length > 0 ? `${value.length} challan${value.length > 1 ? 's' : ''} selected` : triggerPlaceholder}
                         </span>
                         <ChevronsUpDown className="h-4 w-4 opacity-50" />
                     </Button>
@@ -124,7 +140,7 @@ export function ChallanBillingChallanPicker({
                         <div className="p-2 space-y-2">
                             {filteredChallans.length === 0 ? (
                                 <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                                    No unbilled challans found
+                                    {emptyMessage}
                                 </div>
                             ) : filteredChallans.map((challan) => {
                                 const checked = value.includes(challan.challan_no);
@@ -145,8 +161,8 @@ export function ChallanBillingChallanPicker({
                                                 <div className="mt-1 text-[11px] text-muted-foreground">
                                                     {fmtDate(challan.date_from)} • {challan.vehicle_no} • {challan.driver_name || '—'}
                                                 </div>
-                                                <div className="mt-1 text-[11px] font-semibold text-emerald-700">
-                                                    Full Hire ₹{fmt(getFullHire(challan))}
+                                                <div className={`mt-1 text-[11px] font-semibold ${amountMode === 'balance' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                                    {amountMode === 'balance' ? 'Balance' : 'Full Hire'} ₹{fmt(getDisplayAmount(challan))}
                                                 </div>
                                                 {(challan.linked_cn_nos || []).length > 0 && (
                                                     <div className="mt-1 text-[11px] text-muted-foreground truncate">
@@ -178,8 +194,8 @@ export function ChallanBillingChallanPicker({
                                         {fmtDate(challan.date_from)} • {challan.vehicle_no}
                                     </div>
                                 </div>
-                                <div className="font-semibold text-emerald-700 text-xs shrink-0">
-                                    ₹{fmt(getFullHire(challan))}
+                                <div className={`font-semibold text-xs shrink-0 ${amountMode === 'balance' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                    ₹{fmt(getDisplayAmount(challan))}
                                 </div>
                             </div>
                         ))}

@@ -66,7 +66,7 @@ export default function ChallanLedgerPage() {
     const [globalStats, setGlobalStats] = useState<GlobalStats>({ unchallaned_cns_count: 0, unchallaned_cns_amount: 0 });
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [branchFilter, setBranchFilter] = useState('all');
+    const [branchFilter, setBranchFilter] = useState<string | null>(null);
     const [outstandingOnly, setOutstandingOnly] = useState(false);
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
@@ -82,6 +82,7 @@ export default function ChallanLedgerPage() {
     };
 
     const fetchLedger = useCallback(async () => {
+        if (!branchFilter) return;
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
@@ -103,21 +104,24 @@ export default function ChallanLedgerPage() {
         }
     }, [branchFilter, outstandingOnly, dateFrom, dateTo, paymentFilter]);
 
-    useEffect(() => { fetchLedger(); }, [fetchLedger]);
+    useEffect(() => { if (branchFilter) fetchLedger(); }, [fetchLedger, branchFilter]);
 
     useEffect(() => {
         fetch('/api/references/branches')
             .then((r) => r.json())
             .then((data: { code: string; name: string }[]) => {
-                setBranchOptions(data.map((b) => ({ value: b.code, label: `${b.code} - ${b.name}` })));
+                setBranchOptions(data.map((b) => ({
+                    value: String(b.code || '').trim().toUpperCase(),
+                    label: `${b.code} - ${b.name}`,
+                })));
             })
             .catch(console.error);
     }, []);
 
     useEffect(() => {
-        if (!userScope.ready || !userScope.branchCode) return;
-        setBranchFilter((prev) => (prev === 'all' ? userScope.branchCode! : prev));
-    }, [userScope.ready, userScope.branchCode]);
+        if (!userScope.ready || branchFilter !== null) return;
+        setBranchFilter(defaultBranchFilterValue(userScope));
+    }, [userScope.ready, userScope.branchCode, branchFilter]);
 
     const filtered = useMemo(() => {
         let list = brokers.filter(hasLedgerActivity);
@@ -168,7 +172,7 @@ export default function ChallanLedgerPage() {
     };
 
     const activeFilterCount = [
-        branchFilter !== 'all',
+        !!branchFilter && branchFilter !== defaultBranchFilterValue(userScope),
         outstandingOnly,
         !!dateFrom,
         !!dateTo,
@@ -294,11 +298,13 @@ export default function ChallanLedgerPage() {
                             <Input placeholder="Search broker name or code..." className="pl-9 h-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                         </div>
                         <Select
-                            value={branchFilter}
+                            value={branchFilter ?? undefined}
                             onValueChange={setBranchFilter}
-                            disabled={userScope.isBranchScoped}
+                            disabled={!userScope.ready || userScope.isBranchScoped}
                         >
-                            <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
+                            <SelectTrigger className="h-9 w-40">
+                                <SelectValue placeholder={userScope.ready ? 'Branch' : 'Loading...'} />
+                            </SelectTrigger>
                             <SelectContent>
                                 {!userScope.isBranchScoped && (
                                     <SelectItem value="all">All Branches</SelectItem>

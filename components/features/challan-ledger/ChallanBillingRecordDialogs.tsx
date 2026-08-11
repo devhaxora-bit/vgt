@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Banknote, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { composeBillRefNo, getBillRefPrefix } from '@/lib/billRef';
@@ -270,12 +270,14 @@ export function RecordChallanPaymentDialog({
     onClose,
     brokerId,
     challans,
+    initialChallanNos = [],
     onSuccess,
 }: {
     open: boolean;
     onClose: () => void;
     brokerId: string;
     challans: ChallanBillingChallanOption[];
+    initialChallanNos?: string[];
     onSuccess: () => void;
 }) {
     interface PaymentChallanAllocationDraft {
@@ -285,7 +287,7 @@ export function RecordChallanPaymentDialog({
         addition_items: ChallanBillingExtraChargeDraftItem[];
     }
 
-    const [form, setForm] = useState({
+    const emptyForm = {
         receipt_date: new Date().toISOString().split('T')[0],
         payment_mode: 'NEFT',
         reference_no: '',
@@ -293,54 +295,63 @@ export function RecordChallanPaymentDialog({
         narration: '',
         payer_name: '',
         challan_allocations: [] as PaymentChallanAllocationDraft[],
-    });
+    };
+
+    const [form, setForm] = useState(emptyForm);
     const [saving, setSaving] = useState(false);
-    const [pickerSearch, setPickerSearch] = useState('');
 
     const payableChallans = useMemo(
         () => challans.filter((challan) => getChallanBalance(challan) > 0.009),
         [challans]
     );
 
-    const filteredPayableChallans = useMemo(() => {
-        const query = pickerSearch.trim().toLowerCase();
-        if (!query) return payableChallans;
-        return payableChallans.filter((challan) =>
-            [challan.challan_no, challan.vehicle_no, challan.driver_name, challan.owner_name]
-                .join(' ').toLowerCase().includes(query)
-        );
-    }, [payableChallans, pickerSearch]);
-
-    const selectedChallanNos = new Set(form.challan_allocations.map((a) => a.challan_no));
-
-    const toggleChallan = (challan: ChallanBillingChallanOption) => {
-        setForm((current) => {
-            if (current.challan_allocations.some((a) => a.challan_no === challan.challan_no)) {
-                return {
-                    ...current,
-                    challan_allocations: current.challan_allocations.filter((a) => a.challan_no !== challan.challan_no),
-                };
-            }
-            const balance = getChallanBalance(challan);
-            return {
-                ...current,
-                challan_allocations: [
-                    ...current.challan_allocations,
-                    {
-                        challan_no: challan.challan_no,
-                        settled_amount: balance > 0 ? String(balance) : '',
-                        deduction_items: [],
-                        addition_items: [],
-                    },
-                ],
-            };
-        });
-    };
-
     const challanByNo = useMemo(
         () => new Map(payableChallans.map((challan) => [challan.challan_no, challan])),
         [payableChallans]
     );
+
+    const buildAllocationDraft = (challanNo: string): PaymentChallanAllocationDraft => {
+        const challan = challanByNo.get(challanNo);
+        const balance = challan ? getChallanBalance(challan) : 0;
+        return {
+            challan_no: challanNo,
+            settled_amount: balance > 0 ? String(balance) : '',
+            deduction_items: [],
+            addition_items: [],
+        };
+    };
+
+    useEffect(() => {
+        if (!open) return;
+        const payableNos = new Set(payableChallans.map((challan) => challan.challan_no));
+        const seeded = initialChallanNos.filter((challanNo) => payableNos.has(challanNo));
+        setForm({
+            ...emptyForm,
+            receipt_date: new Date().toISOString().split('T')[0],
+            challan_allocations: seeded.map(buildAllocationDraft),
+        });
+        // Seed only when the dialog opens — not on every parent refetch.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
+
+    const selectedChallanNos = form.challan_allocations.map((a) => a.challan_no);
+
+    const handleSelectedChallansChange = (nextNos: string[]) => {
+        setForm((current) => {
+            const existing = new Map(current.challan_allocations.map((draft) => [draft.challan_no, draft]));
+            return {
+                ...current,
+                challan_allocations: nextNos.map((challanNo) => existing.get(challanNo) || buildAllocationDraft(challanNo)),
+            };
+        });
+    };
+
+    const toggleChallan = (challan: ChallanBillingChallanOption) => {
+        const next = selectedChallanNos.includes(challan.challan_no)
+            ? selectedChallanNos.filter((no) => no !== challan.challan_no)
+            : [...selectedChallanNos, challan.challan_no];
+        handleSelectedChallansChange(next);
+    };
 
     const settledTotal = roundMoney(
         form.challan_allocations.reduce((sum, draft) => sum + parseMoney(draft.settled_amount), 0)
@@ -367,12 +378,8 @@ export function RecordChallanPaymentDialog({
     };
 
     const resetForm = () => setForm({
+        ...emptyForm,
         receipt_date: new Date().toISOString().split('T')[0],
-        payment_mode: 'NEFT',
-        reference_no: '',
-        bank_name: '',
-        narration: '',
-        payer_name: '',
         challan_allocations: [],
     });
 
@@ -442,7 +449,7 @@ export function RecordChallanPaymentDialog({
                         <Banknote className="h-4 w-4 text-primary" /> Record Payment
                     </DialogTitle>
                     <DialogDescription>
-                        Pay directly against challan numbers. Partial payments are allowed until a challan is fully paid.
+                        Stack one or more challans into a single payment. This is recorded only in the challan ledger, not against CNS / party bills.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -487,32 +494,14 @@ export function RecordChallanPaymentDialog({
                             </div>
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Select Challans *</Label>
-                                <div className="rounded-md border">
-                                    <div className="border-b p-2">
-                                        <Input value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder="Search challan / vehicle / driver..." className="h-8 text-xs" />
-                                    </div>
-                                    <div className="max-h-56 overflow-y-auto divide-y">
-                                        {filteredPayableChallans.length === 0 ? (
-                                            <div className="px-3 py-6 text-center text-xs text-muted-foreground">No challans with an outstanding balance.</div>
-                                        ) : filteredPayableChallans.map((challan) => {
-                                            const checked = selectedChallanNos.has(challan.challan_no);
-                                            return (
-                                                <button
-                                                    key={challan.id}
-                                                    type="button"
-                                                    onClick={() => toggleChallan(challan)}
-                                                    className={`w-full px-3 py-2 text-left hover:bg-muted/40 transition-colors ${checked ? 'bg-primary/5' : ''}`}
-                                                >
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <span className="font-mono text-xs font-bold text-primary">{challan.challan_no}</span>
-                                                        <span className="text-[11px] font-semibold text-amber-700">Bal ₹{fmt(getChallanBalance(challan))}</span>
-                                                    </div>
-                                                    <div className="text-[11px] text-muted-foreground">{fmtDate(challan.date_from)} • {challan.vehicle_no || '—'}</div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
+                                <ChallanBillingChallanPicker
+                                    challans={payableChallans}
+                                    value={selectedChallanNos}
+                                    onChange={handleSelectedChallansChange}
+                                    amountMode="balance"
+                                    triggerPlaceholder="Select challans to stack in this payment"
+                                    emptyMessage="No challans with an outstanding balance."
+                                />
                             </div>
                             <div className="rounded-lg border bg-muted/10 p-4 text-sm space-y-2">
                                 <div className="flex justify-between"><span>Settled (against challans)</span><span className="font-mono font-semibold text-indigo-700">₹{fmt(settledTotal)}</span></div>
@@ -524,7 +513,7 @@ export function RecordChallanPaymentDialog({
                         <div className="space-y-4">
                             {form.challan_allocations.length === 0 ? (
                                 <div className="rounded-lg border border-dashed bg-muted/10 p-6 text-sm text-muted-foreground">
-                                    Select challans on the left to enter the amount paid, deductions, and extra charges.
+                                    Select one or more challans to stack them here. Enter the amount paid for each, then save as one receipt.
                                 </div>
                             ) : form.challan_allocations.map((draft) => {
                                 const challan = challanByNo.get(draft.challan_no);
