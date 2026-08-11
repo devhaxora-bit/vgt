@@ -262,8 +262,8 @@ export default function LedgerPage() {
                 })),
                 periodLabel,
                 filters: {
-                    branch: branchFilter !== 'all' ? branchFilter : undefined,
-                    branchName: branchFilter !== 'all'
+                    branch: branchFilter && branchFilter !== 'all' ? branchFilter : undefined,
+                    branchName: branchFilter && branchFilter !== 'all'
                         ? branchNameByCode.get(branchFilter)
                         : undefined,
                     billingStatus: billingFilter !== 'all' ? billingFilter : undefined,

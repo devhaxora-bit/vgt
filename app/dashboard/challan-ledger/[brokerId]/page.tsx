@@ -323,9 +323,10 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                 loading_point?: string | null;
                 destination_point?: string | null;
             };
-            const paymentStatus = (ch.payment_status === 'COMPLETE' || ch.payment_status === 'PARTIAL')
-                ? ch.payment_status
-                : 'UNPAID';
+            const paymentStatus: 'UNPAID' | 'PARTIAL' | 'COMPLETE' =
+                ch.payment_status === 'COMPLETE' || ch.payment_status === 'PARTIAL'
+                    ? ch.payment_status
+                    : 'UNPAID';
 
             return {
                 challanNo: ch.challan_no,

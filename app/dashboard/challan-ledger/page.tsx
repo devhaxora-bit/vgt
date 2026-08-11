@@ -212,7 +212,7 @@ export default function ChallanLedgerPage() {
                 })),
                 periodLabel,
                 filters: {
-                    branch: branchFilter !== 'all' ? branchFilter : undefined,
+                    branch: branchFilter && branchFilter !== 'all' ? branchFilter : undefined,
                     paymentStatus: paymentFilter !== 'all' ? paymentFilter : undefined,
                     outstandingOnly,
                 },
