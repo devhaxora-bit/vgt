@@ -1,20 +1,28 @@
 'use client';
 
-import React, { use, useCallback, useEffect, useState } from 'react';
+import React, { use, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
     ArrowLeft, Truck,
-    Banknote, Search, RotateCcw, Eye, XCircle, Package, Loader2,
+    Banknote, Search, RotateCcw, Eye, XCircle, Package, Loader2, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import {
+    Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { ChallanDetailsDialog } from '@/components/features/challans/ChallanDetailsDialog';
 import {
     RecordChallanPaymentDialog,
@@ -24,6 +32,11 @@ import {
     type ChallanPaymentReceipt,
 } from '@/components/features/challan-ledger/ChallanBillingRecordDialogs';
 import type { ChallanBillingChallanOption } from '@/components/features/challan-ledger/ChallanBillingChallanPicker';
+import {
+    downloadChallanLedgerReportPdf,
+    type ChallanLedgerFilter,
+    type ChallanLedgerReportPayload,
+} from '@/lib/challanLedgerReportPdf';
 
 const fmt = (n: number) =>
     new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
@@ -45,11 +58,116 @@ const PAYMENT_STATUS_BADGE: Record<string, string> = {
     COMPLETE: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
+const fmtPdfDate = (d?: string | null) => {
+    if (!d) return '—';
+    const iso = d.slice(0, 10);
+    const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+    return fmtDate(d);
+};
+
+const generatedAtLabel = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+};
+
+function LedgerReportDownloadDialog({
+    open,
+    onClose,
+    reportPayload,
+    isDownloading,
+    onDownload,
+}: {
+    open: boolean;
+    onClose: () => void;
+    reportPayload: ChallanLedgerReportPayload | null;
+    isDownloading: boolean;
+    onDownload: (filter: ChallanLedgerFilter) => Promise<void>;
+}) {
+    const [filter, setFilter] = useState<ChallanLedgerFilter>('all');
+
+    useEffect(() => {
+        if (open) setFilter('all');
+    }, [open]);
+
+    const counts = useMemo(() => {
+        if (!reportPayload) return { all: 0, paid: 0, unpaid: 0 };
+        const paid = reportPayload.challanRows.filter((row) => row.paymentStatus === 'COMPLETE').length;
+        return {
+            all: reportPayload.challanRows.length,
+            paid,
+            unpaid: reportPayload.challanRows.length - paid,
+        };
+    }, [reportPayload]);
+
+    const filteredCount = filter === 'all' ? counts.all : filter === 'paid' ? counts.paid : counts.unpaid;
+
+    const handleDownload = async () => {
+        if (filteredCount === 0) {
+            toast.error(`No ${filter === 'paid' ? 'paid' : filter === 'unpaid' ? 'unpaid' : ''} challans for the selected period`);
+            return;
+        }
+        await onDownload(filter);
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(next) => { if (!next && !isDownloading) onClose(); }}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Download className="h-4 w-4" /> Download Ledger Report
+                    </DialogTitle>
+                    <DialogDescription>
+                        Choose which challans to include in the PDF for this period.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col gap-4 mt-2">
+                    <div className="flex flex-col gap-1.5">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground">Challan entries</Label>
+                        <Select
+                            value={filter}
+                            onValueChange={(value: ChallanLedgerFilter) => setFilter(value)}
+                            disabled={isDownloading}
+                        >
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="paid">Paid Challans ({counts.paid})</SelectItem>
+                                <SelectItem value="unpaid">Unpaid Challans ({counts.unpaid})</SelectItem>
+                                <SelectItem value="all">All Challans ({counts.all})</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        {filteredCount} challan{filteredCount === 1 ? '' : 's'} will be included.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={onClose} disabled={isDownloading}>Cancel</Button>
+                        <Button onClick={() => void handleDownload()} disabled={isDownloading || filteredCount === 0} className="gap-2">
+                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            Download PDF
+                        </Button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function BrokerChallanLedgerDetailPage({ params }: { params: Promise<{ brokerId: string }> }) {
     const { brokerId } = use(params);
 
     const [data, setData] = useState<{
-        broker: { id: string; code: string; name: string; mobile?: string | null } | null;
+        broker: {
+            id: string;
+            code: string;
+            name: string;
+            mobile?: string | null;
+            address?: string | null;
+            branch_code?: string | null;
+        } | null;
         account: { opening_balance: number } | null;
         summary: {
             total_challan_amount: number;
@@ -99,9 +217,13 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
     const [activeTab, setActiveTab] = useState('challans');
 
     const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+    const [stackedChallanNos, setStackedChallanNos] = useState<string[]>([]);
+    const [paymentInitialNos, setPaymentInitialNos] = useState<string[]>([]);
     const [selectedReceipt, setSelectedReceipt] = useState<ChallanPaymentReceipt | null>(null);
     const [selectedChallan, setSelectedChallan] = useState<Record<string, unknown> | null>(null);
     const [cancelTarget, setCancelTarget] = useState<{ type: 'payment'; id: string } | null>(null);
+    const [showLedgerDownloadDialog, setShowLedgerDownloadDialog] = useState(false);
+    const [isDownloadingReport, setIsDownloadingReport] = useState(false);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -131,6 +253,32 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
             .catch(console.error);
     }, []);
 
+    const payableChallans = useMemo(
+        () => data.challans.filter((ch) => Number(ch.balance_amount || 0) > 0.009),
+        [data.challans],
+    );
+
+    const allPayableSelected = payableChallans.length > 0
+        && payableChallans.every((ch) => stackedChallanNos.includes(ch.challan_no));
+
+    const toggleStackedChallan = (challanNo: string) => {
+        setStackedChallanNos((prev) => (
+            prev.includes(challanNo)
+                ? prev.filter((no) => no !== challanNo)
+                : [...prev, challanNo]
+        ));
+    };
+
+    const openPaymentDialog = (challanNos?: string[]) => {
+        setPaymentInitialNos(challanNos ?? stackedChallanNos);
+        setShowPaymentDialog(true);
+    };
+
+    const closePaymentDialog = () => {
+        setShowPaymentDialog(false);
+        setPaymentInitialNos([]);
+    };
+
     const handleReversePayment = async (reason: string) => {
         if (!cancelTarget) return;
         const res = await fetch(`/api/challan-ledger/${brokerId}/payments/${cancelTarget.id}/reverse`, {
@@ -147,6 +295,104 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
     };
 
     const summary = data.summary;
+
+    const reportPeriodLabel = useMemo(() => {
+        if (dateFrom && dateTo) {
+            const fmtPeriod = (s: string) => {
+                const [y, m, d] = s.split('-');
+                return `${d}/${m}/${y}`;
+            };
+            return `${fmtPeriod(dateFrom)} to ${fmtPeriod(dateTo)}`;
+        }
+        if (dateFrom) {
+            const [y, m, d] = dateFrom.split('-');
+            return `From ${d}/${m}/${y}`;
+        }
+        if (dateTo) {
+            const [y, m, d] = dateTo.split('-');
+            return `Up to ${d}/${m}/${y}`;
+        }
+        return 'All Dates';
+    }, [dateFrom, dateTo]);
+
+    const reportPayload = useMemo((): ChallanLedgerReportPayload | null => {
+        if (!data.broker) return null;
+
+        const challanRows = data.challans.map((ch) => {
+            const extra = ch as ChallanBillingChallanOption & {
+                loading_point?: string | null;
+                destination_point?: string | null;
+            };
+            const paymentStatus = (ch.payment_status === 'COMPLETE' || ch.payment_status === 'PARTIAL')
+                ? ch.payment_status
+                : 'UNPAID';
+
+            return {
+                challanNo: ch.challan_no,
+                date: fmtPdfDate(ch.date_from),
+                dateIso: (ch.date_from || '').slice(0, 10),
+                vehicleNo: ch.vehicle_no || '—',
+                ownerName: ch.owner_name || ch.driver_name || '—',
+                origin: extra.origin_branch_code || extra.loading_point || '—',
+                destination: extra.destination_branch_code || extra.destination_point || '—',
+                hireAmount: Number(ch.full_hire_amount || 0),
+                advanceAmount: Number(ch.advance_amount || 0),
+                netPayable: Number(ch.net_payable_amount || 0),
+                paidAmount: Number(ch.paid_amount || 0),
+                balanceAmount: Number(ch.balance_amount || 0),
+                paymentStatus,
+            };
+        });
+
+        return {
+            broker: {
+                name: data.broker.name,
+                code: data.broker.code,
+                mobile: data.broker.mobile,
+                address: data.broker.address,
+                branch_code: data.broker.branch_code,
+            },
+            periodLabel: reportPeriodLabel,
+            generatedAt: generatedAtLabel(),
+            summary: {
+                openingBalance: Number(data.account?.opening_balance || 0),
+                totalChallanCount: challanRows.length,
+                totalHireAmount: Number(summary.total_challan_amount || 0),
+                unpaidCount: challanRows.filter((row) => row.paymentStatus !== 'COMPLETE').length,
+                unpaidAmount: challanRows
+                    .filter((row) => row.paymentStatus !== 'COMPLETE')
+                    .reduce((sum, row) => sum + row.balanceAmount, 0),
+                paidCount: challanRows.filter((row) => row.paymentStatus === 'COMPLETE').length,
+                netPayable: Number(summary.net_payable_amount || 0),
+                totalAdvance: Number(summary.total_advance_amount || 0),
+                totalPaid: Number(summary.total_paid || 0),
+                outstanding: Number(summary.outstanding || 0),
+            },
+            challanRows,
+        };
+    }, [data.account?.opening_balance, data.broker, data.challans, reportPeriodLabel, summary]);
+
+    const openLedgerDownloadDialog = () => {
+        if (!reportPayload || reportPayload.challanRows.length === 0) {
+            toast.error('No ledger entries found for the selected period');
+            return;
+        }
+        setShowLedgerDownloadDialog(true);
+    };
+
+    const handleDownloadLedgerReport = async (filter: ChallanLedgerFilter) => {
+        if (!reportPayload) return;
+        setIsDownloadingReport(true);
+        try {
+            await downloadChallanLedgerReportPdf(reportPayload, filter);
+            toast.success('Ledger report downloaded');
+            setShowLedgerDownloadDialog(false);
+        } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : 'Failed to download ledger report');
+        } finally {
+            setIsDownloadingReport(false);
+        }
+    };
 
     return (
         <div className="p-4 sm:p-6 space-y-6 animate-fadeIn">
@@ -166,8 +412,11 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                 </div>
                 {isAdmin && (
                     <div className="flex items-center gap-2">
-                        <Button onClick={() => setShowPaymentDialog(true)} className="gap-2">
-                            <Banknote className="h-4 w-4" /> Record Payment
+                        <Button onClick={() => openPaymentDialog()} className="gap-2">
+                            <Banknote className="h-4 w-4" />
+                            {stackedChallanNos.length > 0
+                                ? `Record Payment (${stackedChallanNos.length})`
+                                : 'Record Payment'}
                         </Button>
                     </div>
                 )}
@@ -200,8 +449,20 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input placeholder="Search challan no..." className="pl-9 h-9" value={challanSearch} onChange={(e) => setChallanSearch(e.target.value)} />
                     </div>
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                        {reportPeriodLabel}
+                    </div>
                     <Button variant="outline" size="sm" onClick={fetchData} className="gap-2">
                         <RotateCcw className="h-4 w-4" /> Refresh
+                    </Button>
+                    <Button
+                        size="sm"
+                        className="h-9 gap-2 ml-auto"
+                        onClick={openLedgerDownloadDialog}
+                        disabled={isDownloadingReport || data.challans.length === 0}
+                    >
+                        {isDownloadingReport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        Download Ledger Report
                     </Button>
                 </CardContent>
             </Card>
@@ -214,6 +475,21 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                 </TabsList>
 
                 <TabsContent value="challans" className="mt-4">
+                    {isAdmin && stackedChallanNos.length > 0 && (
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+                            <span>
+                                <strong>{stackedChallanNos.length}</strong> challan{stackedChallanNos.length > 1 ? 's' : ''} stacked for one payment
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <Button variant="ghost" size="sm" onClick={() => setStackedChallanNos([])}>
+                                    Clear
+                                </Button>
+                                <Button size="sm" className="gap-1.5" onClick={() => openPaymentDialog()}>
+                                    <Banknote className="h-4 w-4" /> Pay stacked challans
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                     <Card>
                         <CardContent className="p-0 overflow-x-auto">
                             {isLoading ? (
@@ -222,6 +498,28 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
+                                            {isAdmin && (
+                                                <TableHead className="w-10">
+                                                    <Checkbox
+                                                        checked={
+                                                            allPayableSelected
+                                                                ? true
+                                                                : stackedChallanNos.length > 0
+                                                                    ? 'indeterminate'
+                                                                    : false
+                                                        }
+                                                        disabled={payableChallans.length === 0}
+                                                        onCheckedChange={(checked) => {
+                                                            setStackedChallanNos(
+                                                                checked === true
+                                                                    ? payableChallans.map((ch) => ch.challan_no)
+                                                                    : [],
+                                                            );
+                                                        }}
+                                                        aria-label="Select all unpaid challans"
+                                                    />
+                                                </TableHead>
+                                            )}
                                             <TableHead>Challan No</TableHead>
                                             <TableHead>Date</TableHead>
                                             <TableHead>Vehicle</TableHead>
@@ -237,7 +535,18 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                                     </TableHeader>
                                     <TableBody>
                                         {data.challans.map((ch) => (
-                                            <TableRow key={ch.id}>
+                                            <TableRow key={ch.id} className={stackedChallanNos.includes(ch.challan_no) ? 'bg-primary/5' : undefined}>
+                                                {isAdmin && (
+                                                    <TableCell>
+                                                        {Number(ch.balance_amount || 0) > 0.009 ? (
+                                                            <Checkbox
+                                                                checked={stackedChallanNos.includes(ch.challan_no)}
+                                                                onCheckedChange={() => toggleStackedChallan(ch.challan_no)}
+                                                                aria-label={`Stack challan ${ch.challan_no}`}
+                                                            />
+                                                        ) : null}
+                                                    </TableCell>
+                                                )}
                                                 <TableCell className="font-mono font-bold text-primary">{ch.challan_no}</TableCell>
                                                 <TableCell>{fmtDate(ch.date_from)}</TableCell>
                                                 <TableCell>{ch.vehicle_no}</TableCell>
@@ -258,7 +567,7 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                                                             <Eye className="h-4 w-4" />
                                                         </Button>
                                                         {isAdmin && Number(ch.balance_amount || 0) > 0.009 && (
-                                                            <Button size="sm" variant="ghost" className="text-primary" title="Record payment" onClick={() => setShowPaymentDialog(true)}>
+                                                            <Button size="sm" variant="ghost" className="text-primary" title="Record payment" onClick={() => openPaymentDialog([ch.challan_no])}>
                                                                 <Banknote className="h-4 w-4" />
                                                             </Button>
                                                         )}
@@ -375,10 +684,14 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
 
             <RecordChallanPaymentDialog
                 open={showPaymentDialog}
-                onClose={() => setShowPaymentDialog(false)}
+                onClose={closePaymentDialog}
                 brokerId={brokerId}
                 challans={data.challans}
-                onSuccess={fetchData}
+                initialChallanNos={paymentInitialNos}
+                onSuccess={() => {
+                    setStackedChallanNos([]);
+                    fetchData();
+                }}
             />
 
             <ViewChallanPaymentDialog
@@ -399,6 +712,14 @@ export default function BrokerChallanLedgerDetailPage({ params }: { params: Prom
                 title="Reverse Payment"
                 description="Provide a reason for reversing this payment receipt."
                 onConfirm={handleReversePayment}
+            />
+
+            <LedgerReportDownloadDialog
+                open={showLedgerDownloadDialog}
+                onClose={() => setShowLedgerDownloadDialog(false)}
+                reportPayload={reportPayload}
+                isDownloading={isDownloadingReport}
+                onDownload={handleDownloadLedgerReport}
             />
         </div>
     );

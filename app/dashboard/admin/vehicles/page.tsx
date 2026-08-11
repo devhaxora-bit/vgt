@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { canManageMasterData } from '@/lib/branchAccess';
-import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
+import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
 
 interface Vehicle {
     id: string;
@@ -62,6 +62,7 @@ export default function VehiclesAdminPage() {
     const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [branchFilter, setBranchFilter] = useState<string | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editing, setEditing] = useState<Vehicle | null>(null);
     const [form, setForm] = useState({ ...emptyForm });
@@ -95,10 +96,13 @@ export default function VehiclesAdminPage() {
         }
     };
 
-    const fetchVehicles = async () => {
+    const fetchVehicles = async (branch = branchFilter) => {
+        if (!branch) return;
         setIsLoading(true);
         try {
-            const res = await fetch('/api/vehicles');
+            const params = new URLSearchParams();
+            if (branch !== 'all') params.set('branch', branch);
+            const res = await fetch(`/api/vehicles?${params.toString()}`);
             const data = await res.json();
             setVehicles(Array.isArray(data) ? data : []);
         } catch { toast.error('Failed to load vehicles'); }
@@ -107,8 +111,17 @@ export default function VehiclesAdminPage() {
 
     useEffect(() => {
         void fetchBranches();
-        void fetchVehicles();
     }, []);
+
+    useEffect(() => {
+        if (!userScope.ready || branchFilter !== null) return;
+        setBranchFilter(defaultBranchFilterValue(userScope));
+    }, [userScope.ready, userScope.branchCode, branchFilter]);
+
+    useEffect(() => {
+        if (!branchFilter) return;
+        void fetchVehicles(branchFilter);
+    }, [branchFilter]);
 
     const openAdd = () => {
         setEditing(null);
@@ -187,7 +200,26 @@ export default function VehiclesAdminPage() {
                             <Truck className="h-5 w-5 text-primary" /> Vehicle List
                         </CardTitle>
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={fetchVehicles} disabled={isLoading}>
+                            <Select
+                                value={branchFilter ?? undefined}
+                                onValueChange={setBranchFilter}
+                                disabled={!userScope.ready || userScope.isBranchScoped}
+                            >
+                                <SelectTrigger className="h-9 w-[200px]">
+                                    <SelectValue placeholder={userScope.ready ? 'Branch' : 'Loading...'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {!userScope.isBranchScoped && (
+                                        <SelectItem value="all">All Branches</SelectItem>
+                                    )}
+                                    {branches.map((b) => (
+                                        <SelectItem key={b.code} value={b.code}>
+                                            {b.code} – {b.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => fetchVehicles()} disabled={isLoading}>
                                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
                             </Button>
                             <div className="relative flex-1 md:w-72">

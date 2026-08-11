@@ -72,7 +72,7 @@ export function useCurrentUserScope(): CurrentUserScope {
     return scope;
 }
 
-/** Default list filter value: branch users → their code; others with home branch → that; else 'all' */
+/** Default list filter: logged-in user's branch. 'all' only when user has no home branch. */
 export function defaultBranchFilterValue(scope: CurrentUserScope): string {
     if (!scope.ready) return 'all';
     if (scope.branchCode) return scope.branchCode;

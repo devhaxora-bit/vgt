@@ -174,12 +174,13 @@ export default function ConsignmentsPage() {
         }
     };
 
-    // Fetch consignments on mount
-    const fetchConsignments = async () => {
+    const fetchConsignments = async (branch: string) => {
         setIsLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/consignments');
+            const params = new URLSearchParams();
+            if (branch && branch !== 'all') params.set('branch', branch);
+            const res = await fetch(`/api/consignments?${params.toString()}`);
             if (!res.ok) throw new Error('Failed to fetch consignments');
             const data = await res.json();
             setConsignments(data);
@@ -190,11 +191,6 @@ export default function ConsignmentsPage() {
             setIsLoading(false);
         }
     };
-
-    React.useEffect(() => {
-        fetchConsignments();
-        fetchBillingRecords();
-    }, []);
 
     React.useEffect(() => {
         const loadCurrentUser = async () => {
@@ -233,12 +229,13 @@ export default function ConsignmentsPage() {
     }, []);
 
     // New Filters from Image
-    const [bkgBranch, setBkgBranch] = useState<string>('all');
+    const [bkgBranch, setBkgBranch] = useState<string | null>(null);
     const [deliveryBranch, setDeliveryBranch] = useState<string>('all');
     const [bookingType, setBookingType] = useState<string>('all');
     const [deliveryType, setDeliveryType] = useState<string>('all');
     const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
     const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+    const [filtersInitialized, setFiltersInitialized] = useState(false);
 
     // Applied Filters State (updates only on Search click). Dates optional = show all.
     const [appliedFilters, setAppliedFilters] = useState<{
@@ -259,15 +256,20 @@ export default function ConsignmentsPage() {
         dateTo: undefined,
     });
 
-    // Default booking-branch filter to logged-in user's branch (user can switch to All Branches)
+    // Default booking-branch to logged-in user's branch; All Branches only if selected
     useEffect(() => {
-        if (!userScope.ready) return;
+        if (!userScope.ready || filtersInitialized) return;
         const code = defaultBranchFilterValue(userScope);
-        setBkgBranch((prev) => (prev === 'all' && code !== 'all' ? code : prev));
-        setAppliedFilters((prev) => (
-            prev.bkgBranch === 'all' && code !== 'all' ? { ...prev, bkgBranch: code } : prev
-        ));
-    }, [userScope.ready, userScope.branchCode]);
+        setBkgBranch(code);
+        setAppliedFilters((prev) => ({ ...prev, bkgBranch: code }));
+        setFiltersInitialized(true);
+    }, [userScope.ready, userScope.branchCode, filtersInitialized]);
+
+    useEffect(() => {
+        if (!filtersInitialized) return;
+        void fetchConsignments(appliedFilters.bkgBranch);
+        void fetchBillingRecords();
+    }, [filtersInitialized, appliedFilters.bkgBranch]);
 
     const billingRecordsById = useMemo(() => {
         const map = new Map<string, BillRecordPreview>();
@@ -512,7 +514,7 @@ export default function ConsignmentsPage() {
     const handleSearch = () => {
         setAppliedFilters({
             cnNo: cnNoFilter,
-            bkgBranch: bkgBranch,
+            bkgBranch: bkgBranch ?? 'all',
             deliveryBranch: deliveryBranch,
             bookingType: bookingType,
             deliveryType: deliveryType,
@@ -647,12 +649,12 @@ export default function ConsignmentsPage() {
                         <div className="space-y-2">
                             <Label className="text-xs font-bold text-muted-foreground/70 tracking-tight">Booking Branch</Label>
                             <Select
-                                value={bkgBranch}
+                                value={bkgBranch ?? undefined}
                                 onValueChange={setBkgBranch}
-                                disabled={userScope.isBranchScoped}
+                                disabled={!userScope.ready || userScope.isBranchScoped}
                             >
                                 <SelectTrigger className="bg-background/80 focus:ring-primary h-10">
-                                    <SelectValue placeholder="Select Branch" />
+                                    <SelectValue placeholder={userScope.ready ? 'Select Branch' : 'Loading...'} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {!userScope.isBranchScoped && (

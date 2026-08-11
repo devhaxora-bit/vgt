@@ -1,0 +1,607 @@
+import { formatBranchLabel as formatBranch } from '@/lib/formatBranchLabel';
+import {
+    loadPdfLogo,
+    PDF_HEADER_LOGO_IMG_CSS,
+    PDF_TABLE_HEADER_BG,
+    PDF_TABLE_HEADER_TEXT_COLOR,
+} from '@/lib/pdfLogo';
+import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
+
+export type ChallanLedgerBroker = {
+    name: string;
+    code: string;
+    mobile?: string | null;
+    address?: string | null;
+    branch_code?: string | null;
+    branch_name?: string | null;
+};
+
+export type ChallanLedgerReportSummary = {
+    openingBalance: number;
+    totalChallanCount: number;
+    totalHireAmount: number;
+    unpaidCount: number;
+    unpaidAmount: number;
+    paidCount: number;
+    netPayable: number;
+    totalAdvance: number;
+    totalPaid: number;
+    outstanding: number;
+};
+
+export type ChallanLedgerRow = {
+    challanNo: string;
+    date: string;
+    dateIso?: string;
+    vehicleNo: string;
+    ownerName: string;
+    origin: string;
+    destination: string;
+    hireAmount: number;
+    advanceAmount: number;
+    netPayable: number;
+    paidAmount: number;
+    balanceAmount: number;
+    paymentStatus: 'UNPAID' | 'PARTIAL' | 'COMPLETE';
+};
+
+export type ChallanLedgerFilter = 'all' | 'paid' | 'unpaid';
+
+export type ChallanLedgerReportPayload = {
+    broker: ChallanLedgerBroker;
+    periodLabel: string;
+    generatedAt: string;
+    summary: ChallanLedgerReportSummary;
+    challanRows: ChallanLedgerRow[];
+};
+
+const TABLE_COLUMNS = 11;
+const PAGE_LAYOUT_BUFFER_PX = 22;
+const MAX_LAST_PAGE_BLANK_ROWS = 5;
+
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const fmt = (value: number) => fmtNum.format(value || 0);
+const safe = (value: string | number | null | undefined) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+const titleText = (value: string | null | undefined) => safe(String(value ?? '').trim() || '-');
+const upperTitleText = (value: string | null | undefined) => {
+    const normalized = String(value ?? '').trim();
+    return titleText(normalized ? normalized.toUpperCase() : '-');
+};
+
+const brokerBranchLabel = (broker: ChallanLedgerBroker) =>
+    formatBranch(broker.branch_code, broker.branch_name);
+
+const loadLogo = loadPdfLogo;
+
+const isPaidRow = (row: ChallanLedgerRow) => row.paymentStatus === 'COMPLETE';
+
+const sumRows = (rows: ChallanLedgerRow[]) => {
+    let hireAmount = 0;
+    let advanceAmount = 0;
+    let netPayable = 0;
+    let paidAmount = 0;
+    let balanceAmount = 0;
+
+    rows.forEach((row) => {
+        hireAmount += Number(row.hireAmount || 0);
+        advanceAmount += Number(row.advanceAmount || 0);
+        netPayable += Number(row.netPayable || 0);
+        paidAmount += Number(row.paidAmount || 0);
+        balanceAmount += Number(row.balanceAmount || 0);
+    });
+
+    return {
+        hireAmount: roundMoney(hireAmount),
+        advanceAmount: roundMoney(advanceAmount),
+        netPayable: roundMoney(netPayable),
+        paidAmount: roundMoney(paidAmount),
+        balanceAmount: roundMoney(balanceAmount),
+    };
+};
+
+const rowSortKey = (row: ChallanLedgerRow): number => {
+    const iso = (row.dateIso ?? '').trim();
+    if (iso) {
+        const t = new Date(iso).getTime();
+        if (!Number.isNaN(t)) return t;
+    }
+    const display = (row.date ?? '').trim();
+    const match = display.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match) {
+        const [, dd, mm, yyyy] = match;
+        const t = new Date(`${yyyy}-${mm}-${dd}`).getTime();
+        if (!Number.isNaN(t)) return t;
+    }
+    return Number.MAX_SAFE_INTEGER;
+};
+
+const sortRowsByDateAsc = (rows: ChallanLedgerRow[]): ChallanLedgerRow[] =>
+    [...rows]
+        .map((row, originalIndex) => ({ row, originalIndex, key: rowSortKey(row) }))
+        .sort((a, b) => (a.key - b.key) || (a.originalIndex - b.originalIndex))
+        .map((entry) => entry.row);
+
+const summaryFromRows = (
+    rows: ChallanLedgerRow[],
+    openingBalance: number,
+): ChallanLedgerReportSummary => {
+    const totals = sumRows(rows);
+    const paidRows = rows.filter(isPaidRow);
+    const unpaidRows = rows.filter((row) => !isPaidRow(row));
+
+    return {
+        openingBalance: roundMoney(openingBalance),
+        totalChallanCount: rows.length,
+        totalHireAmount: totals.hireAmount,
+        unpaidCount: unpaidRows.length,
+        unpaidAmount: sumRows(unpaidRows).balanceAmount,
+        paidCount: paidRows.length,
+        netPayable: totals.netPayable,
+        totalAdvance: totals.advanceAmount,
+        totalPaid: totals.paidAmount,
+        outstanding: roundMoney(openingBalance + totals.netPayable - totals.paidAmount),
+    };
+};
+
+export const applyChallanLedgerFilter = (
+    payload: ChallanLedgerReportPayload,
+    filter: ChallanLedgerFilter,
+): ChallanLedgerReportPayload => {
+    if (filter === 'all') return payload;
+
+    const challanRows = filter === 'paid'
+        ? payload.challanRows.filter(isPaidRow)
+        : payload.challanRows.filter((row) => !isPaidRow(row));
+
+    const filterSuffix = filter === 'paid' ? ' · Paid Challans' : ' · Unpaid Challans';
+
+    return {
+        ...payload,
+        periodLabel: `${payload.periodLabel}${filterSuffix}`,
+        challanRows,
+        summary: summaryFromRows(challanRows, payload.summary.openingBalance),
+    };
+};
+
+const preparePdfPayload = (payload: ChallanLedgerReportPayload): ChallanLedgerReportPayload => {
+    const challanRows = sortRowsByDateAsc(payload.challanRows);
+    return {
+        ...payload,
+        challanRows,
+        summary: summaryFromRows(challanRows, payload.summary.openingBalance),
+    };
+};
+
+type SectionPage = {
+    rows: ChallanLedgerRow[];
+    isLast: boolean;
+    isCoverPage: boolean;
+    blankCount: number;
+};
+
+const tableHeadHtml = () => `
+    <thead>
+        <tr>
+            <th style="width:8%;">Challan<br/>No</th>
+            <th style="width:7%;">Date</th>
+            <th style="width:9%;">Vehicle no.</th>
+            <th style="width:12%;">Owner</th>
+            <th style="width:9%;">Origin</th>
+            <th style="width:9%;">Destination</th>
+            <th style="width:9%;">Hire<br/>Amt.</th>
+            <th style="width:8%;">Advance</th>
+            <th style="width:9%;">Net<br/>Payable</th>
+            <th style="width:9%;">Paid</th>
+            <th style="width:11%;">Balance</th>
+        </tr>
+    </thead>
+`;
+
+const statusClass = (row: ChallanLedgerRow) => {
+    if (row.paymentStatus === 'COMPLETE') return 'ok';
+    if (row.paymentStatus === 'PARTIAL') return 'warn';
+    return 'wait';
+};
+
+const dataRowHtml = (row: ChallanLedgerRow) => `
+    <tr class="cns-data-row">
+        <td class="center">${titleText(row.challanNo)}</td>
+        <td class="center">${titleText(row.date)}</td>
+        <td class="center">${titleText(row.vehicleNo)}</td>
+        <td class="center">${upperTitleText(row.ownerName)}</td>
+        <td class="center">${upperTitleText(row.origin)}</td>
+        <td class="center">${upperTitleText(row.destination)}</td>
+        <td class="amount">${fmt(row.hireAmount)}</td>
+        <td class="amount" style="color:#8b5a08;">${fmt(row.advanceAmount)}</td>
+        <td class="amount">${fmt(row.netPayable)}</td>
+        <td class="amount" style="color:#11653d;">${fmt(row.paidAmount)}</td>
+        <td class="amount status-cell ${statusClass(row)}">${fmt(row.balanceAmount)}</td>
+    </tr>
+`;
+
+const blankRows = (count: number, cells: number) => Array.from({ length: count }, () => `
+    <tr class="blank-row">${Array.from({ length: cells }, () => '<td>&nbsp;</td>').join('')}</tr>
+`).join('');
+
+const measureTbodyBudget = (pageEl: HTMLElement) => {
+    const sectionWrap = pageEl.querySelector<HTMLElement>('.section-wrap');
+    const sectionHead = pageEl.querySelector<HTMLElement>('.section-head');
+    const thead = pageEl.querySelector<HTMLElement>('.items-table thead');
+    if (!sectionWrap || !sectionHead || !thead) return 0;
+    return Math.max(
+        0,
+        sectionWrap.offsetHeight - sectionHead.offsetHeight - thead.offsetHeight - PAGE_LAYOUT_BUFFER_PX,
+    );
+};
+
+const measureLedgerPages = (doc: Document, rows: ChallanLedgerRow[]): SectionPage[] => {
+    if (rows.length === 0) return [];
+
+    const coverBudget = measureTbodyBudget(doc.getElementById('measure-cover-page') as HTMLElement) || 280;
+    const contBudget = measureTbodyBudget(doc.getElementById('measure-cont-page') as HTMLElement) || 620;
+    const rowEls = Array.from(doc.querySelectorAll<HTMLTableRowElement>('#measure-all-rows .cns-data-row'));
+    const rowHeights = rowEls.map((el) => el.offsetHeight);
+    const blankRowEl = doc.querySelector<HTMLTableRowElement>('#measure-blank-row');
+    const totalRowEl = doc.querySelector<HTMLTableRowElement>('#measure-total-row');
+    const blankRowHeight = Math.max(blankRowEl?.offsetHeight || 20, 1);
+    const totalRowHeight = totalRowEl?.offsetHeight || 23;
+
+    const pages: SectionPage[] = [];
+    let rowIndex = 0;
+    let isCoverPage = true;
+
+    while (rowIndex < rows.length) {
+        const budget = Math.max(isCoverPage ? coverBudget : contBudget, blankRowHeight);
+        const pageRows: ChallanLedgerRow[] = [];
+        let usedHeight = 0;
+
+        while (rowIndex < rows.length) {
+            const rowHeight = rowHeights[rowIndex] ?? blankRowHeight;
+            const isFinalRow = rowIndex === rows.length - 1;
+            const reserveTotal = isFinalRow ? totalRowHeight : 0;
+
+            if (pageRows.length > 0 && usedHeight + rowHeight + reserveTotal > budget) {
+                break;
+            }
+
+            pageRows.push(rows[rowIndex]);
+            usedHeight += rowHeight;
+            rowIndex += 1;
+        }
+
+        const isLast = rowIndex >= rows.length;
+        const remaining = budget - usedHeight - (isLast ? totalRowHeight : 0);
+        const rawBlankCount = Math.max(0, Math.floor(remaining / blankRowHeight));
+        const blankCount = isLast
+            ? Math.min(MAX_LAST_PAGE_BLANK_ROWS, rawBlankCount)
+            : rawBlankCount;
+
+        pages.push({ rows: pageRows, isLast, isCoverPage, blankCount });
+        isCoverPage = false;
+    }
+
+    return pages;
+};
+
+const sectionHeadHtml = (payload: ChallanLedgerReportPayload) => `
+    <div class="section-head">
+        <span>A. Challan Ledger Details</span>
+        <span>${payload.summary.totalChallanCount} challans | ${payload.summary.paidCount} paid | ${payload.summary.unpaidCount} unpaid</span>
+    </div>
+`;
+
+const challanTable = (
+    payload: ChallanLedgerReportPayload,
+    rows: ChallanLedgerRow[],
+    isLast: boolean,
+    blankCount: number,
+) => {
+    const totals = sumRows(payload.challanRows);
+
+    return `
+        ${sectionHeadHtml(payload)}
+        <table class="items-table cns-table">
+            ${tableHeadHtml()}
+            <tbody>
+                ${rows.map((row) => dataRowHtml(row)).join('')}
+                ${blankRows(blankCount, TABLE_COLUMNS)}
+                ${isLast ? `
+                    <tr class="total-row">
+                        <td class="total-label">TOTAL</td>
+                        <td colspan="5"></td>
+                        <td class="amount">${fmt(totals.hireAmount)}</td>
+                        <td class="amount">${fmt(totals.advanceAmount)}</td>
+                        <td class="amount">${fmt(totals.netPayable)}</td>
+                        <td class="amount" style="color:#11653d;">${fmt(totals.paidAmount)}</td>
+                        <td class="amount" style="color:#a32727;">${fmt(totals.balanceAmount)}</td>
+                    </tr>
+                ` : ''}
+            </tbody>
+        </table>
+    `;
+};
+
+const summaryTiles = (summary: ChallanLedgerReportSummary) => `
+    <div class="summary-grid">
+        <div class="summary-tile"><span>Total Challan Amount</span><strong>${fmt(summary.totalHireAmount)}</strong><small>${summary.totalChallanCount} challans</small></div>
+        <div class="summary-tile warning"><span>Unpaid</span><strong>${fmt(summary.unpaidAmount)}</strong><small>${summary.unpaidCount} pending</small></div>
+        <div class="summary-tile"><span>Net Payable</span><strong>${fmt(summary.netPayable)}</strong><small>After advance / TDS</small></div>
+        <div class="summary-tile"><span>Total Paid</span><strong>${fmt(summary.totalPaid)}</strong><small>Receipts</small></div>
+        <div class="summary-tile danger"><span>Outstanding</span><strong>${fmt(summary.outstanding)}</strong><small>Opening ${fmt(summary.openingBalance)}</small></div>
+    </div>
+`;
+
+const reportCoverHtml = (payload: ChallanLedgerReportPayload, logoUrl: string) => `
+    <div class="header-band">
+        <div class="header-logo"><img src="${safe(logoUrl)}" alt="VGT Logo" /></div>
+        <div class="header-copy">
+            <div class="header-title">VISAKHA GOLDEN TRANSPORT</div>
+            <div class="header-line">
+                <span>D. NO. 8-19-58/A, GOPAL NAGAR, NEAR BANK COLONY, VIZIANAGARAM, ANDHRA PRADESH - 535003</span>
+            </div>
+            <div class="header-line contact">Contact:9392223404,8756314575 Email:vsp@visakhagolden.com</div>
+        </div>
+        <div class="header-pan"><span>PAN NO:</span><br/>AAWFV7670H</div>
+    </div>
+    <div class="detail-grid">
+        <div class="party-block">
+            <div class="party-name">${titleText(payload.broker.name)}</div>
+            <div class="party-line">${titleText(payload.broker.address || payload.broker.mobile)}</div>
+            <div class="party-line">
+                <span>Code:</span> ${titleText(payload.broker.code)}
+                <span>Mobile:</span> ${titleText(payload.broker.mobile)}
+            </div>
+            <div class="party-line party-branch-line">
+                <span>Branch:</span> ${titleText(brokerBranchLabel(payload.broker))}
+            </div>
+        </div>
+        <div class="right-block">
+            <div class="meta-row"><div class="meta-label">Report :</div><div class="meta-value">Broker Challan Ledger</div></div>
+            <div class="meta-row"><div class="meta-label">Branch :</div><div class="meta-value">${titleText(brokerBranchLabel(payload.broker))}</div></div>
+            <div class="meta-row"><div class="meta-label">Period :</div><div class="meta-value">${titleText(payload.periodLabel)}</div></div>
+            <div class="meta-row"><div class="meta-label">Generated :</div><div class="meta-value">${titleText(payload.generatedAt)}</div></div>
+        </div>
+    </div>
+    ${summaryTiles(payload.summary)}
+`;
+
+const pageHtml = (
+    payload: ChallanLedgerReportPayload,
+    page: SectionPage,
+    logoUrl: string,
+    pageIndex: number,
+    pageCount: number,
+) => {
+    const isCoverPage = pageIndex === 0;
+    return `
+    <div class="page${isCoverPage ? ' page--cover' : ' page--continuation'}">
+        <div class="sheet">
+            ${isCoverPage ? `<div class="cover-block">${reportCoverHtml(payload, logoUrl)}</div>` : ''}
+            <div class="section-wrap${isCoverPage ? ' section-wrap--cover' : ' section-wrap--cont'}">${challanTable(payload, page.rows, page.isLast, page.blankCount)}</div>
+            <div class="footer-row">
+                <span class="footer-party">${titleText(payload.broker.name)} · ${titleText(brokerBranchLabel(payload.broker))}</span>
+                <span class="footer-page">Page ${pageIndex + 1} of ${pageCount}</span>
+            </div>
+        </div>
+    </div>
+`;
+};
+
+const reportStyles = () => `
+@page { size: A4 landscape; margin: 5mm; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; }
+.page { width: 287mm; height: 200mm; max-height: 200mm; margin: 0 auto; padding: 0 0 1.5mm; background: #fff; page-break-after: always; overflow: hidden; box-sizing: border-box; }
+.page:last-child { page-break-after: auto; }
+.sheet { border: 1.2px solid #1d2f7a; height: 100%; max-height: 100%; display: grid; grid-template-rows: 1fr 12mm; row-gap: 2.5mm; overflow: hidden; box-sizing: border-box; }
+.page--cover .sheet { grid-template-rows: auto 1fr 12mm; row-gap: 2.5mm; }
+.cover-block { min-height: 0; overflow: visible; }
+.header-band, .detail-grid, .summary-grid { flex-shrink: 0; }
+.section-wrap { min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+.section-wrap .section-head { flex-shrink: 0; }
+.section-wrap .items-table { width: 100%; }
+.page--continuation .section-head { margin-top: 0; }
+.header-band { border-bottom: 1.2px solid #1d2f7a; display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; column-gap: 8px; padding: 7px 12px 5px; }
+.header-logo { display: flex; align-items: center; justify-content: flex-start; }
+.header-logo img { ${PDF_HEADER_LOGO_IMG_CSS} }
+.header-copy { text-align: center; }
+.header-title { font-size: 17px; font-weight: 800; letter-spacing: 0.2px; color: #17308b; }
+.header-line { display: flex; justify-content: center; gap: 34px; font-size: 12px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
+.header-line.contact { display: inline-block; margin-top: 3px; margin-bottom: 5px; padding: 0 6px 5px; border-bottom: 1.2px solid #1d2f7a; }
+.header-pan { text-align: right; font-size: 12px; font-weight: 800; line-height: 1.35; }
+.header-pan span { color: #1d2f7a; }
+.detail-grid { display: grid; grid-template-columns: 56% 44%; min-height: 84px; border-bottom: 1.2px solid #1d2f7a; }
+.party-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 7px 10px; min-width: 0; }
+.party-name { font-size: 13px; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; line-height: 1.2; }
+.party-line { font-size: 10.6px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.party-line span { margin-left: 8px; color: #1d2f7a; font-weight: 800; }
+.party-line span:first-child { margin-left: 0; }
+.right-block { display: grid; grid-template-rows: repeat(4, 1fr); }
+.party-branch-line { color: #1d2f7a; font-weight: 800; }
+.meta-row { display: grid; grid-template-columns: 27% 73%; border-bottom: 1.2px solid #1d2f7a; min-height: 21px; }
+.meta-row:last-child { border-bottom: none; }
+.meta-label { border-right: 1.2px solid #1d2f7a; display: flex; align-items: center; padding: 2px 6px 4px; color: #1d2f7a; font-size: 10.5px; font-weight: 800; }
+.meta-value { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 2px 6px 4px; font-size: 11.2px; font-weight: 800; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; padding: 8px; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; }
+.summary-tile { min-width: 0; min-height: 42px; border: 1px solid rgba(29, 47, 122, 0.55); background: rgba(29, 47, 122, 0.08); padding: 5px 6px 4px; overflow: visible; display: flex; flex-direction: column; justify-content: flex-start; gap: 1px; }
+.summary-tile span, .summary-tile small { display: block; line-height: 1.35; overflow: visible; white-space: nowrap; }
+.summary-tile span { color: #1d2f7a; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.summary-tile strong { display: block; color: #111; font-size: 12px; font-weight: 800; line-height: 1.35; overflow: visible; white-space: nowrap; }
+.summary-tile small { color: #4c5675; font-size: 8.5px; font-weight: 700; line-height: 1.3; }
+.summary-tile.warning { background: rgba(255, 207, 84, 0.22); }
+.summary-tile.danger { background: rgba(235, 93, 93, 0.12); }
+.section-head { margin: 8px 0 0; border-top: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; background: rgba(29, 47, 122, 0.12); display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; color: #1d2f7a; font-size: 11.6px; font-weight: 800; text-transform: uppercase; line-height: 1.35; flex-shrink: 0; }
+.items-table { width: 100%; border-collapse: collapse; table-layout: fixed; border-bottom: 1.2px solid #1d2f7a; }
+.items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 4px 4px 5px; vertical-align: middle; overflow: hidden; }
+.items-table th:last-child, .items-table td:last-child { border-right: none; }
+.items-table thead th { color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; text-align: center; font-size: 10.6px; font-weight: 800; line-height: 1.22; padding-top: 6px; padding-bottom: 7px; }
+.items-table tbody td { min-height: 19px; height: 19px; color: #111; font-size: 9.8px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+.items-table tbody td.status-cell { text-align: right; vertical-align: middle; font-size: 9.8px; font-weight: 800; padding: 3px 6px; }
+.items-table tbody td.status-cell.ok { color: #11653d; background: rgba(41, 171, 105, 0.14); }
+.items-table tbody td.status-cell.warn { color: #8b5a08; background: rgba(235, 174, 55, 0.18); }
+.items-table tbody td.status-cell.wait { color: #a32727; background: rgba(221, 81, 81, 0.13); }
+.cns-table tbody td:nth-child(4),
+.cns-table tbody td:nth-child(5),
+.cns-table tbody td:nth-child(6) { height: auto; white-space: normal; word-break: break-word; overflow-wrap: anywhere; overflow: hidden; text-overflow: clip; vertical-align: top; padding-top: 3px; padding-bottom: 3px; }
+.items-table .center { text-align: center; }
+.items-table .amount { text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
+.blank-row td { font-weight: 400; background: #fff; height: 20px; min-height: 20px; }
+.total-row td { height: 32px; background: rgba(29, 47, 122, 0.12); color: #111; font-size: 17.2px; font-weight: 900; padding-top: 5px; padding-bottom: 6px; border-bottom: 2px solid #1d2f7a; }
+.total-label { color: #1d2f7a !important; font-size: 15px; }
+.footer-row { border-top: 1.2px solid #1d2f7a; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2.5mm 10px 3.2mm; color: #1d2f7a; font-size: 9.2px; font-weight: 800; line-height: 1.45; text-transform: uppercase; overflow: visible; box-sizing: border-box; }
+.footer-party { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.45; padding-bottom: 1px; }
+.footer-page { flex: 0 0 auto; white-space: nowrap; line-height: 1.45; padding-bottom: 1px; }
+#measure-root { position: absolute; left: -20000px; top: 0; width: 287mm; visibility: hidden; pointer-events: none; }
+`;
+
+const measurementHtml = (
+    payload: ChallanLedgerReportPayload,
+    rows: ChallanLedgerRow[],
+    logoUrl: string,
+) => `<!DOCTYPE html>
+<html>
+<head>
+<style>${reportStyles()}</style>
+</head>
+<body>
+<div id="measure-root">
+    <div class="page page--cover" id="measure-cover-page">
+        <div class="sheet">
+            <div class="cover-block">${reportCoverHtml(payload, logoUrl)}</div>
+            <div class="section-wrap">
+                ${sectionHeadHtml(payload)}
+                <table class="items-table cns-table">${tableHeadHtml()}<tbody></tbody></table>
+            </div>
+            <div class="footer-row"><span>&nbsp;</span><span>&nbsp;</span></div>
+        </div>
+    </div>
+    <div class="page page--continuation" id="measure-cont-page">
+        <div class="sheet">
+            <div class="section-wrap">
+                ${sectionHeadHtml(payload)}
+                <table class="items-table cns-table">${tableHeadHtml()}<tbody></tbody></table>
+            </div>
+            <div class="footer-row"><span>&nbsp;</span><span>&nbsp;</span></div>
+        </div>
+    </div>
+    <table class="items-table cns-table" style="width:287mm">
+        ${tableHeadHtml()}
+        <tbody id="measure-all-rows">
+            ${rows.map((row) => dataRowHtml(row)).join('')}
+            <tr class="blank-row" id="measure-blank-row">${Array.from({ length: TABLE_COLUMNS }, () => '<td>&nbsp;</td>').join('')}</tr>
+            <tr class="total-row" id="measure-total-row">
+                <td class="total-label">TOTAL</td>
+                <td colspan="5"></td>
+                <td class="amount">0</td>
+                <td class="amount">0</td>
+                <td class="amount">0</td>
+                <td class="amount">0</td>
+                <td class="amount">0</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+</body>
+</html>`;
+
+const htmlDocument = (payload: ChallanLedgerReportPayload, pages: SectionPage[], logoUrl: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+<title>${titleText(payload.broker.code)} Broker Challan Ledger</title>
+<style>
+${reportStyles()}
+</style>
+</head>
+<body>
+${pages.map((page, index) => pageHtml(payload, page, logoUrl, index, pages.length)).join('')}
+</body>
+</html>`;
+
+export const downloadChallanLedgerReportPdf = async (
+    payload: ChallanLedgerReportPayload,
+    filter: ChallanLedgerFilter = 'all',
+): Promise<void> => {
+    const pdfPayload = preparePdfPayload(applyChallanLedgerFilter(payload, filter));
+    if (pdfPayload.challanRows.length === 0) throw new Error('No ledger rows found for this report');
+
+    const logoUrl = await loadLogo();
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.position = 'fixed';
+    iframe.style.left = '-10000px';
+    iframe.style.top = '0';
+    iframe.style.width = '297mm';
+    iframe.style.height = '210mm';
+    document.body.appendChild(iframe);
+
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) throw new Error('Failed to create ledger export document');
+
+        doc.open();
+        doc.write(measurementHtml(pdfPayload, pdfPayload.challanRows, logoUrl));
+        doc.close();
+
+        await Promise.all(Array.from(doc.images).map((image) => {
+            if (image.complete) return Promise.resolve();
+            return new Promise<void>((resolve) => {
+                image.onload = () => resolve();
+                image.onerror = () => resolve();
+            });
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        const pages = measureLedgerPages(doc, pdfPayload.challanRows);
+        if (pages.length === 0) throw new Error('No ledger rows found for this report');
+
+        doc.open();
+        doc.write(htmlDocument(pdfPayload, pages, logoUrl));
+        doc.close();
+
+        await Promise.all(Array.from(doc.images).map((image) => {
+            if (image.complete) return Promise.resolve();
+            return new Promise<void>((resolve) => {
+                image.onload = () => resolve();
+                image.onerror = () => resolve();
+            });
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        const pageElements = Array.from(doc.querySelectorAll<HTMLElement>('.page'));
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+            import('html2canvas'),
+            import('jspdf'),
+        ]);
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+
+        for (let index = 0; index < pageElements.length; index++) {
+            const page = pageElements[index];
+            const captureWidth = page.offsetWidth;
+            const captureHeight = page.offsetHeight;
+            const canvas = await html2canvas(page, {
+                scale: 3,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                width: captureWidth,
+                height: captureHeight,
+                windowWidth: captureWidth,
+                windowHeight: captureHeight,
+            });
+            if (index > 0) pdf.addPage('a4', 'landscape');
+            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 5, 5.5, 287, 198, undefined, 'FAST');
+        }
+
+        const brokerCode = String(payload.broker.code || 'broker').replace(/[^a-zA-Z0-9_-]/g, '') || 'broker';
+        const period = payload.periodLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'report';
+        await savePdfWithWatermarks(pdf, `${brokerCode}-challan-ledger-${period}.pdf`);
+    } finally {
+        iframe.remove();
+    }
+};
