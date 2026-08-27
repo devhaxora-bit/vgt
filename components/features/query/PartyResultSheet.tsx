@@ -135,7 +135,6 @@ export function PartyResultSheet({ detail, reset }: { detail: QueryPartyDetail; 
                     <SheetInfoGrid columns={2}>
                         <SheetField label="Party" value={upper(party.name)} accent />
                         <SheetField label="Code" value={upper(party.code)} mono />
-                        <SheetField label="Type" value={upper(party.type)} />
                         <SheetField label="Phone" value={party.phone || '—'} mono />
                         <SheetField label="GSTIN" value={upper(party.gstin) || '—'} mono />
                         <SheetField label="Branch" value={upper(party.branch_name) || upper(party.branch_code) || '—'} />

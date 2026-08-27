@@ -230,7 +230,7 @@ export default function ConsignmentsPage() {
 
     // New Filters from Image
     const [bkgBranch, setBkgBranch] = useState<string | null>(null);
-    const [deliveryBranch, setDeliveryBranch] = useState<string>('all');
+    const [deliveryBranch, setDeliveryBranch] = useState<string | null>(null);
     const [bookingType, setBookingType] = useState<string>('all');
     const [deliveryType, setDeliveryType] = useState<string>('all');
     const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -256,12 +256,13 @@ export default function ConsignmentsPage() {
         dateTo: undefined,
     });
 
-    // Default booking-branch to logged-in user's branch; All Branches only if selected
+    // Default booking + delivery branch filters to logged-in user's branch
     useEffect(() => {
         if (!userScope.ready || filtersInitialized) return;
         const code = defaultBranchFilterValue(userScope);
         setBkgBranch(code);
-        setAppliedFilters((prev) => ({ ...prev, bkgBranch: code }));
+        setDeliveryBranch(code);
+        setAppliedFilters((prev) => ({ ...prev, bkgBranch: code, deliveryBranch: code }));
         setFiltersInitialized(true);
     }, [userScope.ready, userScope.branchCode, filtersInitialized]);
 
@@ -515,7 +516,7 @@ export default function ConsignmentsPage() {
         setAppliedFilters({
             cnNo: cnNoFilter,
             bkgBranch: bkgBranch ?? 'all',
-            deliveryBranch: deliveryBranch,
+            deliveryBranch: deliveryBranch ?? 'all',
             bookingType: bookingType,
             deliveryType: deliveryType,
             dateFrom: dateFrom,
@@ -540,7 +541,7 @@ export default function ConsignmentsPage() {
         setSearchTerm('');
         setCnNoFilter('');
         setBkgBranch(defaultBranch);
-        setDeliveryBranch('all');
+        setDeliveryBranch(defaultBranch);
         setBookingType('all');
         setDeliveryType('all');
         setDateFrom(undefined);
@@ -548,7 +549,7 @@ export default function ConsignmentsPage() {
         setAppliedFilters({
             cnNo: '',
             bkgBranch: defaultBranch,
-            deliveryBranch: 'all',
+            deliveryBranch: defaultBranch,
             bookingType: 'all',
             deliveryType: 'all',
             dateFrom: undefined,
@@ -725,9 +726,13 @@ export default function ConsignmentsPage() {
                         {/* Row 2: Delivery Branch, Bkg Type, Del Type */}
                         <div className="space-y-2">
                             <Label className="text-xs font-bold text-muted-foreground/70 tracking-tight">Delivery Branch</Label>
-                            <Select value={deliveryBranch} onValueChange={setDeliveryBranch}>
+                            <Select
+                                value={deliveryBranch ?? undefined}
+                                onValueChange={setDeliveryBranch}
+                                disabled={!userScope.ready}
+                            >
                                 <SelectTrigger className="bg-background/80 h-10">
-                                    <SelectValue placeholder="Delivery Branch" />
+                                    <SelectValue placeholder={userScope.ready ? 'Delivery Branch' : 'Loading...'} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Branches</SelectItem>

@@ -40,6 +40,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { branchAccessLabel } from '@/lib/branchAccess';
+import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 import type { BranchAccess } from '@/lib/types/user.types';
 
 type ApiUser = {
@@ -91,6 +92,7 @@ function normalizeUser(user: ApiUser): UiUser {
 }
 
 export default function UserManagementPage() {
+    const userScope = useCurrentUserScope();
     const [users, setUsers] = useState<UiUser[]>([]);
     const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -237,10 +239,18 @@ export default function UserManagementPage() {
         }
     };
 
+    const defaultAssignBranch = () => {
+        const home = userScope.branchCode;
+        if (!home) return '';
+        if (branches.some((b) => b.code === home)) return home;
+        return home;
+    };
+
     const resetForm = () => {
-        setSelectedBranch('');
+        const home = defaultAssignBranch();
+        setSelectedBranch(home);
         setSelectedRole('employee');
-        setSelectedBranchAccess('global');
+        setSelectedBranchAccess(home ? deriveBranchAccess(home) : 'global');
         setGeneratedCode('');
         setEditingUser(null);
         setEditName('');
@@ -422,9 +432,27 @@ export default function UserManagementPage() {
                 <Dialog open={isAddOpen} onOpenChange={(open) => {
                     setIsAddOpen(open);
                     if (!open) resetForm();
+                    if (open && mode === 'create') {
+                        const home = defaultAssignBranch();
+                        if (home) {
+                            setSelectedBranch(home);
+                            setSelectedBranchAccess(deriveBranchAccess(home));
+                            const nextCode = generateCode(resolveCodePrefix(home), selectedRole);
+                            setGeneratedCode(nextCode);
+                            setEditEmail(emailFromCode(nextCode));
+                        }
+                    }
                 }}>
                     <DialogTrigger asChild>
-                        <Button className="gap-2 shadow-sm" onClick={() => setMode('create')}>
+                        <Button
+                            className="gap-2 shadow-sm"
+                            onClick={() => {
+                                setMode('create');
+                                const home = defaultAssignBranch();
+                                setSelectedBranch(home);
+                                setSelectedBranchAccess(home ? deriveBranchAccess(home) : 'global');
+                            }}
+                        >
                             <Plus className="h-4 w-4" />
                             Add User
                         </Button>
