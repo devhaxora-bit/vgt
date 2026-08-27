@@ -71,7 +71,8 @@ export interface QueryBillParty {
     id: string;
     name: string;
     code: string;
-    type: string;
+    /** Removed from parties table; kept optional for older clients */
+    type?: string | null;
     phone?: string | null;
     gstin?: string | null;
     address?: string | null;

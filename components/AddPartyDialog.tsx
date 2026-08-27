@@ -96,7 +96,9 @@ export function AddPartyDialog({
                 setPincode('');
                 setPhone('');
                 setEmail('');
-                setBranchCode('');
+                const home = userScope.branchCode || '';
+                const matched = branchOptions.find((b) => b.value.toUpperCase() === home.toUpperCase())?.value;
+                setBranchCode(matched || home);
             }
             setError(null);
             setCodeError(null);
@@ -104,17 +106,14 @@ export function AddPartyDialog({
             setLinkPrompt(null);
             setPendingLink(null);
         }
-    }, [open, initialName, editParty]);
+    }, [open, initialName, editParty, userScope.branchCode, branchOptions]);
 
     React.useEffect(() => {
-        if (!open || editParty || !userScope.branchCode) return;
-        setBranchCode((prev) => {
-            if (prev) return prev;
-            const home = userScope.branchCode!;
-            const matched = branchOptions.find((b) => b.value.toUpperCase() === home.toUpperCase())?.value;
-            return matched || home;
-        });
-    }, [open, editParty, userScope.branchCode, branchOptions]);
+        if (!open || editParty || !userScope.branchCode || branchCode) return;
+        const home = userScope.branchCode;
+        const matched = branchOptions.find((b) => b.value.toUpperCase() === home.toUpperCase())?.value;
+        setBranchCode(matched || home);
+    }, [open, editParty, userScope.branchCode, branchOptions, branchCode]);
 
     const handleCodeBlur = async () => {
         const trimmedCode = code.trim();
@@ -249,7 +248,7 @@ export function AddPartyDialog({
                 is_active: true,
                 city: null,
                 state: null,
-                branch_code: branchCode || userScope.branchCode || 'VZM',
+                branch_code: branchCode || userScope.branchCode || null,
             };
 
             if (editParty) {

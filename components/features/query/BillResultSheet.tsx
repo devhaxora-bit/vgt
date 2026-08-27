@@ -94,7 +94,6 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                         <SheetInfoGrid columns={2}>
                             <SheetField label="Party" value={upper(party?.name)} accent />
                             <SheetField label="Code" value={upper(party?.code)} mono />
-                            <SheetField label="Type" value={upper(party?.type)} />
                             <SheetField label="Phone" value={str(party?.phone)} mono />
                             <SheetField label="GSTIN" value={upper(party?.gstin)} mono />
                             <SheetField label="Home Branch" value={upper(party?.branch_name) || upper(party?.branch_code)} />

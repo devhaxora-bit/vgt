@@ -250,10 +250,12 @@ function NewConsignmentForm() {
         fetchBranches();
     }, []);
 
-    // Default booking branch to logged-in user's branch (create mode only)
+    // Default booking + billing branch to logged-in user's branch (create mode only)
     React.useEffect(() => {
         if (isEditMode || !userScope.ready || !userScope.branchCode) return;
-        setBookingBranchCode((prev) => prev || userScope.branchCode!.toLowerCase());
+        const home = userScope.branchCode.toLowerCase();
+        setBookingBranchCode((prev) => prev || home);
+        setBillingBranch((prev) => prev || home);
     }, [userScope.ready, userScope.branchCode, isEditMode]);
 
     const [deliveryPoint, setDeliveryPoint] = useState("");
@@ -883,7 +885,9 @@ function NewConsignmentForm() {
                         <Button variant="outline" className="gap-2 h-9" onClick={() => {
                             if (!confirm('Reset the form? All entered data will be cleared.')) return;
                             setConsignor(null); setConsignee(null); setBillingParty(null);
-                            setBillingMode('party'); setBillingBranch(''); setManualBillingName(''); setManualBillingAddress(''); setManualBillingGst(''); setManualBillingStation('');
+                            setBillingMode('party');
+                            setBillingBranch(userScope.branchCode ? userScope.branchCode.toLowerCase() : '');
+                            setManualBillingName(''); setManualBillingAddress(''); setManualBillingGst(''); setManualBillingStation('');
                             setIsLoose(false); setPackages([]); setCurrentPackageQty(''); setCurrentPackageMethod('box');
                             setIsFreightPending(false); setFreightType('per_tone'); setFreightRate(''); setBasicFreight(''); setChargedWeight('');
                             setCharges({ unloading: '', detention: '', extraKm: '', loading: '', doorColl: '', doorDel: '', trafficChallan: '', other: '' });

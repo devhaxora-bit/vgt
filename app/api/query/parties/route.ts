@@ -1,4 +1,3 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
@@ -62,16 +61,34 @@ export async function GET(request: Request) {
     if (id) {
         const { data: partyRow, error: partyError } = await supabase
             .from('parties')
-            .select('id, name, code, type, phone, gstin, address, branch_code')
+            .select('id, name, code, phone, gstin, address, branch_code')
             .eq('id', id)
-            .single();
+            .maybeSingle();
 
-        if (partyError || !partyRow) {
+        if (partyError) {
+            console.error('[query/parties detail]', partyError);
+            return NextResponse.json({ error: 'Could not load party' }, { status: 500 });
+        }
+
+        if (!partyRow) {
             return NextResponse.json({ error: 'Party not found' }, { status: 404 });
         }
 
-        const forbidden = auth.forbidIfForeignBranch(partyRow.branch_code);
-        if (forbidden) return forbidden;
+        // Allow home branch OR any party_branches link the user can access
+        let canAccess = auth.canAccessBranch(partyRow.branch_code);
+        if (!canAccess && auth.isBranchScoped && auth.branchCode) {
+            const { data: link } = await supabase
+                .from('party_branches')
+                .select('party_id')
+                .eq('party_id', id)
+                .eq('branch_code', auth.branchCode)
+                .maybeSingle();
+            canAccess = Boolean(link);
+        }
+        if (!canAccess) {
+            const forbidden = auth.forbidIfForeignBranch(partyRow.branch_code);
+            if (forbidden) return forbidden;
+        }
 
         let branchName: string | null = null;
         if (partyRow.branch_code) {
@@ -241,26 +258,110 @@ export async function GET(request: Request) {
     if (q.length < 1) return NextResponse.json([]);
 
     const { data: parties, error } = await (() => {
-        let query = supabase
+        const listBranch = auth.resolveListBranch(searchParams.get('branch'));
+
+        if (listBranch) {
+            // Match /api/parties: include parties tagged to this branch via party_branches
+            return supabase
+                .from('parties')
+                .select('id, name, code, gstin, phone, branch_code, party_branches!inner(branch_code)')
+                .eq('is_active', true)
+                .eq('party_branches.branch_code', listBranch)
+                .or(`name.ilike.%${q}%,code.ilike.%${q}%,gstin.ilike.%${q}%`)
+                .order('name', { ascending: true })
+                .limit(20);
+        }
+
+        return supabase
             .from('parties')
             .select('id, name, code, gstin, phone, branch_code')
+            .eq('is_active', true)
             .or(`name.ilike.%${q}%,code.ilike.%${q}%,gstin.ilike.%${q}%`)
             .order('name', { ascending: true })
             .limit(20);
-        const listBranch = auth.resolveListBranch(null);
-        if (listBranch) {
-            query = query.eq('branch_code', listBranch);
-        }
-        return query;
     })();
 
     if (error) {
         console.error('[query/parties search]', error);
-        return NextResponse.json([]);
+        // Fall back without party_branches join (pre-migration / schema mismatch)
+        const listBranch = auth.resolveListBranch(searchParams.get('branch'));
+        let fallback = supabase
+            .from('parties')
+            .select('id, name, code, gstin, phone, branch_code')
+            .eq('is_active', true)
+            .or(`name.ilike.%${q}%,code.ilike.%${q}%,gstin.ilike.%${q}%`)
+            .order('name', { ascending: true })
+            .limit(20);
+        if (listBranch) fallback = fallback.eq('branch_code', listBranch);
+        const { data: fallbackParties, error: fallbackError } = await fallback;
+        if (fallbackError) {
+            console.error('[query/parties search fallback]', fallbackError);
+            return NextResponse.json([]);
+        }
+        const partyIds = (fallbackParties || []).map((party) => party.id);
+        const branchCodes = Array.from(
+            new Set((fallbackParties || []).map((party) => party.branch_code).filter(Boolean)),
+        ) as string[];
+
+        const branchMap = new Map<string, string>();
+        if (branchCodes.length > 0) {
+            const { data: branches } = await supabase
+                .from('branches')
+                .select('code, name')
+                .in('code', branchCodes);
+            (branches || []).forEach((branch) => branchMap.set(branch.code, branch.name));
+        }
+
+        const summaryMap = new Map<string, { outstanding: number; total_billed: number; total_paid: number }>();
+        if (partyIds.length > 0) {
+            const { data: summaries } = await supabase
+                .from('vw_party_ledger_summary')
+                .select('party_id, outstanding, total_billed, total_paid')
+                .in('party_id', partyIds);
+            (summaries || []).forEach((row) => {
+                summaryMap.set(row.party_id, {
+                    outstanding: toNumber(row.outstanding),
+                    total_billed: toNumber(row.total_billed),
+                    total_paid: toNumber(row.total_paid),
+                });
+            });
+        }
+
+        return NextResponse.json(
+            (fallbackParties || []).map((party) => {
+                const summary = summaryMap.get(party.id);
+                return {
+                    id: party.id,
+                    name: party.name,
+                    code: party.code,
+                    gstin: party.gstin,
+                    phone: party.phone,
+                    branch_code: party.branch_code,
+                    branch_name: party.branch_code ? branchMap.get(party.branch_code) ?? null : null,
+                    outstanding: summary?.outstanding ?? 0,
+                    total_billed: summary?.total_billed ?? 0,
+                    total_paid: summary?.total_paid ?? 0,
+                };
+            }),
+        );
     }
 
-    const partyIds = (parties || []).map((party) => party.id);
-    const branchCodes = Array.from(new Set((parties || []).map((party) => party.branch_code).filter(Boolean))) as string[];
+    const normalizedParties = (parties || []).map((row) => {
+        const { party_branches: _pb, ...party } = row as Record<string, unknown> & {
+            id: string;
+            name: string;
+            code: string | null;
+            gstin: string | null;
+            phone: string | null;
+            branch_code: string | null;
+        };
+        return party;
+    });
+
+    const partyIds = normalizedParties.map((party) => party.id);
+    const branchCodes = Array.from(
+        new Set(normalizedParties.map((party) => party.branch_code).filter(Boolean)),
+    ) as string[];
 
     const branchMap = new Map<string, string>();
     if (branchCodes.length > 0) {
@@ -286,7 +387,7 @@ export async function GET(request: Request) {
         });
     }
 
-    const result = (parties || []).map((party) => {
+    const result = normalizedParties.map((party) => {
         const summary = summaryMap.get(party.id);
         return {
             id: party.id,

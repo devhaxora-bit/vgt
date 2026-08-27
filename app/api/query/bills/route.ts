@@ -38,7 +38,7 @@ export async function GET(request: Request) {
 
         const { data: partyRow } = await supabase
             .from('parties')
-            .select('id, name, code, type, phone, gstin, address, branch_code')
+            .select('id, name, code, phone, gstin, address, branch_code')
             .eq('id', record.party_id)
             .single();
 
