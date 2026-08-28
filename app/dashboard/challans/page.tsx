@@ -78,11 +78,12 @@ export default function ChallanListPage() {
     const [sortField, setSortField] = useState<'challan_no' | 'date_from' | 'vehicle_no' | 'total_hire_amount'>('challan_no');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-    // Default to logged-in user's branch; All Branches only if admin selects it
+    // Default to logged-in user's branch; wait for options so Select shows label immediately
     useEffect(() => {
         if (!userScope.ready || branchFilter !== null) return;
+        if (branchOptions.length === 0) return;
         setBranchFilter(defaultBranchFilterValue(userScope));
-    }, [userScope.ready, userScope.branchCode, branchFilter]);
+    }, [userScope.ready, userScope.branchCode, branchFilter, branchOptions.length]);
 
     useEffect(() => {
         fetch('/api/references/branches')
@@ -251,6 +252,9 @@ export default function ChallanListPage() {
                             <SelectContent>
                                 {!userScope.isBranchScoped && (
                                     <SelectItem value="all">All Branches</SelectItem>
+                                )}
+                                {branchFilter && branchFilter !== 'all' && !branchOptions.find(b => b.value === branchFilter) && (
+                                    <SelectItem value={branchFilter}>{branchFilter}</SelectItem>
                                 )}
                                 {branchOptions.map((b) => (
                                     <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>

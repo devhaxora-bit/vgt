@@ -136,8 +136,10 @@ export default function LedgerPage() {
 
     useEffect(() => {
         if (!userScope.ready || branchFilter !== null) return;
+        // Wait for branch options so Radix Select can immediately show the label
+        if (branchOptions.length === 0) return;
         setBranchFilter(defaultBranchFilterValue(userScope));
-    }, [userScope.ready, userScope.branchCode, branchFilter]);
+    }, [userScope.ready, userScope.branchCode, branchFilter, branchOptions.length]);
 
     const filtered = useMemo(() => {
         let list = parties.filter(hasLedgerActivity);
@@ -444,6 +446,9 @@ export default function LedgerPage() {
                             <SelectContent>
                                 {!userScope.isBranchScoped && (
                                     <SelectItem value="all">All Branches</SelectItem>
+                                )}
+                                {branchFilter && branchFilter !== 'all' && !branchOptions.find(b => b.value === branchFilter) && (
+                                    <SelectItem value={branchFilter}>{branchFilter}</SelectItem>
                                 )}
                                 {branchOptions.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
                             </SelectContent>
