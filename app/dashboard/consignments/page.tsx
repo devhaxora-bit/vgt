@@ -256,15 +256,14 @@ export default function ConsignmentsPage() {
         dateTo: undefined,
     });
 
-    // Default booking + delivery branch filters to logged-in user's branch
+    // Default booking branch filter to logged-in user's branch
     // Wait for branchOptions so the Select can immediately show the correct label
     useEffect(() => {
         if (!userScope.ready || filtersInitialized) return;
         if (branchOptions.length === 0) return;
         const code = defaultBranchFilterValue(userScope);
         setBkgBranch(code);
-        setDeliveryBranch(code);
-        setAppliedFilters((prev) => ({ ...prev, bkgBranch: code, deliveryBranch: code }));
+        setAppliedFilters((prev) => ({ ...prev, bkgBranch: code }));
         setFiltersInitialized(true);
     }, [userScope.ready, userScope.branchCode, filtersInitialized, branchOptions.length]);
 
@@ -543,7 +542,7 @@ export default function ConsignmentsPage() {
         setSearchTerm('');
         setCnNoFilter('');
         setBkgBranch(defaultBranch);
-        setDeliveryBranch(defaultBranch);
+        setDeliveryBranch('all');
         setBookingType('all');
         setDeliveryType('all');
         setDateFrom(undefined);
@@ -551,7 +550,7 @@ export default function ConsignmentsPage() {
         setAppliedFilters({
             cnNo: '',
             bkgBranch: defaultBranch,
-            deliveryBranch: defaultBranch,
+            deliveryBranch: 'all',
             bookingType: 'all',
             deliveryType: 'all',
             dateFrom: undefined,
