@@ -111,6 +111,8 @@ export default function UserManagementPage() {
     const [editDepartment, setEditDepartment] = useState('');
     const [editPhone, setEditPhone] = useState('');
     const [editPassword, setEditPassword] = useState('');
+    /** Home branch preference for global-access users — sets filter defaults, not access restriction */
+    const [globalHomeBranch, setGlobalHomeBranch] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     const headBranchCode = branches.find((b) => b.is_head_branch)?.code || branches[0]?.code || '';
@@ -221,6 +223,7 @@ export default function UserManagementPage() {
     const handleBranchChange = (value: string) => {
         setSelectedBranch(value);
         setSelectedBranchAccess(deriveBranchAccess(value));
+        if (value !== GLOBAL_BRANCH_VALUE) setGlobalHomeBranch('');
         const nextCode = generateCode(resolveCodePrefix(value), selectedRole);
         setGeneratedCode(nextCode);
         if (mode === 'create') {
@@ -251,6 +254,7 @@ export default function UserManagementPage() {
         setSelectedBranch(home);
         setSelectedRole('employee');
         setSelectedBranchAccess(home ? deriveBranchAccess(home) : 'global');
+        setGlobalHomeBranch('');
         setGeneratedCode('');
         setEditingUser(null);
         setEditName('');
@@ -268,13 +272,17 @@ export default function UserManagementPage() {
         let branchValue = '';
         if (user.branchAccess === 'global') {
             branchValue = GLOBAL_BRANCH_VALUE;
+            setGlobalHomeBranch(user.branchCode || '');
         } else if (user.branchCode) {
             branchValue = user.branchCode;
+            setGlobalHomeBranch('');
         } else if (user.branchAccess === 'main') {
             branchValue = headBranchCode;
+            setGlobalHomeBranch('');
         } else {
             branchValue = branches.find((b) => user.code.startsWith(`${b.code}-`) || user.code.startsWith(b.code))?.code
                 || '';
+            setGlobalHomeBranch('');
         }
 
         setSelectedBranch(branchValue);
@@ -296,7 +304,7 @@ export default function UserManagementPage() {
             try {
                 const access = deriveBranchAccess(selectedBranch);
                 const resolvedBranchCode = access === 'global'
-                    ? null
+                    ? (String(globalHomeBranch || '').trim().toUpperCase() || null)
                     : String(selectedBranch || '').trim().toUpperCase();
 
                 if (access !== 'global' && !resolvedBranchCode) {
@@ -366,7 +374,7 @@ export default function UserManagementPage() {
 
         const access = deriveBranchAccess(selectedBranch);
         const resolvedBranchCode = access === 'global'
-            ? null
+            ? (String(globalHomeBranch || '').trim().toUpperCase() || null)
             : String(selectedBranch || '').trim().toUpperCase();
 
         if (access !== 'global' && !resolvedBranchCode) {
@@ -503,6 +511,31 @@ export default function UserManagementPage() {
                                                 : 'Global — can access every branch.'}
                                     </p>
                                 </div>
+
+                                {selectedBranchAccess === 'global' && (
+                                    <div className="space-y-2 min-w-0">
+                                        <Label htmlFor="globalHomeBranch">Home Branch (optional)</Label>
+                                        <Select
+                                            value={globalHomeBranch || '__NONE__'}
+                                            onValueChange={(v) => setGlobalHomeBranch(v === '__NONE__' ? '' : v)}
+                                        >
+                                            <SelectTrigger className="w-full min-w-0">
+                                                <SelectValue placeholder="No preference (All Branches)" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="__NONE__">No preference (All Branches)</SelectItem>
+                                                {branches.map((b) => (
+                                                    <SelectItem key={b.code} value={b.code}>
+                                                        {b.name} ({b.code}){b.is_head_branch ? ' · Main' : ''}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Sets the default branch in all list filters. Access is still global.
+                                        </p>
+                                    </div>
+                                )}
 
                                 <div className="space-y-2 min-w-0">
                                     <Label htmlFor="role">Role</Label>
