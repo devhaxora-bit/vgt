@@ -120,8 +120,9 @@ export default function ChallanLedgerPage() {
 
     useEffect(() => {
         if (!userScope.ready || branchFilter !== null) return;
+        if (branchOptions.length === 0) return;
         setBranchFilter(defaultBranchFilterValue(userScope));
-    }, [userScope.ready, userScope.branchCode, branchFilter]);
+    }, [userScope.ready, userScope.branchCode, branchFilter, branchOptions.length]);
 
     const filtered = useMemo(() => {
         let list = brokers.filter(hasLedgerActivity);
@@ -308,6 +309,9 @@ export default function ChallanLedgerPage() {
                             <SelectContent>
                                 {!userScope.isBranchScoped && (
                                     <SelectItem value="all">All Branches</SelectItem>
+                                )}
+                                {branchFilter && branchFilter !== 'all' && !branchOptions.find(b => b.value === branchFilter) && (
+                                    <SelectItem value={branchFilter}>{branchFilter}</SelectItem>
                                 )}
                                 {branchOptions.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
                             </SelectContent>

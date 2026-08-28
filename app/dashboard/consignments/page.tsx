@@ -257,14 +257,16 @@ export default function ConsignmentsPage() {
     });
 
     // Default booking + delivery branch filters to logged-in user's branch
+    // Wait for branchOptions so the Select can immediately show the correct label
     useEffect(() => {
         if (!userScope.ready || filtersInitialized) return;
+        if (branchOptions.length === 0) return;
         const code = defaultBranchFilterValue(userScope);
         setBkgBranch(code);
         setDeliveryBranch(code);
         setAppliedFilters((prev) => ({ ...prev, bkgBranch: code, deliveryBranch: code }));
         setFiltersInitialized(true);
-    }, [userScope.ready, userScope.branchCode, filtersInitialized]);
+    }, [userScope.ready, userScope.branchCode, filtersInitialized, branchOptions.length]);
 
     useEffect(() => {
         if (!filtersInitialized) return;
@@ -661,6 +663,9 @@ export default function ConsignmentsPage() {
                                     {!userScope.isBranchScoped && (
                                         <SelectItem value="all">All Branches</SelectItem>
                                     )}
+                                    {bkgBranch && bkgBranch !== 'all' && !branchOptions.find(b => b.value === bkgBranch) && (
+                                        <SelectItem value={bkgBranch}>{bkgBranch}</SelectItem>
+                                    )}
                                     {branchOptions.map(b => (
                                         <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
                                     ))}
@@ -736,6 +741,9 @@ export default function ConsignmentsPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Branches</SelectItem>
+                                    {deliveryBranch && deliveryBranch !== 'all' && !branchOptions.find(b => b.value === deliveryBranch) && (
+                                        <SelectItem value={deliveryBranch}>{deliveryBranch}</SelectItem>
+                                    )}
                                     {branchOptions.map(b => (
                                         <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
                                     ))}

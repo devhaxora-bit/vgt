@@ -78,8 +78,9 @@ export default function PartiesPage() {
 
     useEffect(() => {
         if (!userScope.ready || branchFilter !== null) return;
+        if (branchOptions.length === 0) return;
         setBranchFilter(defaultBranchFilterValue(userScope));
-    }, [userScope.ready, userScope.branchCode, branchFilter]);
+    }, [userScope.ready, userScope.branchCode, branchFilter, branchOptions.length]);
 
     useEffect(() => {
         if (!branchFilter) return;
@@ -222,6 +223,9 @@ export default function PartiesPage() {
                                 <SelectContent>
                                     {!userScope.isBranchScoped && (
                                         <SelectItem value="all">All Branches</SelectItem>
+                                    )}
+                                    {branchFilter && branchFilter !== 'all' && !branchOptions.find(b => b.value.toUpperCase() === branchFilter) && (
+                                        <SelectItem value={branchFilter}>{branchFilter}</SelectItem>
                                     )}
                                     {branchOptions.map((b) => (
                                         <SelectItem key={b.value} value={b.value.toUpperCase()}>

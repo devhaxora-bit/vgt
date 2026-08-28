@@ -104,8 +104,9 @@ export default function BrokersAdminPage() {
 
     useEffect(() => {
         if (!userScope.ready || branchFilter !== null) return;
+        if (branches.length === 0) return;
         setBranchFilter(defaultBranchFilterValue(userScope));
-    }, [userScope.ready, userScope.branchCode, branchFilter]);
+    }, [userScope.ready, userScope.branchCode, branchFilter, branches.length]);
 
     useEffect(() => {
         if (!branchFilter) return;
@@ -216,6 +217,9 @@ export default function BrokersAdminPage() {
                                 <SelectContent>
                                     {!userScope.isBranchScoped && (
                                         <SelectItem value="all">All Branches</SelectItem>
+                                    )}
+                                    {branchFilter && branchFilter !== 'all' && !branches.find(b => b.code === branchFilter) && (
+                                        <SelectItem value={branchFilter}>{branchFilter}</SelectItem>
                                     )}
                                     {branches.map((b) => (
                                         <SelectItem key={b.code} value={b.code}>
