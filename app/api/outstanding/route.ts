@@ -12,7 +12,7 @@ type BillAllocation = {
 type BillingRecord = {
     id: string;
     party_id: string;
-    bill_no: string | null;
+    bill_ref_no: string | null;
     billing_date: string | null;
     amount: number | string | null;
     status: string;
@@ -33,7 +33,7 @@ type PaymentReceipt = {
 
 export type OutstandingBill = {
     id: string;
-    bill_no: string | null;
+    bill_ref_no: string | null;
     billing_date: string | null;
     amount: number;
     paid_amount: number;
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
     // Step 1: Fetch active billing records with party info
     let billQuery = supabase
         .from('party_billing_records')
-        .select('id, party_id, bill_no, billing_date, amount, status, branch_code, parties(id, name, code, branch_code)')
+        .select('id, party_id, bill_ref_no, billing_date, amount, status, branch_code, parties(id, name, code, branch_code)')
         .eq('status', 'ACTIVE')
         .order('billing_date', { ascending: false })
         .limit(5000);
@@ -194,7 +194,7 @@ export async function GET(request: Request) {
         const partyRow = partyMap.get(party.id)!;
         partyRow.bills.push({
             id: bill.id,
-            bill_no: bill.bill_no,
+            bill_ref_no: bill.bill_ref_no,
             billing_date: bill.billing_date,
             amount: billAmount,
             paid_amount: paidAmount,

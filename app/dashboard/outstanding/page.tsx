@@ -35,11 +35,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+
 import { downloadOutstandingPdf } from '@/lib/outstandingPdf';
 import type { OutstandingPartyRow } from '@/app/api/outstanding/route';
 
@@ -71,7 +67,9 @@ export default function OutstandingPage() {
     const [dateTo, setDateTo] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set());
+    const [selectedPartyId, setSelectedPartyId] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
     const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const printFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -99,44 +97,65 @@ export default function OutstandingPage() {
     }, [userScope.ready, userScope.branchCode, branchFilter, branchOptions.length]);
 
     const fetchData = useCallback(async () => {
-        if (!branchFilter) return;
+        if (!branchFilter || !searchTerm.trim()) return;
         setIsLoading(true);
+        setFetchError(null);
         try {
             const params = new URLSearchParams();
             if (branchFilter !== 'all') params.set('branch', branchFilter);
             if (dateFrom) params.set('date_from', dateFrom);
             if (dateTo) params.set('date_to', dateTo);
-            if (searchTerm.trim()) params.set('search', searchTerm.trim());
+            params.set('search', searchTerm.trim());
 
             const res = await fetch(`/api/outstanding?${params.toString()}`);
-            if (!res.ok) throw new Error('Failed to fetch');
+            if (res.status === 401) {
+                window.location.href = '/login';
+                return;
+            }
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                throw new Error((errBody as { error?: string }).error ?? 'Failed to fetch outstanding data');
+            }
             const json: OutstandingPartyRow[] = await res.json();
             setData(json);
             setHasFetched(true);
-            // Expand all parties by default
-            setExpandedParties(new Set(json.map((p) => p.party_id)));
+            setExpandedParties(new Set());
+            setSelectedPartyId(null);
         } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to fetch outstanding data';
             console.error(err);
+            setFetchError(msg);
         } finally {
             setIsLoading(false);
         }
     }, [branchFilter, dateFrom, dateTo, searchTerm]);
 
-    // Fetch on filter changes (debounce search term)
+    // Debounce fetch on search term change; clear results when search is empty
     useEffect(() => {
-        if (!branchFilter) return;
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        if (!searchTerm.trim()) {
+            setData([]);
+            setHasFetched(false);
+            setSelectedPartyId(null);
+            setExpandedParties(new Set());
+            setFetchError(null);
+            return;
+        }
         searchDebounceRef.current = setTimeout(() => {
             void fetchData();
         }, 300);
         return () => {
             if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
         };
-    }, [fetchData, branchFilter]);
+    }, [searchTerm, fetchData]);
+
+    const displayedData = selectedPartyId
+        ? data.filter((p) => p.party_id === selectedPartyId)
+        : data;
 
     const grandTotals = useMemo(
         () =>
-            data.reduce(
+            displayedData.reduce(
                 (acc, p) => ({
                     billed: acc.billed + p.total_billed,
                     paid: acc.paid + p.total_paid,
@@ -144,7 +163,7 @@ export default function OutstandingPage() {
                 }),
                 { billed: 0, paid: 0, outstanding: 0 }
             ),
-        [data]
+        [displayedData]
     );
 
     const toggleParty = (partyId: string) => {
@@ -159,8 +178,18 @@ export default function OutstandingPage() {
         });
     };
 
-    const expandAll = () => setExpandedParties(new Set(data.map((p) => p.party_id)));
+    const expandAll = () => setExpandedParties(new Set(displayedData.map((p) => p.party_id)));
     const collapseAll = () => setExpandedParties(new Set());
+
+    const selectParty = (partyId: string) => {
+        setSelectedPartyId(partyId);
+        setExpandedParties(new Set([partyId]));
+    };
+
+    const clearSelectedParty = () => {
+        setSelectedPartyId(null);
+        setExpandedParties(new Set());
+    };
 
     const resetFilters = () => {
         setSearchTerm('');
@@ -473,88 +502,92 @@ export default function OutstandingPage() {
                 </CardContent>
             </Card>
 
-            {/* Summary KPI Cards */}
-            {hasFetched && data.length > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <Card>
-                        <CardContent className="pt-4 pb-4">
-                            <p className="text-xs text-muted-foreground font-medium">Parties</p>
-                            <p className="text-2xl font-bold mt-1">{data.length}</p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-4 pb-4">
-                            <p className="text-xs text-muted-foreground font-medium">Total Bills</p>
-                            <p className="text-2xl font-bold mt-1">
-                                {data.reduce((s, p) => s + p.bills.length, 0)}
-                            </p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-4 pb-4">
-                            <p className="text-xs text-muted-foreground font-medium">Total Billed</p>
-                            <p className="text-xl font-bold mt-1 tabular-nums">
-                                ₹{fmt(grandTotals.billed)}
-                            </p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-destructive/30 bg-destructive/5">
-                        <CardContent className="pt-4 pb-4">
-                            <p className="text-xs text-muted-foreground font-medium">Total Outstanding</p>
-                            <p className="text-xl font-bold mt-1 text-destructive tabular-nums">
-                                ₹{fmt(grandTotals.outstanding)}
-                            </p>
-                        </CardContent>
-                    </Card>
+            {/* Party chips — live results as user types */}
+            {(isLoading || fetchError || (hasFetched && data.length === 0) || data.length > 0) && (
+                <div className="space-y-2">
+                    {isLoading && (
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm py-1">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Searching parties…
+                        </div>
+                    )}
+                    {fetchError && !isLoading && (
+                        <div className="flex items-center gap-2 text-destructive text-sm py-1">
+                            <AlertCircle className="h-4 w-4" />
+                            {fetchError}
+                            <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => void fetchData()}>
+                                Retry
+                            </Button>
+                        </div>
+                    )}
+                    {!isLoading && !fetchError && hasFetched && data.length === 0 && (
+                        <p className="text-sm text-muted-foreground py-1">No parties found for &ldquo;{searchTerm}&rdquo;</p>
+                    )}
+                    {!isLoading && data.length > 0 && (
+                        <div className="flex flex-wrap gap-2 items-center">
+                            {data.map((party) => {
+                                const isSelected = selectedPartyId === party.party_id;
+                                return (
+                                    <button
+                                        key={party.party_id}
+                                        onClick={() => selectParty(party.party_id)}
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                            isSelected
+                                                ? 'bg-primary text-primary-foreground border-primary'
+                                                : 'bg-background text-foreground border-border hover:bg-muted'
+                                        }`}
+                                    >
+                                        {party.party_name}
+                                        <span className={`font-mono text-[10px] ${isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                            {party.party_code}
+                                        </span>
+                                        <span className={`ml-0.5 font-semibold ${isSelected ? 'text-primary-foreground' : 'text-destructive'}`}>
+                                            ₹{fmt(party.total_outstanding)}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
 
-            {/* Table */}
-            <Card>
-                <CardContent className="p-0">
-                    {isLoading ? (
-                        <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span className="text-sm">Loading outstanding data…</span>
-                        </div>
-                    ) : !hasFetched ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-                            <FileText className="h-10 w-10 opacity-30" />
-                            <p className="text-sm">Select a branch and apply filters to view outstanding bills</p>
-                        </div>
-                    ) : data.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-                            <AlertCircle className="h-10 w-10 opacity-30" />
-                            <p className="text-sm font-medium">No outstanding bills found</p>
-                            <p className="text-xs">Try adjusting the filters or date range</p>
-                        </div>
-                    ) : (
-                        <>
-                            {/* Expand/collapse controls */}
-                            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-                                <span className="text-xs text-muted-foreground font-medium">
-                                    {data.length} {data.length === 1 ? 'party' : 'parties'} with outstanding bills
-                                </span>
-                                <div className="flex gap-2">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={expandAll}
-                                        className="h-7 text-xs gap-1 text-muted-foreground"
-                                    >
-                                        <ChevronDown className="h-3 w-3" /> Expand All
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={collapseAll}
-                                        className="h-7 text-xs gap-1 text-muted-foreground"
-                                    >
-                                        <ChevronRight className="h-3 w-3" /> Collapse All
-                                    </Button>
-                                </div>
-                            </div>
+            {/* KPI Cards + Table — only when a party is selected */}
+            {selectedPartyId && displayedData.length > 0 && (
+                <>
+                    {/* Summary KPI Cards */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <Card>
+                            <CardContent className="pt-4 pb-4">
+                                <p className="text-xs text-muted-foreground font-medium">Bills</p>
+                                <p className="text-2xl font-bold mt-1">
+                                    {displayedData.reduce((s, p) => s + p.bills.length, 0)}
+                                </p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="pt-4 pb-4">
+                                <p className="text-xs text-muted-foreground font-medium">Total Billed</p>
+                                <p className="text-xl font-bold mt-1 tabular-nums">₹{fmt(grandTotals.billed)}</p>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="pt-4 pb-4">
+                                <p className="text-xs text-muted-foreground font-medium">Total Paid</p>
+                                <p className="text-xl font-bold mt-1 tabular-nums">₹{fmt(grandTotals.paid)}</p>
+                            </CardContent>
+                        </Card>
+                        <Card className="border-destructive/30 bg-destructive/5">
+                            <CardContent className="pt-4 pb-4">
+                                <p className="text-xs text-muted-foreground font-medium">Outstanding</p>
+                                <p className="text-xl font-bold mt-1 text-destructive tabular-nums">₹{fmt(grandTotals.outstanding)}</p>
+                            </CardContent>
+                        </Card>
+                    </div>
 
+                    {/* Table */}
+                    <Card>
+                        <CardContent className="p-0">
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -567,98 +600,96 @@ export default function OutstandingPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {data.map((party) => {
+                                    {displayedData.map((party) => {
                                         const isExpanded = expandedParties.has(party.party_id);
                                         return (
                                             <React.Fragment key={party.party_id}>
-                                                {/* Party header row */}
-                                                <Collapsible open={isExpanded} onOpenChange={() => toggleParty(party.party_id)} asChild>
+                                                {/* Party header row — click to expand/collapse */}
+                                                <TableRow
+                                                    className="bg-muted/60 hover:bg-muted/80 cursor-pointer select-none font-semibold border-t-2"
+                                                    onClick={() => toggleParty(party.party_id)}
+                                                >
+                                                    <TableCell className="w-8 py-2.5">
+                                                        {isExpanded ? (
+                                                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                                        ) : (
+                                                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-sm">{party.party_name}</span>
+                                                            <Badge variant="outline" className="text-xs font-mono">
+                                                                {party.party_code}
+                                                            </Badge>
+                                                            {party.branch_code && (
+                                                                <Badge variant="secondary" className="text-xs">
+                                                                    {party.branch_name || party.branch_code}
+                                                                </Badge>
+                                                            )}
+                                                            <span className="text-xs text-muted-foreground ml-1">
+                                                                {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
+                                                            </span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 text-muted-foreground text-xs">—</TableCell>
+                                                    <TableCell className="py-2.5 text-right tabular-nums font-bold">
+                                                        ₹{fmt(party.total_billed)}
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 text-right tabular-nums text-muted-foreground">
+                                                        ₹{fmt(party.total_paid)}
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 text-right tabular-nums font-bold text-destructive">
+                                                        ₹{fmt(party.total_outstanding)}
+                                                    </TableCell>
+                                                </TableRow>
+
+                                                {/* Bill detail rows — shown when expanded */}
+                                                {isExpanded && (
                                                     <>
-                                                        <CollapsibleTrigger asChild>
-                                                            <TableRow className="bg-muted/60 hover:bg-muted/80 cursor-pointer select-none font-semibold border-t-2">
-                                                                <TableCell className="w-8 py-2.5">
-                                                                    {isExpanded ? (
-                                                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                                                    ) : (
-                                                                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                                                    )}
+                                                        {party.bills.map((bill, idx) => (
+                                                            <TableRow
+                                                                key={bill.id}
+                                                                className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/10'}
+                                                            >
+                                                                <TableCell className="w-8"></TableCell>
+                                                                <TableCell className="py-2 pl-8">
+                                                                    <span className="font-medium text-sm font-mono">
+                                                                        {bill.bill_ref_no || '—'}
+                                                                    </span>
                                                                 </TableCell>
-                                                                <TableCell className="py-2.5">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="font-bold text-sm">{party.party_name}</span>
-                                                                        <Badge variant="outline" className="text-xs font-mono">
-                                                                            {party.party_code}
-                                                                        </Badge>
-                                                                        {party.branch_code && (
-                                                                            <Badge variant="secondary" className="text-xs">
-                                                                                {party.branch_name || party.branch_code}
-                                                                            </Badge>
-                                                                        )}
-                                                                        <span className="text-xs text-muted-foreground ml-1">
-                                                                            {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
-                                                                        </span>
-                                                                    </div>
+                                                                <TableCell className="py-2 text-sm text-muted-foreground">
+                                                                    {fmtDate(bill.billing_date)}
                                                                 </TableCell>
-                                                                <TableCell className="py-2.5 text-muted-foreground text-xs">—</TableCell>
-                                                                <TableCell className="py-2.5 text-right tabular-nums font-bold">
-                                                                    ₹{fmt(party.total_billed)}
+                                                                <TableCell className="py-2 text-right tabular-nums text-sm">
+                                                                    ₹{fmt(bill.amount)}
                                                                 </TableCell>
-                                                                <TableCell className="py-2.5 text-right tabular-nums text-muted-foreground">
-                                                                    ₹{fmt(party.total_paid)}
+                                                                <TableCell className="py-2 text-right tabular-nums text-sm text-muted-foreground">
+                                                                    ₹{fmt(bill.paid_amount)}
                                                                 </TableCell>
-                                                                <TableCell className="py-2.5 text-right tabular-nums font-bold text-destructive">
-                                                                    ₹{fmt(party.total_outstanding)}
+                                                                <TableCell className="py-2 text-right tabular-nums text-sm font-semibold text-destructive">
+                                                                    ₹{fmt(bill.outstanding)}
                                                                 </TableCell>
                                                             </TableRow>
-                                                        </CollapsibleTrigger>
-
-                                                        <CollapsibleContent asChild>
-                                                            <>
-                                                                {party.bills.map((bill, idx) => (
-                                                                    <TableRow
-                                                                        key={bill.id}
-                                                                        className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/10'}
-                                                                    >
-                                                                        <TableCell className="w-8"></TableCell>
-                                                                        <TableCell className="py-2 pl-8">
-                                                                            <span className="font-medium text-sm font-mono">
-                                                                                {bill.bill_no || '—'}
-                                                                            </span>
-                                                                        </TableCell>
-                                                                        <TableCell className="py-2 text-sm text-muted-foreground">
-                                                                            {fmtDate(bill.billing_date)}
-                                                                        </TableCell>
-                                                                        <TableCell className="py-2 text-right tabular-nums text-sm">
-                                                                            ₹{fmt(bill.amount)}
-                                                                        </TableCell>
-                                                                        <TableCell className="py-2 text-right tabular-nums text-sm text-muted-foreground">
-                                                                            ₹{fmt(bill.paid_amount)}
-                                                                        </TableCell>
-                                                                        <TableCell className="py-2 text-right tabular-nums text-sm font-semibold text-destructive">
-                                                                            ₹{fmt(bill.outstanding)}
-                                                                        </TableCell>
-                                                                    </TableRow>
-                                                                ))}
-                                                                {/* Party subtotal row */}
-                                                                <TableRow className="bg-primary/5 border-b-2">
-                                                                    <TableCell></TableCell>
-                                                                    <TableCell colSpan={2} className="py-2 pl-8 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                                                        {party.party_name} — Subtotal
-                                                                    </TableCell>
-                                                                    <TableCell className="py-2 text-right tabular-nums text-sm font-bold">
-                                                                        ₹{fmt(party.total_billed)}
-                                                                    </TableCell>
-                                                                    <TableCell className="py-2 text-right tabular-nums text-sm font-semibold text-muted-foreground">
-                                                                        ₹{fmt(party.total_paid)}
-                                                                    </TableCell>
-                                                                    <TableCell className="py-2 text-right tabular-nums text-sm font-bold text-destructive">
-                                                                        ₹{fmt(party.total_outstanding)}
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            </>
-                                                        </CollapsibleContent>
+                                                        ))}
+                                                        {/* Party subtotal row */}
+                                                        <TableRow className="bg-primary/5 border-b-2">
+                                                            <TableCell></TableCell>
+                                                            <TableCell colSpan={2} className="py-2 pl-8 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                                {party.party_name} — Subtotal
+                                                            </TableCell>
+                                                            <TableCell className="py-2 text-right tabular-nums text-sm font-bold">
+                                                                ₹{fmt(party.total_billed)}
+                                                            </TableCell>
+                                                            <TableCell className="py-2 text-right tabular-nums text-sm font-semibold text-muted-foreground">
+                                                                ₹{fmt(party.total_paid)}
+                                                            </TableCell>
+                                                            <TableCell className="py-2 text-right tabular-nums text-sm font-bold text-destructive">
+                                                                ₹{fmt(party.total_outstanding)}
+                                                            </TableCell>
+                                                        </TableRow>
                                                     </>
-                                                </Collapsible>
+                                                )}
                                             </React.Fragment>
                                         );
                                     })}
@@ -667,8 +698,8 @@ export default function OutstandingPage() {
                                     <TableRow className="bg-muted border-t-2 font-bold">
                                         <TableCell></TableCell>
                                         <TableCell colSpan={2} className="py-3 text-sm font-bold uppercase tracking-wide">
-                                            Grand Total — {data.length} {data.length === 1 ? 'Party' : 'Parties'} /{' '}
-                                            {data.reduce((s, p) => s + p.bills.length, 0)} Bills
+                                            Grand Total — {displayedData.length} {displayedData.length === 1 ? 'Party' : 'Parties'} /{' '}
+                                            {displayedData.reduce((s, p) => s + p.bills.length, 0)} Bills
                                         </TableCell>
                                         <TableCell className="py-3 text-right tabular-nums font-bold text-base">
                                             ₹{fmt(grandTotals.billed)}
@@ -682,10 +713,10 @@ export default function OutstandingPage() {
                                     </TableRow>
                                 </TableBody>
                             </Table>
-                        </>
-                    )}
-                </CardContent>
-            </Card>
+                        </CardContent>
+                    </Card>
+                </>
+            )}
         </div>
     );
 }

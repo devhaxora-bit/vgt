@@ -47,7 +47,7 @@ const buildBillRows = (bills: OutstandingBill[]) =>
         .map(
             (bill) => `
     <tr class="bill-row">
-        <td class="bill-no-cell">${safe(bill.bill_no || '—')}</td>
+        <td class="bill-no-cell">${safe(bill.bill_ref_no || '—')}</td>
         <td class="center">${safe(fmtDate(bill.billing_date))}</td>
         <td class="amount">${fmt(bill.amount)}</td>
         <td class="amount">${fmt(bill.paid_amount)}</td>
