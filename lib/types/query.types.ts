@@ -79,11 +79,28 @@ export interface QueryBillParty {
     branch_code?: string | null;
 }
 
+export interface QueryBillPayment {
+    id: string;
+    receipt_date: string | null;
+    amount: number;
+    actual_received_amount: number;
+    payment_mode: string | null;
+    reference_no: string | null;
+    bank_name: string | null;
+    narration: string | null;
+    status: string;
+    /** Amount settled against this specific bill from bill_allocations */
+    settled_amount: number;
+    /** Deductions applied to this bill in this receipt */
+    deduction_items: { label: string; amount: number }[];
+}
+
 export interface QueryBillDetail {
     record: Record<string, unknown>;
     party: QueryBillParty & { branch_name?: string | null };
     consignments: QueryConsignment[];
     party_summary: QueryPartySummary | null;
+    payments: QueryBillPayment[];
 }
 
 export interface QueryChallanLink {

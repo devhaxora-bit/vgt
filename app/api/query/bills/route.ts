@@ -93,7 +93,33 @@ export async function GET(request: Request) {
             consignments = data ?? [];
         }
 
-        return NextResponse.json({ record, party: party ?? null, consignments, party_summary: partySummary });
+        // Fetch payment receipts that include this bill
+        const { data: receiptRows } = await supabase
+            .from('party_payment_receipts')
+            .select('id, receipt_date, amount, actual_received_amount, payment_mode, reference_no, bank_name, narration, status, bill_allocations')
+            .contains('related_billing_record_ids', [id])
+            .order('receipt_date', { ascending: false });
+
+        const payments = (receiptRows ?? []).map((r) => {
+            const allocations: { billing_record_id: string; settled_amount: number; received_amount: number; deduction_items?: { label: string; amount: number }[] }[] =
+                Array.isArray(r.bill_allocations) ? r.bill_allocations : [];
+            const myAlloc = allocations.find((a) => a.billing_record_id === id);
+            return {
+                id: r.id as string,
+                receipt_date: r.receipt_date as string | null,
+                amount: toNumber(r.amount),
+                actual_received_amount: toNumber(r.actual_received_amount ?? r.amount),
+                payment_mode: (r.payment_mode as string | null) ?? null,
+                reference_no: (r.reference_no as string | null) ?? null,
+                bank_name: (r.bank_name as string | null) ?? null,
+                narration: (r.narration as string | null) ?? null,
+                status: (r.status as string) ?? 'ACTIVE',
+                settled_amount: myAlloc ? toNumber(myAlloc.settled_amount) : toNumber(r.amount),
+                deduction_items: myAlloc?.deduction_items ?? [],
+            };
+        });
+
+        return NextResponse.json({ record, party: party ?? null, consignments, party_summary: partySummary, payments });
     }
 
     if (q === undefined || q === null) {

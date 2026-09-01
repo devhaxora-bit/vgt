@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -672,6 +673,8 @@ export function EditBillingDialog({
         narration: '',
         covered_cn_nos: [] as string[],
         vehicle_cancel_items: [] as BillingVehicleCancelDraftItem[],
+        paid_by_other: false,
+        paid_by_party_name: '',
     });
     const [saving, setSaving] = useState(false);
 
@@ -679,6 +682,7 @@ export function EditBillingDialog({
         if (!record) return;
 
         const savedAddedOtherCharges = getSavedAddedOtherChargesAmount(record);
+        const existingPaidBy = (record as Record<string, unknown>).paid_by_party_name as string | null | undefined;
         setForm({
             billing_date: normalizeDate(record.billing_date),
             amount: Math.abs(savedAddedOtherCharges) < 0.01 ? '' : savedAddedOtherCharges.toFixed(2),
@@ -686,6 +690,8 @@ export function EditBillingDialog({
             narration: record.narration || '',
             covered_cn_nos: record.covered_cn_nos || [],
             vehicle_cancel_items: vehicleCancelItemsToDrafts(record.vehicle_cancel_items || []),
+            paid_by_other: !!existingPaidBy,
+            paid_by_party_name: existingPaidBy || '',
         });
     }, [record, consignments]);
 
@@ -735,6 +741,9 @@ export function EditBillingDialog({
                     bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no) || null,
                     narration: form.narration.trim(),
                     covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
+                    paid_by_party_name: form.paid_by_other && form.paid_by_party_name.trim()
+                        ? form.paid_by_party_name.trim()
+                        : null,
                 }),
             });
 
@@ -812,6 +821,37 @@ export function EditBillingDialog({
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
                                 <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
+                            </div>
+
+                            {/* Paid by other party */}
+                            <div className="rounded-lg border bg-muted/20 p-3 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="paid-by-toggle" className="text-xs font-bold uppercase text-muted-foreground cursor-pointer">
+                                        Paid by other party
+                                    </Label>
+                                    <Switch
+                                        id="paid-by-toggle"
+                                        checked={form.paid_by_other}
+                                        onCheckedChange={(checked) =>
+                                            setForm((f) => ({
+                                                ...f,
+                                                paid_by_other: checked,
+                                                paid_by_party_name: checked ? f.paid_by_party_name : '',
+                                            }))
+                                        }
+                                    />
+                                </div>
+                                {form.paid_by_other && (
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Paying party name</Label>
+                                        <Input
+                                            value={form.paid_by_party_name}
+                                            onChange={(e) => setForm((f) => ({ ...f, paid_by_party_name: e.target.value }))}
+                                            placeholder="Enter party name who paid this bill"
+                                            className="h-9"
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <BillingVehicleCancelEditor

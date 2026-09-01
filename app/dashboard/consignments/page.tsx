@@ -105,6 +105,7 @@ interface ConsignmentRow {
     delivery_point?: string;
     consignor_name?: string;
     no_of_pkg?: number;
+    total_qty?: number;
     actual_weight?: number;
     load_unit?: string;
     delivery_type?: string;
@@ -566,7 +567,7 @@ export default function ConsignmentsPage() {
             { header: 'Booking Date',    key: 'bkg_date' },
             { header: 'Dest Branch',     key: 'dest_branch' },
             { header: 'Delivery Point',  key: 'delivery_point' },
-            { header: 'No of Pkgs',      key: 'no_of_pkg' },
+            { header: 'Pkg',             key: 'total_qty' },
             { header: 'Actual Weight',   key: 'actual_weight' },
             { header: 'Load Unit',       key: 'load_unit' },
             { header: 'Delivery Type',   key: 'delivery_type' },
@@ -989,7 +990,7 @@ export default function ConsignmentsPage() {
                                                 {item.consignor_name || '—'}
                                             </TableCell>
                                             <TableCell className="text-center">
-                                                <span className="font-mono text-xs font-bold">{item.no_of_pkg ?? 0}</span>
+                                                <span className="font-mono text-xs font-bold">{item.total_qty ?? 0}</span>
                                             </TableCell>
                                             <TableCell className="text-right font-mono text-xs font-bold">
                                                 {Number(item.actual_weight || 0).toLocaleString()} {item.load_unit?.toLowerCase() || 'kg'}

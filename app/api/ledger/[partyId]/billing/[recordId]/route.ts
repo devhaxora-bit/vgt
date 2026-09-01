@@ -27,6 +27,7 @@ export async function PATCH(
         covered_cn_nos,
         added_other_charges_amount,
         vehicle_cancel_items,
+        paid_by_party_name,
     } = body;
 
     if (!billing_date) {
@@ -96,6 +97,7 @@ export async function PATCH(
             vehicle_cancel_charges_total: snapshotData.vehicleCancelChargesTotal,
             consignment_snapshot: snapshotData.consignmentSnapshot,
             extra_charge_items: [],
+            paid_by_party_name: paid_by_party_name?.trim() || null,
         })
         .eq('id', recordId)
         .eq('party_id', partyId)

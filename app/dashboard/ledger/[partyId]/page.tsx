@@ -95,7 +95,7 @@ interface BillingRecord {
     id: string; billing_date: string; billing_period_from?: string;
     billing_period_to?: string; amount: number; bill_ref_no?: string;
     narration: string; covered_cn_nos?: string[]; status: string;
-    cn_total_amount?: number;
+    cn_total_amount?: number; paid_by_party_name?: string | null;
     added_other_charges_amount?: number;
     vehicle_cancel_items?: BillingVehicleCancelItem[];
     vehicle_cancel_charges_total?: number;
@@ -2303,7 +2303,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     <TableCell className="text-xs text-muted-foreground">
                                                         {b.billing_period_from ? `${fmtDate(b.billing_period_from)} – ${fmtDate(b.billing_period_to)}` : '—'}
                                                     </TableCell>
-                                                    <TableCell className="text-xs max-w-[180px] truncate" title={b.narration}>{b.narration}</TableCell>
+                                                    <TableCell className="text-xs max-w-[200px]">
+                                                        <div className="truncate" title={b.narration}>{b.narration}</div>
+                                                        {b.paid_by_party_name && (
+                                                            <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                Paid by: {b.paid_by_party_name}
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
                                                     <TableCell className="text-xs font-mono text-muted-foreground">
                                                         {b.covered_cn_nos?.join(', ') || '—'}
                                                     </TableCell>

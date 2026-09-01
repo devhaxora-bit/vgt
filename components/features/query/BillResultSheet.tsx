@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Printer, RotateCcw, Building2, FileText, Wallet } from 'lucide-react';
+import { Printer, RotateCcw, Building2, FileText, Wallet, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { numberToWords } from '@/lib/utils';
 import { BillingRecordViewDialog } from '@/components/features/ledger/BillingRecordDialogs';
@@ -27,6 +27,7 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
     const [printOpen, setPrintOpen] = React.useState(false);
     const { record, party } = detail;
     const summary = detail.party_summary;
+    const payments = detail.payments ?? [];
 
     const status = String(get(record, 'status') || 'ACTIVE');
     const cancelled = status.toUpperCase() === 'CANCELLED';
@@ -108,6 +109,17 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                             <SheetField label="Bill Date" value={fmtDate(get(record, 'billing_date') as string)} />
                             <SheetField label="Covered CNs" value={num(snapshot.length || (Array.isArray(get(record, 'covered_cn_nos')) ? (get(record, 'covered_cn_nos') as unknown[]).length : 0))} mono />
                             <SheetField label="Bill Amount" value={money(amount, true)} mono accent />
+                            {str(get(record, 'paid_by_party_name')) && (
+                                <SheetField
+                                    label="Paid By"
+                                    value={
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                            {str(get(record, 'paid_by_party_name'))}
+                                        </span>
+                                    }
+                                    className="col-span-full"
+                                />
+                            )}
                             <SheetField label="Amount In Words" value={numberToWords(amount)} className="col-span-full" />
                         </SheetInfoGrid>
                     </SheetSection>
@@ -131,6 +143,85 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                         </SheetInfoGrid>
                     </SheetSection>
                 ) : null}
+
+                {/* Payments Received against this bill */}
+                <SheetSection
+                    title="Payments Received"
+                    icon={<CreditCard className="h-3.5 w-3.5" />}
+                    right={
+                        payments.length > 0
+                            ? `${payments.length} receipt${payments.length > 1 ? 's' : ''} · ${money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.settled_amount, 0), true)} settled`
+                            : 'No payments'
+                    }
+                >
+                    {payments.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-1">No payment receipts linked to this bill yet.</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs border-collapse">
+                                <thead>
+                                    <tr className="bg-muted/50">
+                                        <th className="text-left px-3 py-2 font-semibold border border-border">#</th>
+                                        <th className="text-left px-3 py-2 font-semibold border border-border">Date</th>
+                                        <th className="text-left px-3 py-2 font-semibold border border-border">Mode</th>
+                                        <th className="text-left px-3 py-2 font-semibold border border-border">Ref / Bank</th>
+                                        <th className="text-right px-3 py-2 font-semibold border border-border">Settled</th>
+                                        <th className="text-right px-3 py-2 font-semibold border border-border">Received</th>
+                                        <th className="text-right px-3 py-2 font-semibold border border-border">Deductions</th>
+                                        <th className="text-left px-3 py-2 font-semibold border border-border">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payments.map((p, idx) => {
+                                        const deductionTotal = p.deduction_items.reduce((s, d) => s + d.amount, 0);
+                                        const isReversed = p.status === 'REVERSED';
+                                        return (
+                                            <tr key={p.id} className={isReversed ? 'opacity-50 line-through' : idx % 2 === 0 ? 'bg-background' : 'bg-muted/10'}>
+                                                <td className="px-3 py-2 border border-border text-center text-muted-foreground">{idx + 1}</td>
+                                                <td className="px-3 py-2 border border-border">{fmtDate(p.receipt_date)}</td>
+                                                <td className="px-3 py-2 border border-border font-medium">{p.payment_mode ?? '—'}</td>
+                                                <td className="px-3 py-2 border border-border font-mono text-muted-foreground">
+                                                    {[p.reference_no, p.bank_name].filter(Boolean).join(' · ') || '—'}
+                                                </td>
+                                                <td className="px-3 py-2 border border-border text-right font-mono font-semibold">{money(p.settled_amount)}</td>
+                                                <td className="px-3 py-2 border border-border text-right font-mono text-emerald-700">{money(p.actual_received_amount)}</td>
+                                                <td className="px-3 py-2 border border-border text-right font-mono text-amber-700">
+                                                    {deductionTotal > 0 ? (
+                                                        <span title={p.deduction_items.map(d => `${d.label}: ₹${d.amount}`).join(', ')}>
+                                                            {money(deductionTotal)}
+                                                        </span>
+                                                    ) : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 border border-border">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${isReversed ? 'bg-destructive/10 text-destructive' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                        {p.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                                {payments.length > 1 && (
+                                    <tfoot>
+                                        <tr className="bg-muted font-semibold">
+                                            <td colSpan={4} className="px-3 py-2 border border-border text-right uppercase text-[10px] tracking-wide">Total</td>
+                                            <td className="px-3 py-2 border border-border text-right font-mono">
+                                                {money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.settled_amount, 0))}
+                                            </td>
+                                            <td className="px-3 py-2 border border-border text-right font-mono text-emerald-700">
+                                                {money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.actual_received_amount, 0))}
+                                            </td>
+                                            <td className="px-3 py-2 border border-border text-right font-mono text-amber-700">
+                                                {money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.deduction_items.reduce((d, i) => d + i.amount, 0), 0))}
+                                            </td>
+                                            <td className="px-3 py-2 border border-border"></td>
+                                        </tr>
+                                    </tfoot>
+                                )}
+                            </table>
+                        </div>
+                    )}
+                </SheetSection>
 
                 <SheetSection title="Covered Consignments" icon={<FileText className="h-3.5 w-3.5" />} right={`${snapshot.length} rows`}>
                     <SheetDataTable
