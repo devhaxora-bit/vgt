@@ -1,5 +1,5 @@
 import { formatBranchLabel } from '@/lib/formatBranchLabel';
-import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
+import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS, PDF_TABLE_HEADER_BG, PDF_TABLE_HEADER_TEXT_COLOR } from '@/lib/pdfLogo';
 import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 import type { OutstandingPartyRow, OutstandingBill } from '@/app/api/outstanding/route';
 
@@ -220,14 +220,14 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 12px; border-top: 1.2px solid #1d2f7a; }
 .items-table th, .items-table td { border-right: 1.2px solid #1d2f7a; border-bottom: 1.2px solid #1d2f7a; padding: 5px 5px 6px; vertical-align: middle; overflow: hidden; }
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
-.items-table thead th { text-align: center; font-size: 11.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: #ffffff; background: #17308b; }
+.items-table thead th { text-align: center; font-size: 11.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; }
 .items-table tbody td { height: 22px; font-size: 11.2px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 7px; font-variant-numeric: tabular-nums; }
 .items-table .bill-no-cell { font-family: monospace; font-size: 10.5px; padding-left: 18px; }
 .items-table .outstanding-cell:not(:empty) { background: rgba(255, 162, 162, 0.22); }
 /* Party header row */
-.party-header-row td { background: #dde8fa; padding: 6px 8px; font-size: 12.5px; font-weight: 800; border-bottom: 1px solid #1d2f7a; }
+.party-header-row td { background: rgba(144, 202, 249, 0.35); padding: 6px 8px; font-size: 12.5px; font-weight: 800; border-bottom: 1px solid #1d2f7a; }
 .party-name { color: #17308b; margin-right: 8px; }
 .party-code { font-size: 11px; color: #555; font-family: monospace; background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; margin-right: 6px; }
 .party-branch { font-size: 11px; color: #444; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 3px; margin-right: 6px; }
@@ -238,7 +238,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .subtotal-row td { background: rgba(29, 47, 122, 0.07); font-size: 11.5px; font-weight: 800; border-top: 1px solid #1d2f7a; }
 .subtotal-label { font-size: 11px; color: #555; }
 /* Grand total */
-.grand-total-row td { height: 40px; font-size: 14px; font-weight: 800; background: rgba(29, 47, 122, 0.15); color: #111; border-top: 2px solid #1d2f7a; }
+.grand-total-row td { height: 40px; font-size: 14px; font-weight: 800; background: rgba(29, 47, 122, 0.12); color: #111; border-top: 2px solid #1d2f7a; }
 .grand-total-label { font-size: 12px; color: #17308b; }
 .footer-row { margin-top: auto; border-top: 1.2px solid #1d2f7a; display: flex; justify-content: space-between; padding: 6px 9px; color: #1d2f7a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
 </style>
