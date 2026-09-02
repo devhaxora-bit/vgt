@@ -35,18 +35,6 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-    Command,
-    CommandEmpty,
-    CommandGroup,
-    CommandItem,
-    CommandList,
-} from '@/components/ui/command';
 
 import { downloadOutstandingPdf } from '@/lib/outstandingPdf';
 import type { OutstandingPartyRow } from '@/app/api/outstanding/route';
@@ -78,7 +66,6 @@ export default function OutstandingPage() {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set());
     const [selectedPartyId, setSelectedPartyId] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
@@ -130,8 +117,6 @@ export default function OutstandingPage() {
             const json: OutstandingPartyRow[] = await res.json();
             setAllParties(json);
             setAllPartiesLoaded(true);
-            setSelectedPartyId(null);
-            setExpandedParties(new Set());
         } catch (err) {
             const msg = err instanceof Error ? err.message : 'Failed to fetch outstanding data';
             console.error(err);
@@ -141,18 +126,14 @@ export default function OutstandingPage() {
         }
     }, [branchFilter, dateFrom, dateTo]);
 
-    // When branch or date filters change, reset loaded parties
     useEffect(() => {
-        setAllParties([]);
-        setAllPartiesLoaded(false);
+        if (!branchFilter) return;
         setSelectedPartyId(null);
-        setSearchTerm('');
         setExpandedParties(new Set());
-        setFetchError(null);
-    }, [branchFilter, dateFrom, dateTo]);
+        void loadAllParties();
+    }, [branchFilter, dateFrom, dateTo, loadAllParties]);
 
-    // Client-side filter of all parties by search term
-    const filteredDropdownParties = useMemo(() => {
+    const filteredParties = useMemo(() => {
         if (!searchTerm.trim()) return allParties;
         const q = searchTerm.toLowerCase();
         return allParties.filter(
@@ -179,6 +160,20 @@ export default function OutstandingPage() {
         [displayedData]
     );
 
+    const listTotals = useMemo(
+        () =>
+            filteredParties.reduce(
+                (acc, p) => ({
+                    billed: acc.billed + p.total_billed,
+                    paid: acc.paid + p.total_paid,
+                    outstanding: acc.outstanding + p.total_outstanding,
+                    bills: acc.bills + p.bills.length,
+                }),
+                { billed: 0, paid: 0, outstanding: 0, bills: 0 }
+            ),
+        [filteredParties]
+    );
+
     const toggleParty = (partyId: string) => {
         setExpandedParties((prev) => {
             const next = new Set(prev);
@@ -190,9 +185,6 @@ export default function OutstandingPage() {
             return next;
         });
     };
-
-    const expandAll = () => setExpandedParties(new Set(allParties.map((p) => p.party_id)));
-    const collapseAll = () => setExpandedParties(new Set());
 
     const selectParty = (partyId: string) => {
         setSelectedPartyId(partyId);
@@ -472,102 +464,29 @@ export default function OutstandingPage() {
                             />
                         </div>
 
-                        {/* Party Search — combobox */}
+                        {/* Party Search */}
                         <div className="flex flex-col gap-1 flex-1 min-w-[220px]">
                             <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                                <Search className="h-3 w-3" /> Search / Select Party
+                                <Search className="h-3 w-3" /> Search Party
                             </label>
-                            <Popover open={dropdownOpen} onOpenChange={setDropdownOpen}>
-                                <PopoverTrigger asChild>
-                                    <div className="relative cursor-pointer">
-                                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                                        <Input
-                                            placeholder="Click or type party name…"
-                                            value={searchTerm}
-                                            onChange={(e) => {
-                                                setSearchTerm(e.target.value);
-                                                if (!dropdownOpen) setDropdownOpen(true);
-                                            }}
-                                            onFocus={() => {
-                                                setDropdownOpen(true);
-                                                if (!allPartiesLoaded && !allPartiesLoading) {
-                                                    void loadAllParties();
-                                                }
-                                            }}
-                                            className="h-9 pl-8 pr-8 text-sm"
-                                            readOnly={false}
-                                        />
-                                        {searchTerm && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setSearchTerm('');
-                                                    setSelectedPartyId(null);
-                                                    setExpandedParties(new Set());
-                                                }}
-                                                className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
-                                            >
-                                                <X className="h-3.5 w-3.5" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </PopoverTrigger>
-                                <PopoverContent
-                                    className="p-0 w-[340px]"
-                                    align="start"
-                                    onOpenAutoFocus={(e) => e.preventDefault()}
-                                >
-                                    <Command shouldFilter={false}>
-                                        <CommandList className="max-h-64">
-                                            {allPartiesLoading && (
-                                                <div className="flex items-center gap-2 px-3 py-4 text-sm text-muted-foreground">
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                    Loading parties…
-                                                </div>
-                                            )}
-                                            {fetchError && !allPartiesLoading && (
-                                                <div className="px-3 py-3 text-sm text-destructive flex items-center gap-2">
-                                                    <AlertCircle className="h-4 w-4 shrink-0" />
-                                                    {fetchError}
-                                                </div>
-                                            )}
-                                            {!allPartiesLoading && !fetchError && (
-                                                filteredDropdownParties.length === 0 ? (
-                                                    <CommandEmpty>
-                                                        {allPartiesLoaded
-                                                            ? `No parties found${searchTerm ? ` for "${searchTerm}"` : ''}`
-                                                            : 'Click to load parties'}
-                                                    </CommandEmpty>
-                                                ) : (
-                                                    <CommandGroup>
-                                                        {filteredDropdownParties.map((party) => (
-                                                            <CommandItem
-                                                                key={party.party_id}
-                                                                value={party.party_id}
-                                                                onSelect={() => {
-                                                                    selectParty(party.party_id);
-                                                                    setSearchTerm(party.party_name);
-                                                                    setDropdownOpen(false);
-                                                                }}
-                                                                className="flex items-center justify-between gap-2 cursor-pointer"
-                                                            >
-                                                                <div className="flex items-center gap-2 min-w-0">
-                                                                    <span className="font-medium text-sm truncate">{party.party_name}</span>
-                                                                    <span className="text-[10px] font-mono text-muted-foreground shrink-0">{party.party_code}</span>
-                                                                </div>
-                                                                <span className="text-xs font-semibold text-destructive shrink-0 font-mono">
-                                                                    ₹{fmt(party.total_outstanding)}
-                                                                </span>
-                                                            </CommandItem>
-                                                        ))}
-                                                    </CommandGroup>
-                                                )
-                                            )}
-                                        </CommandList>
-                                    </Command>
-                                </PopoverContent>
-                            </Popover>
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                                <Input
+                                    placeholder="Search party name or code…"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="h-9 pl-8 pr-8 text-sm"
+                                />
+                                {searchTerm && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Reset */}
@@ -592,25 +511,17 @@ export default function OutstandingPage() {
                 </CardContent>
             </Card>
 
-            {/* Selected party indicator */}
-            {selectedPartyId && displayedData.length > 0 && (
-                <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">Showing:</span>
-                    <span className="font-semibold">{displayedData[0].party_name}</span>
-                    <Badge variant="outline" className="font-mono text-xs">{displayedData[0].party_code}</Badge>
-                    <button
-                        onClick={() => { setSelectedPartyId(null); setSearchTerm(''); setExpandedParties(new Set()); }}
-                        className="ml-1 text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
-                    >
-                        <X className="h-3 w-3" /> Clear
-                    </button>
-                </div>
-            )}
-
-            {/* KPI Cards + Table — only when a party is selected */}
-            {selectedPartyId && displayedData.length > 0 && (
+            {selectedPartyId && displayedData.length > 0 ? (
                 <>
-                    {/* Summary KPI Cards */}
+                    <div className="flex items-center gap-2 text-sm">
+                        <Button variant="ghost" size="sm" onClick={clearSelectedParty} className="h-8 gap-1 text-muted-foreground">
+                            <X className="h-3.5 w-3.5" /> Back to list
+                        </Button>
+                        <span className="text-muted-foreground">Showing:</span>
+                        <span className="font-semibold">{displayedData[0].party_name}</span>
+                        <Badge variant="outline" className="font-mono text-xs">{displayedData[0].party_code}</Badge>
+                    </div>
+
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <Card>
                             <CardContent className="pt-4 pb-4">
@@ -640,7 +551,6 @@ export default function OutstandingPage() {
                         </Card>
                     </div>
 
-                    {/* Table */}
                     <Card>
                         <CardContent className="p-0">
                             <Table>
@@ -659,7 +569,6 @@ export default function OutstandingPage() {
                                         const isExpanded = expandedParties.has(party.party_id);
                                         return (
                                             <React.Fragment key={party.party_id}>
-                                                {/* Party header row — click to expand/collapse */}
                                                 <TableRow
                                                     className="bg-muted/60 hover:bg-muted/80 cursor-pointer select-none font-semibold border-t-2"
                                                     onClick={() => toggleParty(party.party_id)}
@@ -699,7 +608,6 @@ export default function OutstandingPage() {
                                                     </TableCell>
                                                 </TableRow>
 
-                                                {/* Bill detail rows — shown when expanded */}
                                                 {isExpanded && (
                                                     <>
                                                         {party.bills.map((bill, idx) => (
@@ -727,7 +635,6 @@ export default function OutstandingPage() {
                                                                 </TableCell>
                                                             </TableRow>
                                                         ))}
-                                                        {/* Party subtotal row */}
                                                         <TableRow className="bg-primary/5 border-b-2">
                                                             <TableCell></TableCell>
                                                             <TableCell colSpan={2} className="py-2 pl-8 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -749,7 +656,6 @@ export default function OutstandingPage() {
                                         );
                                     })}
 
-                                    {/* Grand Total */}
                                     <TableRow className="bg-muted border-t-2 font-bold">
                                         <TableCell></TableCell>
                                         <TableCell colSpan={2} className="py-3 text-sm font-bold uppercase tracking-wide">
@@ -771,6 +677,117 @@ export default function OutstandingPage() {
                         </CardContent>
                     </Card>
                 </>
+            ) : (
+                <Card className="border shadow-lg overflow-hidden">
+                    <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                            <Table>
+                                <TableHeader className="bg-muted/40 border-b">
+                                    <TableRow>
+                                        <TableHead className="font-bold py-4 w-24">Code</TableHead>
+                                        <TableHead className="font-bold py-4">Party</TableHead>
+                                        <TableHead className="font-bold py-4 w-28">Branch</TableHead>
+                                        <TableHead className="font-bold py-4 text-right">Bills</TableHead>
+                                        <TableHead className="font-bold py-4 text-right">Billed</TableHead>
+                                        <TableHead className="font-bold py-4 text-right">Paid</TableHead>
+                                        <TableHead className="font-bold py-4 text-right">Outstanding</TableHead>
+                                        <TableHead className="py-4 text-right"></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {allPartiesLoading ? (
+                                        <TableRow>
+                                            <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Loading outstanding parties…
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : fetchError ? (
+                                        <TableRow>
+                                            <TableCell colSpan={8} className="h-32 text-center">
+                                                <div className="flex flex-col items-center gap-2 text-destructive">
+                                                    <AlertCircle className="h-8 w-8" />
+                                                    <p className="text-sm font-medium">{fetchError}</p>
+                                                    <Button variant="outline" size="sm" onClick={() => void loadAllParties()}>
+                                                        Retry
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : filteredParties.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={8} className="h-32 text-center">
+                                                <div className="flex flex-col items-center gap-2 opacity-40">
+                                                    <FileText className="h-10 w-10 text-muted-foreground" />
+                                                    <p className="text-sm font-medium">
+                                                        {allPartiesLoaded
+                                                            ? searchTerm
+                                                                ? `No parties found for "${searchTerm}"`
+                                                                : 'No outstanding bills found'
+                                                            : 'Select a branch to view outstanding parties'}
+                                                    </p>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        filteredParties.map((party) => (
+                                            <TableRow
+                                                key={party.party_id}
+                                                className="hover:bg-primary/5 transition-colors border-b last:border-0 group cursor-pointer"
+                                                onClick={() => selectParty(party.party_id)}
+                                            >
+                                                <TableCell>
+                                                    <span className="font-mono font-bold text-primary text-xs">{party.party_code}</span>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="font-semibold text-sm">{party.party_name}</div>
+                                                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                                        {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {party.branch_code ? (
+                                                        <span className="font-mono text-xs font-semibold text-foreground bg-muted px-2 py-0.5 rounded">
+                                                            {party.branch_name || party.branch_code}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-muted-foreground/40 text-xs">-</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-right font-mono text-sm">{party.bills.length}</TableCell>
+                                                <TableCell className="text-right font-mono font-bold text-sm">₹{fmt(party.total_billed)}</TableCell>
+                                                <TableCell className="text-right font-mono font-bold text-sm text-indigo-700">₹{fmt(party.total_paid)}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <span className="font-mono font-bold text-sm text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                                                        ₹{fmt(party.total_outstanding)}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button size="sm" variant="ghost" className="h-8 gap-1 text-primary hover:bg-primary/10">
+                                                        Details <ChevronRight className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        {filteredParties.length > 0 && !allPartiesLoading && (
+                            <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-8 gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                <div className="col-span-2">Total ({filteredParties.length} parties)</div>
+                                <div></div>
+                                <div className="text-right font-mono text-foreground">{listTotals.bills}</div>
+                                <div className="text-right font-mono text-foreground">₹{fmt(listTotals.billed)}</div>
+                                <div className="text-right font-mono text-indigo-700">₹{fmt(listTotals.paid)}</div>
+                                <div className="text-right font-mono text-red-700">₹{fmt(listTotals.outstanding)}</div>
+                                <div></div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             )}
         </div>
     );

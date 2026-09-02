@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Eye, Loader2, Pencil, Printer } from 'lucide-react';
+import { Download, Eye, Loader2, Pencil, Printer, Building2 } from 'lucide-react';
 
 import { numberToWords } from '@/lib/utils';
 import { composeBillRefNo, getBillRefPrefix, splitBillRefSuffix } from '@/lib/billRef';
@@ -9,12 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { BillingConsignmentPicker, type BillingConsignmentOption } from '@/components/features/ledger/BillingConsignmentPicker';
 import { BillingVehicleCancelEditor } from '@/components/features/ledger/BillingVehicleCancelEditor';
+import { ReassignPartyDialog } from '@/components/features/ledger/ReassignPartyDialog';
 import {
     normalizeVehicleCancelItems,
     sumVehicleCancelCharges,
@@ -673,16 +673,14 @@ export function EditBillingDialog({
         narration: '',
         covered_cn_nos: [] as string[],
         vehicle_cancel_items: [] as BillingVehicleCancelDraftItem[],
-        paid_by_other: false,
-        paid_by_party_name: '',
     });
     const [saving, setSaving] = useState(false);
+    const [reassignOpen, setReassignOpen] = useState(false);
 
     useEffect(() => {
         if (!record) return;
 
         const savedAddedOtherCharges = getSavedAddedOtherChargesAmount(record);
-        const existingPaidBy = (record as Record<string, unknown>).paid_by_party_name as string | null | undefined;
         setForm({
             billing_date: normalizeDate(record.billing_date),
             amount: Math.abs(savedAddedOtherCharges) < 0.01 ? '' : savedAddedOtherCharges.toFixed(2),
@@ -690,8 +688,6 @@ export function EditBillingDialog({
             narration: record.narration || '',
             covered_cn_nos: record.covered_cn_nos || [],
             vehicle_cancel_items: vehicleCancelItemsToDrafts(record.vehicle_cancel_items || []),
-            paid_by_other: !!existingPaidBy,
-            paid_by_party_name: existingPaidBy || '',
         });
     }, [record, consignments]);
 
@@ -741,9 +737,6 @@ export function EditBillingDialog({
                     bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no) || null,
                     narration: form.narration.trim(),
                     covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
-                    paid_by_party_name: form.paid_by_other && form.paid_by_party_name.trim()
-                        ? form.paid_by_party_name.trim()
-                        : null,
                 }),
             });
 
@@ -763,6 +756,7 @@ export function EditBillingDialog({
     };
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onClose}>
             <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] max-h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
                 <DialogHeader className="px-6 py-4 border-b bg-slate-50">
@@ -823,35 +817,19 @@ export function EditBillingDialog({
                                 <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
                             </div>
 
-                            {/* Paid by other party */}
-                            <div className="rounded-lg border bg-muted/20 p-3 space-y-2.5">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="paid-by-toggle" className="text-xs font-bold uppercase text-muted-foreground cursor-pointer">
-                                        Paid by other party
-                                    </Label>
-                                    <Switch
-                                        id="paid-by-toggle"
-                                        checked={form.paid_by_other}
-                                        onCheckedChange={(checked) =>
-                                            setForm((f) => ({
-                                                ...f,
-                                                paid_by_other: checked,
-                                                paid_by_party_name: checked ? f.paid_by_party_name : '',
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                {form.paid_by_other && (
-                                    <div className="space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Paying party name</Label>
-                                        <Input
-                                            value={form.paid_by_party_name}
-                                            onChange={(e) => setForm((f) => ({ ...f, paid_by_party_name: e.target.value }))}
-                                            placeholder="Enter party name who paid this bill"
-                                            className="h-9"
-                                        />
-                                    </div>
-                                )}
+                            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 flex flex-col gap-2">
+                                <p className="text-xs font-bold uppercase text-amber-800">Billed party</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Move this bill, its covered CNs, and (if you confirm) its payments to another party.
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-9 w-fit gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-100"
+                                    onClick={() => setReassignOpen(true)}
+                                >
+                                    <Building2 className="h-4 w-4" /> Change billed party
+                                </Button>
                             </div>
 
                             <BillingVehicleCancelEditor
@@ -949,6 +927,39 @@ export function EditBillingDialog({
                 </form>
             </DialogContent>
         </Dialog>
+        <ReassignPartyDialog
+            open={reassignOpen}
+            onClose={() => setReassignOpen(false)}
+            title="Reassign Bill to Different Party"
+            description={`Move bill "${record?.bill_ref_no || ''}" and its covered CNs to another party's ledger. If it has payments, you must confirm moving those too. Otherwise the bill and CNs move directly.`}
+            currentPartyId={partyId}
+            recordKind="bill"
+            previewUrl={record ? `/api/ledger/${partyId}/billing/${record.id}/reassign-party` : undefined}
+            onConfirm={async (newPartyId, newPartyName, confirmMovePayments) => {
+                if (!record) return;
+                const res = await fetch(`/api/ledger/${partyId}/billing/${record.id}/reassign-party`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        new_party_id: newPartyId,
+                        confirm_move_payments: confirmMovePayments,
+                    }),
+                });
+                const json = await res.json() as { error?: string; moved_payment_count?: number; moved_cn_count?: number };
+                if (!res.ok) {
+                    toast.error(json.error || 'Failed to reassign');
+                    throw new Error(json.error || 'Failed to reassign');
+                }
+                const extras = [
+                    json.moved_cn_count ? `${json.moved_cn_count} CN${json.moved_cn_count === 1 ? '' : 's'}` : null,
+                    json.moved_payment_count ? `${json.moved_payment_count} payment${json.moved_payment_count === 1 ? '' : 's'}` : null,
+                ].filter(Boolean).join(', ');
+                toast.success(`Bill moved to ${newPartyName}${extras ? ` (${extras} moved)` : ''}`);
+                onSuccess();
+                onClose();
+            }}
+        />
+        </>
     );
 }
 
