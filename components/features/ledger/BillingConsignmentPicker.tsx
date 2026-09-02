@@ -5,7 +5,6 @@ import { Check, ChevronsUpDown, Search } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -169,7 +168,10 @@ export function BillingConsignmentPicker({
                                         className="w-full rounded-md border px-3 py-2 text-left hover:bg-muted/40 transition-colors"
                                     >
                                         <div className="flex items-start gap-3">
-                                            <Checkbox checked={checked} className="mt-0.5 pointer-events-none" />
+                                            <span
+                                                aria-hidden
+                                                className={`mt-0.5 size-4 shrink-0 rounded-[4px] border shadow-xs ${checked ? 'border-primary bg-primary' : 'border-input bg-background'}`}
+                                            />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="font-mono text-xs font-bold text-primary">{consignment.cn_no}</div>

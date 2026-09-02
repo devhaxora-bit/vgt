@@ -109,17 +109,6 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                             <SheetField label="Bill Date" value={fmtDate(get(record, 'billing_date') as string)} />
                             <SheetField label="Covered CNs" value={num(snapshot.length || (Array.isArray(get(record, 'covered_cn_nos')) ? (get(record, 'covered_cn_nos') as unknown[]).length : 0))} mono />
                             <SheetField label="Bill Amount" value={money(amount, true)} mono accent />
-                            {str(get(record, 'paid_by_party_name')) && (
-                                <SheetField
-                                    label="Paid By"
-                                    value={
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                            {str(get(record, 'paid_by_party_name'))}
-                                        </span>
-                                    }
-                                    className="col-span-full"
-                                />
-                            )}
                             <SheetField label="Amount In Words" value={numberToWords(amount)} className="col-span-full" />
                         </SheetInfoGrid>
                     </SheetSection>

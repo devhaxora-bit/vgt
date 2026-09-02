@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, use, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, use, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { composeBillRefNo, getBillRefPrefix } from '@/lib/billRef';
@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { BillingRecordViewDialog, EditBillingDialog } from '@/components/features/ledger/BillingRecordDialogs';
+import { ReassignPartyDialog } from '@/components/features/ledger/ReassignPartyDialog';
 import { BillingConsignmentPicker } from '@/components/features/ledger/BillingConsignmentPicker';
 import { BillingExtraChargesEditor, type BillingExtraChargeDraftItem } from '@/components/features/ledger/BillingExtraChargesEditor';
 import { BillingVehicleCancelEditor } from '@/components/features/ledger/BillingVehicleCancelEditor';
@@ -95,7 +96,7 @@ interface BillingRecord {
     id: string; billing_date: string; billing_period_from?: string;
     billing_period_to?: string; amount: number; bill_ref_no?: string;
     narration: string; covered_cn_nos?: string[]; status: string;
-    cn_total_amount?: number; paid_by_party_name?: string | null;
+    cn_total_amount?: number;
     added_other_charges_amount?: number;
     vehicle_cancel_items?: BillingVehicleCancelItem[];
     vehicle_cancel_charges_total?: number;
@@ -407,13 +408,55 @@ function KpiCard({
 function AddBillingDialog({
     open, onClose, partyId, onSuccess, consignments,
 }: { open: boolean; onClose: () => void; partyId: string; onSuccess: () => void; consignments: Consignment[] }) {
-    const [form, setForm] = useState({
+    const emptyForm = () => ({
         billing_date: new Date().toISOString().split('T')[0],
-        amount: '', bill_ref_no: '', narration: '',
+        amount: '',
+        bill_ref_no: '',
+        narration: '',
         covered_cn_nos: [] as string[],
         vehicle_cancel_items: [] as BillingVehicleCancelDraftItem[],
     });
+    const [form, setForm] = useState(emptyForm);
     const [saving, setSaving] = useState(false);
+    const lastAutoPrefixRef = useRef('');
+
+    useEffect(() => {
+        if (!open) {
+            lastAutoPrefixRef.current = '';
+            return;
+        }
+        lastAutoPrefixRef.current = '';
+        setForm(emptyForm());
+    }, [open, partyId]);
+
+    useEffect(() => {
+        if (!open) return;
+        const date = form.billing_date;
+        const prefix = getBillRefPrefix(date);
+        if (lastAutoPrefixRef.current && lastAutoPrefixRef.current === prefix) return;
+
+        let cancelled = false;
+        void (async () => {
+            try {
+                const res = await fetch(`/api/ledger/${partyId}/billing/next-ref?date=${encodeURIComponent(date)}`);
+                if (!res.ok || cancelled) return;
+                const json = await res.json() as { next_suffix: string };
+                if (cancelled) return;
+                lastAutoPrefixRef.current = prefix;
+                setForm((f) => (
+                    getBillRefPrefix(f.billing_date) === prefix
+                        ? { ...f, bill_ref_no: json.next_suffix }
+                        : f
+                ));
+            } catch {
+                // silently fail — user can enter manually
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [open, partyId, form.billing_date]);
 
     const consignmentBreakup = useMemo(
         () => buildConsignmentBreakup(consignments, form.covered_cn_nos),
@@ -1270,6 +1313,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const [cancelTarget, setCancelTarget] = useState<{ type: 'billing' | 'payment'; id: string } | null>(null);
     const [selectedBillingRecord, setSelectedBillingRecord] = useState<BillingRecord | null>(null);
     const [editingBillingRecord, setEditingBillingRecord] = useState<BillingRecord | null>(null);
+    const [reassignBillingTarget, setReassignBillingTarget] = useState<BillingRecord | null>(null);
+    const [reassignPaymentTarget, setReassignPaymentTarget] = useState<PaymentReceipt | null>(null);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -2303,14 +2348,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     <TableCell className="text-xs text-muted-foreground">
                                                         {b.billing_period_from ? `${fmtDate(b.billing_period_from)} – ${fmtDate(b.billing_period_to)}` : '—'}
                                                     </TableCell>
-                                                    <TableCell className="text-xs max-w-[200px]">
-                                                        <div className="truncate" title={b.narration}>{b.narration}</div>
-                                                        {b.paid_by_party_name && (
-                                                            <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                                                Paid by: {b.paid_by_party_name}
-                                                            </span>
-                                                        )}
-                                                    </TableCell>
+                                                    <TableCell className="text-xs max-w-[180px] truncate" title={b.narration}>{b.narration}</TableCell>
                                                     <TableCell className="text-xs font-mono text-muted-foreground">
                                                         {b.covered_cn_nos?.join(', ') || '—'}
                                                     </TableCell>
@@ -2348,6 +2386,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                         onClick={() => setEditingBillingRecord(b)}
                                                                     >
                                                                         <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="ghost"
+                                                                        className="h-7 px-2 text-xs text-amber-700 hover:bg-amber-50"
+                                                                        onClick={() => setReassignBillingTarget(b)}
+                                                                        title="Move this bill to a different party"
+                                                                    >
+                                                                        <Building2 className="h-3.5 w-3.5 mr-1" /> Reassign
                                                                     </Button>
                                                                     <Button size="sm" variant="ghost"
                                                                         className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
@@ -2492,11 +2539,22 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     {isAdmin && (
                                                         <TableCell className="text-right">
                                                             {p.status === 'ACTIVE' && (
+                                                                <div className="flex items-center justify-end gap-1">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="h-7 px-2 text-xs text-amber-700 hover:bg-amber-50"
+                                                                    onClick={() => setReassignPaymentTarget(p)}
+                                                                    title="Move this payment to a different party"
+                                                                >
+                                                                    <Building2 className="h-3.5 w-3.5 mr-1" /> Reassign
+                                                                </Button>
                                                                 <Button size="sm" variant="ghost"
                                                                     className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
                                                                     onClick={() => setCancelTarget({ type: 'payment', id: p.id })}>
                                                                     Reverse
                                                                 </Button>
+                                                                </div>
                                                             )}
                                                         </TableCell>
                                                     )}
@@ -2693,6 +2751,62 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 reportPayload={buildLedgerDownloadPayload()}
                 isDownloading={isDownloadingReport}
                 onDownload={handleDownloadLedgerReport}
+            />
+
+            {/* Reassign Bill Party Dialog */}
+            <ReassignPartyDialog
+                open={!!reassignBillingTarget}
+                onClose={() => setReassignBillingTarget(null)}
+                title="Reassign Bill to Different Party"
+                description={`Move bill "${reassignBillingTarget?.bill_ref_no || ''}" and its covered CNs to a different party's ledger. If it has payments, you must confirm moving those too. Otherwise the bill and CNs move directly.`}
+                currentPartyId={partyId}
+                recordKind="bill"
+                previewUrl={reassignBillingTarget ? `/api/ledger/${partyId}/billing/${reassignBillingTarget.id}/reassign-party` : undefined}
+                onConfirm={async (newPartyId, newPartyName, confirmMovePayments) => {
+                    if (!reassignBillingTarget) return;
+                    const res = await fetch(
+                        `/api/ledger/${partyId}/billing/${reassignBillingTarget.id}/reassign-party`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                new_party_id: newPartyId,
+                                confirm_move_payments: confirmMovePayments,
+                            }),
+                        }
+                    );
+                    const json = await res.json() as { error?: string; moved_payment_count?: number; moved_cn_count?: number };
+                    if (!res.ok) { toast.error(json.error || 'Failed to reassign'); throw new Error(json.error); }
+                    const extras = [
+                        json.moved_cn_count ? `${json.moved_cn_count} CN(s)` : null,
+                        json.moved_payment_count ? `${json.moved_payment_count} payment(s)` : null,
+                    ].filter(Boolean).join(' · ');
+                    toast.success(`Bill moved to ${newPartyName}` + (extras ? ` · ${extras} also moved` : ''));
+                    setReassignBillingTarget(null);
+                    void fetchData();
+                }}
+            />
+
+            {/* Reassign Payment Party Dialog */}
+            <ReassignPartyDialog
+                open={!!reassignPaymentTarget}
+                onClose={() => setReassignPaymentTarget(null)}
+                title="Reassign Payment to Different Party"
+                description="Move this payment receipt to a different party's ledger. All linked bills must already belong to the new party."
+                currentPartyId={partyId}
+                recordKind="payment"
+                onConfirm={async (newPartyId, newPartyName) => {
+                    if (!reassignPaymentTarget) return;
+                    const res = await fetch(
+                        `/api/ledger/${partyId}/payments/${reassignPaymentTarget.id}/reassign-party`,
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_party_id: newPartyId }) }
+                    );
+                    const json = await res.json() as { error?: string };
+                    if (!res.ok) { toast.error(json.error || 'Failed to reassign'); throw new Error(json.error); }
+                    toast.success(`Payment moved to ${newPartyName}`);
+                    setReassignPaymentTarget(null);
+                    void fetchData();
+                }}
             />
         </div>
     );
