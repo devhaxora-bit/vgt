@@ -8,49 +8,67 @@ import {
 import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
+const VALID_MODES = ['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'ADJUSTMENT'] as const;
 
-// POST /api/ledger/[partyId]/payments
-// Record a payment receipt (admin only)
-export async function POST(
+// PATCH /api/ledger/[partyId]/payments/[receiptId]
+export async function PATCH(
     request: NextRequest,
-    { params }: { params: Promise<{ partyId: string }> }
+    { params }: { params: Promise<{ partyId: string; receiptId: string }> }
 ) {
     const auth = await requireAuthz({ adminOnly: true });
     if (!auth.ok) return auth.response;
 
-    const { partyId } = await params;
+    const { partyId, receiptId } = await params;
     const partyAccess = await requirePartyBranchAccess(auth, partyId);
     if (!partyAccess.ok) return partyAccess.response;
 
     const supabase = auth.supabase;
-    const userId = auth.user.id;
+    const body = await request.json() as {
+        receipt_date?: string;
+        amount?: number | string;
+        payment_mode?: string;
+        reference_no?: string | null;
+        bank_name?: string | null;
+        narration?: string | null;
+        related_billing_record_ids?: string[] | null;
+        actual_received_amount?: number | string | null;
+        bill_allocations?: unknown;
+    };
 
-    const { data: account, error: accountError } = await supabase
-        .from('party_ledger_accounts')
-        .select('id')
+    const { data: receipt, error: receiptError } = await supabase
+        .from('party_payment_receipts')
+        .select('id, status, branch_code')
+        .eq('id', receiptId)
         .eq('party_id', partyId)
         .single();
 
-    if (accountError || !account) {
-        return NextResponse.json({ error: 'Ledger account not found for this party' }, { status: 404 });
+    if (receiptError || !receipt) {
+        return NextResponse.json({ error: 'Payment receipt not found' }, { status: 404 });
     }
 
-    const body = await request.json();
-    const { receipt_date, amount, payment_mode, reference_no, bank_name, narration, related_billing_record_ids, actual_received_amount, bill_allocations } = body;
+    const forbiddenRecord = auth.forbidIfForeignBranch(receipt.branch_code);
+    if (forbiddenRecord) return forbiddenRecord;
 
-    const validModes = ['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'ADJUSTMENT'];
-    const mode = (payment_mode || 'CASH').toUpperCase();
-    if (!validModes.includes(mode)) {
-        return NextResponse.json({ error: `payment_mode must be one of: ${validModes.join(', ')}` }, { status: 400 });
+    if (receipt.status !== 'ACTIVE') {
+        return NextResponse.json({ error: 'Only active payment receipts can be edited' }, { status: 400 });
     }
 
-    const normalizedBillAllocations = normalizeBillAllocations(bill_allocations);
-    if (Array.isArray(bill_allocations) && normalizedBillAllocations.length !== bill_allocations.length) {
+    if (!body.receipt_date) {
+        return NextResponse.json({ error: 'receipt_date is required' }, { status: 400 });
+    }
+
+    const mode = String(body.payment_mode || 'CASH').toUpperCase();
+    if (!VALID_MODES.includes(mode as (typeof VALID_MODES)[number])) {
+        return NextResponse.json({ error: `payment_mode must be one of: ${VALID_MODES.join(', ')}` }, { status: 400 });
+    }
+
+    const normalizedBillAllocations = normalizeBillAllocations(body.bill_allocations);
+    if (Array.isArray(body.bill_allocations) && normalizedBillAllocations.length !== body.bill_allocations.length) {
         return NextResponse.json({ error: 'Each selected bill must have a valid settled amount and deduction breakup' }, { status: 400 });
     }
 
-    const normalizedBillingRecordIdsFromBody = Array.isArray(related_billing_record_ids)
-        ? related_billing_record_ids.map((value) => String(value).trim()).filter(Boolean)
+    const normalizedBillingRecordIdsFromBody = Array.isArray(body.related_billing_record_ids)
+        ? body.related_billing_record_ids.map((value) => String(value).trim()).filter(Boolean)
         : [];
     const normalizedBillingRecordIds = normalizedBillAllocations.length > 0
         ? normalizedBillAllocations.map((allocation) => allocation.billing_record_id)
@@ -86,7 +104,7 @@ export async function POST(
                 return NextResponse.json({ error: existingReceiptsError.message }, { status: 400 });
             }
 
-            const alreadySettledMap = buildSettledBillAmountMap(existingReceipts || []);
+            const alreadySettledMap = buildSettledBillAmountMap(existingReceipts || [], receiptId);
             const billAmountMap = new Map(
                 billingRecords.map((record) => [record.id, Number(record.amount || 0)])
             );
@@ -114,8 +132,8 @@ export async function POST(
     }
 
     const amounts = resolvePaymentAmounts({
-        amount,
-        actualReceivedAmount: actual_received_amount,
+        amount: body.amount,
+        actualReceivedAmount: body.actual_received_amount,
         allocations: normalizedBillAllocations,
     });
 
@@ -123,33 +141,28 @@ export async function POST(
         return NextResponse.json({ error: amounts.error }, { status: 400 });
     }
 
-    const amountNum = amounts.amount;
-    const actualReceivedAmountNum = amounts.actualReceivedAmount;
-
     const { data, error } = await supabase
         .from('party_payment_receipts')
-        .insert({
-            party_ledger_account_id: account.id,
-            party_id: partyId,
-            receipt_date: receipt_date || new Date().toISOString().split('T')[0],
-            amount: amountNum,
-            actual_received_amount: actualReceivedAmountNum,
+        .update({
+            receipt_date: body.receipt_date,
+            amount: amounts.amount,
+            actual_received_amount: amounts.actualReceivedAmount,
             payment_mode: mode,
-            reference_no: reference_no || null,
-            bank_name: bank_name || null,
-            narration: narration || null,
+            reference_no: body.reference_no || null,
+            bank_name: body.bank_name || null,
+            narration: body.narration || null,
             related_billing_record_ids: normalizedBillingRecordIds.length > 0 ? normalizedBillingRecordIds : null,
             bill_allocations: normalizedBillAllocations,
-            branch_code: partyAccess.entity.branch_code,
-            created_by: userId,
         })
+        .eq('id', receiptId)
+        .eq('party_id', partyId)
         .select()
         .single();
 
     if (error) {
-        console.error('Failed to create payment receipt:', error);
+        console.error('Failed to update payment receipt:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data, { status: 201 });
+    return NextResponse.json(data);
 }
