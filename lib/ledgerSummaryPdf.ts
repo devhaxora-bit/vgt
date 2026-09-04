@@ -1,5 +1,5 @@
 import { formatBranchLabel } from '@/lib/formatBranchLabel';
-import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
+import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS, PDF_TABLE_STRIPE_BG } from '@/lib/pdfLogo';
 import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 export type LedgerSummaryPartyRow = {
@@ -211,6 +211,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 11.8px; font-weight: 800; line-height: 1.25; padding: 8px 4px 9px; color: #ffffff; background: #17308b; }
 .items-table tbody td { height: 22px; font-size: 11.2px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+.items-table tbody tr:nth-child(even):not(.blank-row):not(.total-row) td:not(.unbilled):not(.outstanding) { background: ${PDF_TABLE_STRIPE_BG}; }
 .items-table tbody td.branch-cell { white-space: normal; overflow-wrap: anywhere; line-height: 1.2; vertical-align: middle; }
 .items-table .party-name { text-align: left; }
 .items-table .center { text-align: center; }

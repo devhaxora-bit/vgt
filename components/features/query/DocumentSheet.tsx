@@ -209,7 +209,7 @@ export function SheetDataTable<T>({
                         </tr>
                     ) : (
                         rows.map((row, index) => (
-                            <tr key={getRowKey(row, index)} className="even:bg-muted/20 hover:bg-[var(--doc-head-bg)]/40">
+                            <tr key={getRowKey(row, index)} className="even:bg-primary/5 hover:bg-primary/10">
                                 {columns.map((col) => (
                                     <td
                                         key={col.key}

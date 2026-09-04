@@ -1,5 +1,5 @@
 import type { BillingVehicleCancelItem } from '@/lib/billingVehicleCancel';
-import { PDF_HEADER_LOGO_IMG_CSS, PDF_HEADER_TITLE_COLOR, PDF_TABLE_HEADER_BG, PDF_TABLE_HEADER_TEXT_COLOR } from '@/lib/pdfLogo';
+import { PDF_HEADER_LOGO_IMG_CSS, PDF_HEADER_TITLE_COLOR, PDF_TABLE_HEADER_BG, PDF_TABLE_HEADER_TEXT_COLOR, PDF_TABLE_STRIPE_BG } from '@/lib/pdfLogo';
 import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 export type BillPdfDetailRow = {
@@ -192,6 +192,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 10px; font-weight: 800; line-height: 1.18; padding: 2px 3px 9px; vertical-align: middle; color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; }
 .items-table tbody td { height: 24px; font-weight: 700; line-height: 1.15; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.items-table tbody tr.item-row:nth-child(even):not(.blank-row) td { background: ${PDF_TABLE_STRIPE_BG}; }
 .invoice-cell, .name-cell, .cn-cell, .rate-cell { height: auto !important; white-space: normal !important; word-break: break-word !important; overflow: hidden !important; vertical-align: middle !important; padding-top: 4px !important; padding-bottom: 4px !important; }
 .invoice-cell { word-break: break-all !important; }
 .rate-cell.incl { color: #1d4ed8; font-weight: 800; font-size: 9.6px; line-height: 1.2; }

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Users, MapPin, Activity, Shield, Plus, ArrowRight, Building } from 'lucide-react';
+import { Users, MapPin, Activity, Shield, Plus, ArrowRight, Building, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -65,6 +65,13 @@ export default function AdminDashboardPage() {
             href: '/dashboard/admin/parties',
             action: 'Add Party',
         },
+        {
+            title: 'Audit Logs',
+            description: 'Review who created, edited, cancelled, or reassigned bills, payments, CNs, and challans.',
+            icon: History,
+            href: '/dashboard/admin/audit-logs',
+            action: '',
+        },
     ];
 
     return (
@@ -113,15 +120,17 @@ export default function AdminDashboardPage() {
                                 <div className="flex gap-3">
                                     <Link href={action.href}>
                                         <Button variant="outline" size="sm" className="gap-2">
-                                            View List
+                                            {action.action ? 'View List' : 'Open'}
                                         </Button>
                                     </Link>
-                                    <Link href={action.href}>
-                                        <Button size="sm" className="gap-2">
-                                            <Plus className="h-3.5 w-3.5" />
-                                            {action.action}
-                                        </Button>
-                                    </Link>
+                                    {action.action ? (
+                                        <Link href={action.href}>
+                                            <Button size="sm" className="gap-2">
+                                                <Plus className="h-3.5 w-3.5" />
+                                                {action.action}
+                                            </Button>
+                                        </Link>
+                                    ) : null}
                                 </div>
                             </div>
                             <div className="self-center">

@@ -100,7 +100,7 @@ export default function AdminLayout({
         ? 'Add parties, brokers, and vehicles. Branch users can create for their branch only; main/global users can create for any branch. Editing is limited to admins.'
         : isBranchAdmin
             ? 'Manage parties, brokers, and vehicles for your branch.'
-            : 'Manage users, branches, and system configurations.';
+            : 'Manage users, branches, audit logs, and system configurations.';
 
     return (
         <div className="p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">

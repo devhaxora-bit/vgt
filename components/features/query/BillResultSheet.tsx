@@ -165,7 +165,7 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                                         const deductionTotal = p.deduction_items.reduce((s, d) => s + d.amount, 0);
                                         const isReversed = p.status === 'REVERSED';
                                         return (
-                                            <tr key={p.id} className={isReversed ? 'opacity-50 line-through' : idx % 2 === 0 ? 'bg-background' : 'bg-muted/10'}>
+                                            <tr key={p.id} className={isReversed ? 'opacity-50 line-through' : idx % 2 === 1 ? 'bg-primary/5' : undefined}>
                                                 <td className="px-3 py-2 border border-border text-center text-muted-foreground">{idx + 1}</td>
                                                 <td className="px-3 py-2 border border-border">{fmtDate(p.receipt_date)}</td>
                                                 <td className="px-3 py-2 border border-border font-medium">{p.payment_mode ?? '—'}</td>

@@ -44,6 +44,7 @@ assert(isBranchAdminAllowedPath('/dashboard/admin/brokers') === true, 'brokers a
 assert(isBranchAdminAllowedPath('/dashboard/admin/vehicles') === true, 'vehicles allowed');
 assert(isBranchAdminAllowedPath('/dashboard/admin/vehicles/') === true, 'vehicles trailing slash');
 assert(isBranchAdminAllowedPath('/dashboard/admin/users') === false, 'users blocked');
+assert(isBranchAdminAllowedPath('/dashboard/admin/audit-logs') === false, 'audit logs blocked');
 assert(isBranchAdminAllowedPath('/dashboard/admin/branches') === false, 'branches blocked');
 assert(isBranchAdminAllowedPath('/dashboard/admin') === false, 'admin hub blocked');
 assert(isBranchAdminAllowedPath('/dashboard/admin/parties?x=1') === true, 'parties with query');
@@ -57,6 +58,8 @@ const globalEmployee = { role: 'employee', branch_access: 'global' };
 
 assert(canAccessAdminPath(branchAdmin, '/dashboard/admin/parties') === true, 'branch admin → parties');
 assert(canAccessAdminPath(branchAdmin, '/dashboard/admin/users') === false, 'branch admin ✗ users');
+assert(canAccessAdminPath(branchAdmin, '/dashboard/admin/audit-logs') === false, 'branch admin ✗ audit logs');
+assert(canAccessAdminPath(globalAdmin, '/dashboard/admin/audit-logs') === true, 'global admin → audit logs');
 assert(canAccessAdminPath(globalAdmin, '/dashboard/admin/users') === true, 'global admin → users');
 assert(canAccessAdminPath(mainAdmin, '/dashboard/admin/branches') === true, 'main admin → branches');
 assert(canAccessAdminPath(branchEmployee, '/dashboard/admin/parties') === false, 'branch employee ✗ canAccessAdminPath');

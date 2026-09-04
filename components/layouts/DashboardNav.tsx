@@ -220,7 +220,7 @@ export default function DashboardNav() {
                         { title: 'Broker Management', href: '/dashboard/admin/brokers' },
                         { title: 'Vehicle Management', href: '/dashboard/admin/vehicles' },
                         { title: 'Role Configuration', href: '#' },
-                        { title: 'Audit Logs', href: '#' },
+                        { title: 'Audit Logs', href: '/dashboard/admin/audit-logs' },
                     ]
                 }
             ]

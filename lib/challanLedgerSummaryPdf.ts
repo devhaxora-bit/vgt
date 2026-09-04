@@ -1,5 +1,5 @@
 import { formatBranchLabel } from '@/lib/formatBranchLabel';
-import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS } from '@/lib/pdfLogo';
+import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS, PDF_TABLE_STRIPE_BG } from '@/lib/pdfLogo';
 import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
 export type ChallanLedgerSummaryBrokerRow = {
@@ -178,6 +178,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { text-align: center; font-size: 11.8px; font-weight: 800; color: #ffffff; background: #17308b; }
 .items-table tbody td { height: 22px; font-size: 11.2px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.items-table tbody tr:nth-child(even):not(.blank-row):not(.total-row) td:not(.advance):not(.outstanding) { background: ${PDF_TABLE_STRIPE_BG}; }
 .items-table .party-name { text-align: left; }
 .items-table .center { text-align: center; }
 .items-table .amount { text-align: right; padding-right: 7px; font-variant-numeric: tabular-nums; }
