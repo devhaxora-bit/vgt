@@ -1,5 +1,5 @@
 import { formatBranchLabel } from '@/lib/formatBranchLabel';
-import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS, PDF_TABLE_HEADER_BG, PDF_TABLE_HEADER_TEXT_COLOR } from '@/lib/pdfLogo';
+import { loadPdfLogo, PDF_HEADER_LOGO_IMG_CSS, PDF_TABLE_HEADER_BG, PDF_TABLE_HEADER_TEXT_COLOR, PDF_TABLE_STRIPE_BG } from '@/lib/pdfLogo';
 import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 import type { OutstandingPartyRow, OutstandingBill } from '@/app/api/outstanding/route';
 
@@ -233,7 +233,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .party-branch { font-size: 11px; color: #444; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 3px; margin-right: 6px; }
 .party-bill-count { font-size: 10.5px; color: #777; }
 /* Bill rows */
-.bill-row td { background: #fff; }
+.bill-row:nth-child(odd) td { background: #fff; }
+.bill-row:nth-child(even) td { background: ${PDF_TABLE_STRIPE_BG}; }
 /* Subtotal */
 .subtotal-row td { background: rgba(29, 47, 122, 0.07); font-size: 11.5px; font-weight: 800; border-top: 1px solid #1d2f7a; }
 .subtotal-label { font-size: 11px; color: #555; }

@@ -1287,7 +1287,7 @@ export function BillingRecordViewDialog({
                                                     const isChild = isFreightIncludedCn(row);
                                                     const includeRateLabel = formatBillIncludeRateLabel(row);
                                                     return (
-                                                        <tr key={`${row.cn_no}-${index}`} className="border-b last:border-0">
+                                                        <tr key={`${row.cn_no}-${index}`} className="border-b last:border-0 even:bg-primary/5">
                                                             <td className="p-2 text-xs">{index + 1}</td>
                                                             <td className="p-2 font-mono text-xs font-bold text-primary">
                                                                 {formatBillCnNo(row.cn_no, row)}

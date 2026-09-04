@@ -14,7 +14,7 @@ import {
     ArrowLeft, Package, TrendingUp, AlertCircle, DollarSign,
     Search, RotateCcw, Plus, FileText, Download,
     Truck, CheckCircle2, XCircle, CreditCard, Banknote, Building2,
-    Loader2, Eye, Pencil
+    Loader2, Eye, Pencil, History
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -682,7 +682,7 @@ function AddBillingDialog({
 // ─── AddPaymentDialog ─────────────────────────────────────────────────────────
 
 function AddPaymentDialog({
-    open, onClose, partyId, onSuccess, billingRecords, paymentReceipts,
+    open, onClose, partyId, onSuccess, billingRecords, paymentReceipts, record,
 }: {
     open: boolean;
     onClose: () => void;
@@ -690,6 +690,7 @@ function AddPaymentDialog({
     onSuccess: () => void;
     billingRecords: BillingRecord[];
     paymentReceipts: PaymentReceipt[];
+    record?: PaymentReceipt | null;
 }) {
     interface PaymentBillAllocationDraft {
         billing_record_id: string;
@@ -704,10 +705,64 @@ function AddPaymentDialog({
         bill_allocations: [] as PaymentBillAllocationDraft[],
     });
     const [saving, setSaving] = useState(false);
+    const isEditing = Boolean(record?.id);
+
+    const emptyForm = {
+        receipt_date: new Date().toISOString().split('T')[0],
+        amount: '',
+        payment_mode: 'NEFT',
+        reference_no: '',
+        bank_name: '',
+        narration: '',
+        related_billing_record_ids: [] as string[],
+        bill_allocations: [] as PaymentBillAllocationDraft[],
+    };
+
+    useEffect(() => {
+        if (!open) return;
+
+        if (!record) {
+            setForm(emptyForm);
+            return;
+        }
+
+        const relatedIds = (record.bill_allocations || []).length > 0
+            ? (record.bill_allocations || []).map((allocation) => allocation.billing_record_id)
+            : (record.related_billing_record_ids || []);
+
+        const allocationDrafts = (record.bill_allocations || []).length > 0
+            ? (record.bill_allocations || []).map((allocation) => ({
+                billing_record_id: allocation.billing_record_id,
+                settled_amount: parseMoney(allocation.settled_amount) > 0 ? parseMoney(allocation.settled_amount).toFixed(2) : '',
+                deduction_items: (allocation.deduction_items || []).map((item) => ({
+                    id: Math.random().toString(36).slice(2, 10),
+                    label: item.label,
+                    amount: parseMoney(item.amount) > 0 ? parseMoney(item.amount).toFixed(2) : '',
+                })),
+            }))
+            : relatedIds.map((billId) => ({
+                billing_record_id: billId,
+                settled_amount: relatedIds.length === 1 && parseMoney(record.amount) > 0
+                    ? parseMoney(record.amount).toFixed(2)
+                    : '',
+                deduction_items: [] as BillingExtraChargeDraftItem[],
+            }));
+
+        setForm({
+            receipt_date: String(record.receipt_date || '').slice(0, 10) || emptyForm.receipt_date,
+            amount: Math.abs(parseMoney(record.amount)) > 0 ? parseMoney(record.amount).toFixed(2) : '',
+            payment_mode: record.payment_mode || 'NEFT',
+            reference_no: record.reference_no || '',
+            bank_name: record.bank_name || '',
+            narration: record.narration || '',
+            related_billing_record_ids: relatedIds,
+            bill_allocations: allocationDrafts,
+        });
+    }, [open, record]);
 
     const settledBillAmountMap = useMemo(
-        () => buildSettledBillAmountMap(paymentReceipts),
-        [paymentReceipts]
+        () => buildSettledBillAmountMap(paymentReceipts.filter((receipt) => receipt.id !== record?.id)),
+        [paymentReceipts, record?.id]
     );
 
     const payableBillingRecords = useMemo(
@@ -723,8 +778,11 @@ function AddPaymentDialog({
                     remaining_amount: remainingAmount,
                 };
             })
-            .filter((record) => parseMoney(record.remaining_amount) > 0.009),
-        [billingRecords, settledBillAmountMap]
+            .filter((bill) => (
+                parseMoney(bill.remaining_amount) > 0.009
+                || form.related_billing_record_ids.includes(bill.id)
+            )),
+        [billingRecords, settledBillAmountMap, form.related_billing_record_ids]
     );
 
     const payableBillingRecordMap = useMemo(
@@ -843,8 +901,11 @@ function AddPaymentDialog({
 
         setSaving(true);
         try {
-            const res = await fetch(`/api/ledger/${partyId}/payments`, {
-                method: 'POST',
+            const endpoint = isEditing
+                ? `/api/ledger/${partyId}/payments/${record?.id}`
+                : `/api/ledger/${partyId}/payments`;
+            const res = await fetch(endpoint, {
+                method: isEditing ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...form,
@@ -856,9 +917,9 @@ function AddPaymentDialog({
             });
             if (!res.ok) {
                 const err = await res.json();
-                throw new Error(err.error || 'Failed to record payment');
+                throw new Error(err.error || (isEditing ? 'Failed to update payment' : 'Failed to record payment'));
             }
-            toast.success('Payment receipt recorded successfully');
+            toast.success(isEditing ? 'Payment receipt updated' : 'Payment receipt recorded successfully');
             onSuccess();
             onClose();
             setForm({
@@ -872,7 +933,7 @@ function AddPaymentDialog({
                 bill_allocations: [],
             });
         } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Failed to record payment');
+            toast.error(err instanceof Error ? err.message : (isEditing ? 'Failed to update payment' : 'Failed to record payment'));
         } finally {
             setSaving(false);
         }
@@ -883,10 +944,13 @@ function AddPaymentDialog({
             <DialogContent className="max-w-[92vw] w-[92vw] sm:max-w-5xl max-h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
                 <DialogHeader className="px-6 py-4 border-b bg-slate-50">
                     <DialogTitle className="flex items-center gap-2">
-                        <Banknote className="h-4 w-4 text-primary" /> Record Payment
+                        {isEditing ? <Pencil className="h-4 w-4 text-primary" /> : <Banknote className="h-4 w-4 text-primary" />}
+                        {isEditing ? 'Edit Payment Receipt' : 'Record Payment'}
                     </DialogTitle>
                     <DialogDescription>
-                        Link the receipt to bill numbers, enter how much is settled against each bill, and keep deduction breakup inside that settled amount.
+                        {isEditing
+                            ? 'Update receipt details, linked bills, settled amounts, and deduction breakup.'
+                            : 'Link the receipt to bill numbers, enter how much is settled against each bill, and keep deduction breakup inside that settled amount.'}
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -1102,7 +1166,7 @@ function AddPaymentDialog({
                         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                         <Button type="submit" disabled={saving} className="gap-2">
                             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                            Record Payment
+                            {isEditing ? 'Save Changes' : 'Record Payment'}
                         </Button>
                     </div>
                 </form>
@@ -1313,6 +1377,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const [cancelTarget, setCancelTarget] = useState<{ type: 'billing' | 'payment'; id: string } | null>(null);
     const [selectedBillingRecord, setSelectedBillingRecord] = useState<BillingRecord | null>(null);
     const [editingBillingRecord, setEditingBillingRecord] = useState<BillingRecord | null>(null);
+    const [editingPaymentReceipt, setEditingPaymentReceipt] = useState<PaymentReceipt | null>(null);
     const [reassignBillingTarget, setReassignBillingTarget] = useState<BillingRecord | null>(null);
     const [reassignPaymentTarget, setReassignPaymentTarget] = useState<PaymentReceipt | null>(null);
 
@@ -1890,7 +1955,10 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     </div>
                     {isAdmin && (
                         <div className="flex gap-2">
-                            <Button size="sm" variant="outline" className="gap-2 h-8" onClick={() => setShowPaymentDialog(true)}>
+                            <Button size="sm" variant="outline" className="gap-2 h-8" onClick={() => {
+                                setEditingPaymentReceipt(null);
+                                setShowPaymentDialog(true);
+                            }}>
                                 <Banknote className="h-3.5 w-3.5 text-emerald-600" /> Record Payment
                             </Button>
                             <Button size="sm" className="gap-2 h-8 shadow-md shadow-primary/20" onClick={() => setShowBillingDialog(true)}>
@@ -2377,6 +2445,18 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                             >
                                                                 <Eye className="h-3.5 w-3.5 mr-1" /> View
                                                             </Button>
+                                                            {isAdmin && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="h-7 px-2 text-xs"
+                                                                    asChild
+                                                                >
+                                                                    <Link href={`/dashboard/admin/audit-logs?entity_type=bill&entity_id=${b.id}`}>
+                                                                        <History className="h-3.5 w-3.5 mr-1" /> History
+                                                                    </Link>
+                                                                </Button>
+                                                            )}
                                                             {isAdmin && b.status === 'ACTIVE' && (
                                                                 <>
                                                                     <Button
@@ -2444,7 +2524,10 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                     <CreditCard className="h-4 w-4 text-primary" /> Payment Receipts
                                 </CardTitle>
                                 {isAdmin && (
-                                    <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowPaymentDialog(true)}>
+                                    <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => {
+                                setEditingPaymentReceipt(null);
+                                setShowPaymentDialog(true);
+                            }}>
                                         <Plus className="h-3.5 w-3.5" /> Record Payment
                                     </Button>
                                 )}
@@ -2538,8 +2621,27 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     </TableCell>
                                                     {isAdmin && (
                                                         <TableCell className="text-right">
-                                                            {p.status === 'ACTIVE' && (
-                                                                <div className="flex items-center justify-end gap-1">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="h-7 px-2 text-xs"
+                                                                    asChild
+                                                                >
+                                                                    <Link href={`/dashboard/admin/audit-logs?entity_type=payment&entity_id=${p.id}`}>
+                                                                        <History className="h-3.5 w-3.5 mr-1" /> History
+                                                                    </Link>
+                                                                </Button>
+                                                                {p.status === 'ACTIVE' && (
+                                                                    <>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                                                                    onClick={() => setEditingPaymentReceipt(p)}
+                                                                >
+                                                                    <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                                                                </Button>
                                                                 <Button
                                                                     size="sm"
                                                                     variant="ghost"
@@ -2554,8 +2656,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                     onClick={() => setCancelTarget({ type: 'payment', id: p.id })}>
                                                                     Reverse
                                                                 </Button>
-                                                                </div>
-                                                            )}
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </TableCell>
                                                     )}
                                                 </TableRow>
@@ -2717,12 +2820,16 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 consignments={data.all_consignments}
             />
             <AddPaymentDialog
-                open={showPaymentDialog}
-                onClose={() => setShowPaymentDialog(false)}
+                open={showPaymentDialog || !!editingPaymentReceipt}
+                onClose={() => {
+                    setShowPaymentDialog(false);
+                    setEditingPaymentReceipt(null);
+                }}
                 partyId={partyId}
                 onSuccess={fetchData}
                 billingRecords={data.all_billing_records}
                 paymentReceipts={data.all_payment_receipts}
+                record={editingPaymentReceipt}
             />
             <BillingRecordViewDialog
                 open={!!selectedBillingRecord}

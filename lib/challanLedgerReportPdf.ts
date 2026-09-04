@@ -4,6 +4,7 @@ import {
     PDF_HEADER_LOGO_IMG_CSS,
     PDF_TABLE_HEADER_BG,
     PDF_TABLE_HEADER_TEXT_COLOR,
+    PDF_TABLE_STRIPE_BG,
 } from '@/lib/pdfLogo';
 import { savePdfWithWatermarks } from '@/lib/pdfWatermark';
 
@@ -442,6 +443,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table th:last-child, .items-table td:last-child { border-right: none; }
 .items-table thead th { color: ${PDF_TABLE_HEADER_TEXT_COLOR}; background: ${PDF_TABLE_HEADER_BG}; text-align: center; font-size: 10.6px; font-weight: 800; line-height: 1.22; padding-top: 6px; padding-bottom: 7px; }
 .items-table tbody td { min-height: 19px; height: 19px; color: #111; font-size: 9.8px; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+.cns-data-row:nth-child(even) td:not(.status-cell) { background: ${PDF_TABLE_STRIPE_BG}; }
 .items-table tbody td.status-cell { text-align: right; vertical-align: middle; font-size: 9.8px; font-weight: 800; padding: 3px 6px; }
 .items-table tbody td.status-cell.ok { color: #11653d; background: rgba(41, 171, 105, 0.14); }
 .items-table tbody td.status-cell.warn { color: #8b5a08; background: rgba(235, 174, 55, 0.18); }

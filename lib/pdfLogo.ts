@@ -6,6 +6,8 @@ export const PDF_HEADER_TITLE_COLOR = '#1d2f7a';
 /** Table header — light sky blue background, black text */
 export const PDF_TABLE_HEADER_BG = '#90caf9';
 export const PDF_TABLE_HEADER_TEXT_COLOR = '#000000';
+/** Alternating data-row wash — same navy as PDF borders, lighter than header/total. */
+export const PDF_TABLE_STRIPE_BG = 'rgba(29, 47, 122, 0.06)';
 
 /** Header logo styles — natural image colors only; never add CSS filters here. */
 export const PDF_HEADER_LOGO_IMG_CSS = 'width: 102px; max-width: 100%; object-fit: contain;';
