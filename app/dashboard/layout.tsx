@@ -1,5 +1,6 @@
 import React from 'react';
 import DashboardNav from '@/components/layouts/DashboardNav';
+import { SessionKeepAlive } from '@/components/features/auth/SessionKeepAlive';
 
 export default function DashboardLayout({
     children,
@@ -8,6 +9,7 @@ export default function DashboardLayout({
 }) {
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
+            <SessionKeepAlive />
             {/* Navigation Bar */}
             <DashboardNav />
             {/* Main Content */}

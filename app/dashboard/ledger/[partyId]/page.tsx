@@ -2536,15 +2536,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
-                                            <TableHead className="font-bold text-xs py-3">Date</TableHead>
-                                            <TableHead className="font-bold text-xs py-3">Mode</TableHead>
-                                            <TableHead className="font-bold text-xs py-3">Bills / Breakup</TableHead>
-                                            <TableHead className="font-bold text-xs py-3">Reference</TableHead>
-                                            <TableHead className="font-bold text-xs py-3">Bank</TableHead>
-                                            <TableHead className="font-bold text-xs py-3">Narration</TableHead>
-                                            <TableHead className="font-bold text-xs py-3 text-right">Settled</TableHead>
-                                            <TableHead className="font-bold text-xs py-3">Status</TableHead>
-                                            {isAdmin && <TableHead className="py-3" />}
+                                            <TableHead className="font-bold text-xs py-3 w-[96px]">Date</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 w-[88px]">Mode</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 min-w-[360px] w-[42%]">Bills / Breakup</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 w-[110px]">Reference</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 w-[110px]">Bank</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 w-[140px]">Narration</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 text-right w-[110px]">Settled</TableHead>
+                                            <TableHead className="font-bold text-xs py-3 w-[80px]">Status</TableHead>
+                                            {isAdmin && <TableHead className="py-3 w-[220px]" />}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -2557,13 +2557,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         ) : (
                                             data.payment_receipts.map(p => (
                                                 <TableRow key={p.id} className={`hover:bg-primary/5 transition-colors border-b last:border-0 ${p.status === 'REVERSED' ? 'opacity-50' : ''}`}>
-                                                    <TableCell className="text-xs">{fmtDate(p.receipt_date)}</TableCell>
+                                                    <TableCell className="text-xs whitespace-nowrap">{fmtDate(p.receipt_date)}</TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className={`text-[9px] px-1.5 py-0 h-4 ${MODE_BADGE[p.payment_mode] || ''}`}>
                                                             {p.payment_mode}
                                                         </Badge>
                                                     </TableCell>
-                                                    <TableCell className="text-xs text-muted-foreground max-w-[260px]">
+                                                    <TableCell className="text-xs text-muted-foreground min-w-[360px] w-[42%] whitespace-normal align-top">
                                                         {(p.bill_allocations || []).length > 0 ? (
                                                             <div className="space-y-2 py-1">
                                                                 {p.bill_allocations?.map((allocation) => {
@@ -2582,7 +2582,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                                     <div className="mt-1 text-[11px] text-amber-700">
                                                                                         Deductions ₹{fmt(deductionTotal)}
                                                                                     </div>
-                                                                                    <div className="mt-1 text-[11px] text-muted-foreground">
+                                                                                    <div className="mt-1 text-[11px] text-muted-foreground whitespace-normal break-words">
                                                                                         {(allocation.deduction_items || [])
                                                                                             .map((item) => `${item.label} ₹${fmt(parseMoney(item.amount))}`)
                                                                                             .join(', ')}
@@ -2590,7 +2590,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                                 </>
                                                                             )}
                                                                             {(bill?.covered_cn_nos || []).length > 0 && (
-                                                                                <div className="mt-1 text-[11px] truncate">
+                                                                                <div className="mt-1 text-[11px] whitespace-normal break-words">
                                                                                     CNs: {bill?.covered_cn_nos?.join(', ')}
                                                                                 </div>
                                                                             )}
@@ -2604,9 +2604,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                 .join(', ')
                                                             : '—'}
                                                     </TableCell>
-                                                    <TableCell className="font-mono text-xs text-muted-foreground">{p.reference_no || '—'}</TableCell>
-                                                    <TableCell className="text-xs">{p.bank_name || '—'}</TableCell>
-                                                    <TableCell className="text-xs max-w-[180px] truncate" title={p.narration || ''}>{p.narration || '—'}</TableCell>
+                                                    <TableCell className="font-mono text-xs text-muted-foreground max-w-[110px] truncate" title={p.reference_no || ''}>{p.reference_no || '—'}</TableCell>
+                                                    <TableCell className="text-xs max-w-[110px] truncate" title={p.bank_name || ''}>{p.bank_name || '—'}</TableCell>
+                                                    <TableCell className="text-xs max-w-[140px] truncate" title={p.narration || ''}>{p.narration || '—'}</TableCell>
                                                     <TableCell className="text-right font-black text-sm text-indigo-700 font-mono">
                                                         <div>₹{fmt(p.amount)}</div>
                                                         <div className="text-[11px] font-semibold text-slate-600">

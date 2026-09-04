@@ -37,7 +37,7 @@ export function LoginForm() {
             employee_code: '',
             password: '',
             role: 'employee',
-            remember_me: false,
+            remember_me: true,
         },
     });
 
@@ -50,6 +50,7 @@ export function LoginForm() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(values),
+                credentials: 'include',
             });
 
             const result = await response.json();
@@ -59,9 +60,14 @@ export function LoginForm() {
                 return;
             }
 
-            toast.success('Welcome back!');
+            toast.success(
+                values.remember_me
+                    ? 'Welcome back — you will stay signed in on this device.'
+                    : 'Welcome back!',
+            );
 
             router.push('/dashboard');
+            router.refresh();
         } catch (error) {
             toast.error('Something went wrong. Please try again.');
             console.error(error);
@@ -183,7 +189,7 @@ export function LoginForm() {
                                         />
                                     </FormControl>
                                     <FormLabel className="text-sm font-normal text-[#475467] cursor-pointer">
-                                        Remember me
+                                        Keep me signed in
                                     </FormLabel>
                                 </FormItem>
                             )}
