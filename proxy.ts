@@ -6,6 +6,7 @@ import {
     hasFullBranchAccess,
     isBranchScopedAccess,
 } from '@/lib/branchAccess'
+import { withSessionCookieOptions } from '@/lib/auth/sessionCookie'
 
 const BRANCH_SCOPE_HEADER = 'x-vgt-branch-scope'
 const BRANCH_CODE_HEADER = 'x-vgt-branch-code'
@@ -84,7 +85,12 @@ export async function proxy(request: NextRequest) {
                         request,
                     })
                     cookiesToSet.forEach(({ name, value, options }) =>
-                        supabaseResponse.cookies.set(name, value, options)
+                        supabaseResponse.cookies.set(
+                            name,
+                            value,
+                            // Keep refreshed cookies long-lived so users are not forced to re-login daily.
+                            withSessionCookieOptions(options, true),
+                        )
                     )
                 },
             },

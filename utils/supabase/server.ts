@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { withSessionCookieOptions } from '@/lib/auth/sessionCookie'
 
 export async function createClient() {
     const cookieStore = await cookies()
@@ -15,10 +16,9 @@ export async function createClient() {
                 setAll(cookiesToSet) {
                     cookiesToSet.forEach(({ name, value, options }) => {
                         try {
-                            cookieStore.set(name, value, options)
-                        } catch (error) {
-                            // Ignore errors from Server Components
-                            // Middleware will handle cookie setting
+                            cookieStore.set(name, value, withSessionCookieOptions(options, true))
+                        } catch {
+                            // Ignore errors from Server Components — middleware/proxy refreshes cookies.
                         }
                     })
                 },
