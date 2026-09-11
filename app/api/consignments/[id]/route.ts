@@ -159,6 +159,7 @@ export async function PATCH(
             invoice_no: body.invoice_no,
             invoice_date: normalizeDate(body.invoice_date),
             invoice_amount: parseNumber(body.invoice_amount),
+            invoices: Array.isArray(body.invoices) ? body.invoices : [],
             eway_bill: body.eway_bill,
             eway_from_date: normalizeDate(body.eway_from_date),
             eway_to_date: normalizeDate(body.eway_to_date),

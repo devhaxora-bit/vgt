@@ -14,6 +14,7 @@ import {
     SheetDataTable,
     type SheetColumn,
 } from './DocumentSheet';
+import { QueryRefLink, useQueryDocDialogs } from './QueryDocDialogs';
 import { money, num, upper, fmtDate, toNum } from './queryFormat';
 import type { QueryCnsDetail, QueryConsignment, QueryCnsChallan, QueryLinkedBill } from '@/lib/types/query.types';
 
@@ -40,6 +41,7 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
         consignments: QueryConsignment[];
     } | null>(null);
     const [loadingBillId, setLoadingBillId] = React.useState<string | null>(null);
+    const docs = useQueryDocDialogs();
 
     const consignment = detail.consignment;
     const c = consignment;
@@ -78,7 +80,18 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
     };
 
     const childColumns: SheetColumn<QueryConsignment>[] = [
-        { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{r.cn_no}</span> },
+        {
+            key: 'cn',
+            header: 'CN No',
+            cell: (r) => (
+                <QueryRefLink
+                    loading={docs.isLoading(`cn:${r.id || r.cn_no}`)}
+                    onClick={() => void docs.openCn(r)}
+                >
+                    {r.cn_no}
+                </QueryRefLink>
+            ),
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(r.bkg_date) },
         { key: 'consignor', header: 'Consignor', cell: (r) => upper(r.consignor_name) || '—' },
         {
@@ -91,7 +104,18 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
     ];
 
     const challanColumns: SheetColumn<QueryCnsChallan>[] = [
-        { key: 'no', header: 'Challan No', cell: (r) => <span className="font-mono font-semibold">{r.challan_no}</span> },
+        {
+            key: 'no',
+            header: 'Challan No',
+            cell: (r) => (
+                <QueryRefLink
+                    loading={docs.isLoading(`challan:${r.id || r.challan_no}`)}
+                    onClick={() => void docs.openChallan(r)}
+                >
+                    {r.challan_no}
+                </QueryRefLink>
+            ),
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date_from) },
         { key: 'vehicle', header: 'Vehicle', cell: (r) => upper(r.vehicle_no) || '—' },
         { key: 'broker', header: 'Broker', cell: (r) => upper(r.broker_name) || '—' },
@@ -159,7 +183,17 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
                         </span>
                         {isChild && detail.parent_cn_no ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                                <Link2 className="h-3 w-3" /> Freight included in {detail.parent_cn_no}
+                                <Link2 className="h-3 w-3" /> Freight included in{' '}
+                                <QueryRefLink
+                                    className="text-blue-700"
+                                    loading={docs.isLoading(`cn:${String(get(c, 'parent_cn_id') || detail.parent_cn_no)}`)}
+                                    onClick={() => void docs.openCn({
+                                        id: str(get(c, 'parent_cn_id')),
+                                        cn_no: detail.parent_cn_no,
+                                    })}
+                                >
+                                    {detail.parent_cn_no}
+                                </QueryRefLink>
                             </span>
                         ) : null}
                     </span>
@@ -317,7 +351,14 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
                                     <div className="flex items-center gap-3">
                                         <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                                         <div>
-                                            <p className="font-mono text-sm font-semibold">{b.bill_ref_no ?? '—'}</p>
+                                            <p className="font-mono text-sm font-semibold">
+                                                <QueryRefLink
+                                                    loading={loadingBillId === b.id || docs.isLoading(`bill:${b.id}`)}
+                                                    onClick={() => void docs.openBill(b.id)}
+                                                >
+                                                    {b.bill_ref_no ?? '—'}
+                                                </QueryRefLink>
+                                            </p>
                                             <p className="text-xs text-muted-foreground">
                                                 {fmtDate(b.billing_date)} · {upper(b.party_name) || '—'} ·{' '}
                                                 <span className={b.status === 'ACTIVE' ? 'text-emerald-600' : 'text-red-500'}>
@@ -401,6 +442,7 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail; rese
                     onEdit={() => setBillOpen(false)}
                 />
             )}
+            {docs.dialogs}
         </>
     );
 }

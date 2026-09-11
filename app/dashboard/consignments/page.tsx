@@ -895,38 +895,38 @@ export default function ConsignmentsPage() {
                         <Table>
                             <TableHeader className="bg-muted/40 border-b">
                                 <TableRow className="hover:bg-transparent">
-                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('booking_branch')}>
+                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('booking_branch')}>
                                         Bkg Branch <SortIcon field="booking_branch" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('cn_no')}>
+                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('cn_no')}>
                                         CNS No <SortIcon field="cn_no" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_date')}>
+                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_date')}>
                                         Bkg Date <SortIcon field="bkg_date" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('dest_branch')}>
+                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('dest_branch')}>
                                         Dest Branch <SortIcon field="dest_branch" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('consignor_name')}>
+                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('consignor_name')}>
                                         Consignor <SortIcon field="consignor_name" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 text-center cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('no_of_pkg')}>
+                                    <TableHead className="font-bold py-2.5 text-center cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('no_of_pkg')}>
                                         Pkgs <SortIcon field="no_of_pkg" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('actual_weight')}>
+                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('actual_weight')}>
                                         Weight <SortIcon field="actual_weight" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('delivery_type')}>
+                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('delivery_type')}>
                                         Del. Type <SortIcon field="delivery_type" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_basis')}>
+                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_basis')}>
                                         Basis <SortIcon field="bkg_basis" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_freight')}>
+                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_freight')}>
                                         Freight <SortIcon field="total_freight" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-4 min-w-[100px]">Bill No</TableHead>
-                                    <TableHead className="text-right py-4" />
+                                    <TableHead className="font-bold py-2.5 min-w-[100px]">Bill No</TableHead>
+                                    <TableHead className="text-right py-2.5" />
                                 </TableRow>
                             </TableHeader>
                             <TableBody>

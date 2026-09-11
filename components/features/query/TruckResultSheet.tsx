@@ -11,6 +11,7 @@ import {
     SheetDataTable,
     type SheetColumn,
 } from './DocumentSheet';
+import { QueryRefLink, useQueryDocDialogs } from './QueryDocDialogs';
 import { money, num, upper, fmtDate } from './queryFormat';
 import type { QueryTruckDetail, QueryConsignment } from '@/lib/types/query.types';
 
@@ -38,9 +39,21 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
 export function TruckResultSheet({ detail, reset }: { detail: QueryTruckDetail; reset: () => void }) {
     const { vehicle, consignments, challans, totals } = detail;
     const v = (vehicle ?? {}) as Record<string, unknown>;
+    const docs = useQueryDocDialogs();
 
     const cnColumns: SheetColumn<QueryConsignment>[] = [
-        { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{r.cn_no}</span> },
+        {
+            key: 'cn',
+            header: 'CN No',
+            cell: (r) => (
+                <QueryRefLink
+                    loading={docs.isLoading(`cn:${r.id || r.cn_no}`)}
+                    onClick={() => void docs.openCn(r)}
+                >
+                    {r.cn_no}
+                </QueryRefLink>
+            ),
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(r.bkg_date) },
         {
             key: 'route',
@@ -54,7 +67,22 @@ export function TruckResultSheet({ detail, reset }: { detail: QueryTruckDetail; 
     ];
 
     const challanColumns: SheetColumn<ChallanRow>[] = [
-        { key: 'no', header: 'Challan No', cell: (r) => <span className="font-mono font-semibold">{str(get(r, 'challan_no')) ?? '—'}</span> },
+        {
+            key: 'no',
+            header: 'Challan No',
+            cell: (r) => {
+                const challanNo = str(get(r, 'challan_no'));
+                if (!challanNo) return '—';
+                return (
+                    <QueryRefLink
+                        loading={docs.isLoading(`challan:${String(get(r, 'id') || challanNo)}`)}
+                        onClick={() => void docs.openChallan(r)}
+                    >
+                        {challanNo}
+                    </QueryRefLink>
+                );
+            },
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(get(r, 'date_from') as string) },
         {
             key: 'route',
@@ -79,6 +107,7 @@ export function TruckResultSheet({ detail, reset }: { detail: QueryTruckDetail; 
     ];
 
     return (
+        <>
         <DocumentSheet
             eyebrow="Truck / Vehicle"
             title={detail.vehicle_no}
@@ -143,5 +172,7 @@ export function TruckResultSheet({ detail, reset }: { detail: QueryTruckDetail; 
                 />
             </SheetSection>
         </DocumentSheet>
+        {docs.dialogs}
+        </>
     );
 }

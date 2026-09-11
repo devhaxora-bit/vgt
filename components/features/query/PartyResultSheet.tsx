@@ -21,6 +21,7 @@ import {
     SheetDataTable,
     type SheetColumn,
 } from './DocumentSheet';
+import { QueryRefLink, useQueryDocDialogs } from './QueryDocDialogs';
 import { money, num, upper, fmtDate } from './queryFormat';
 import type {
     QueryPartyDetail,
@@ -33,9 +34,21 @@ import type {
 export function PartyResultSheet({ detail, reset }: { detail: QueryPartyDetail; reset: () => void }) {
     const { party, summary } = detail;
     const due = summary.outstanding;
+    const docs = useQueryDocDialogs();
 
     const billColumns: SheetColumn<QueryPartyBillRow>[] = [
-        { key: 'bill', header: 'Bill No', cell: (r) => <span className="font-mono font-semibold">{r.bill_ref_no || '—'}</span> },
+        {
+            key: 'bill',
+            header: 'Bill No',
+            cell: (r) => (
+                <QueryRefLink
+                    loading={docs.isLoading(`bill:${r.id}`)}
+                    onClick={() => void docs.openBill(r.id)}
+                >
+                    {r.bill_ref_no || '—'}
+                </QueryRefLink>
+            ),
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(r.billing_date) },
         { key: 'cns', header: 'CNs', align: 'center', cell: (r) => num(r.covered_count) },
         { key: 'amount', header: 'Billed', align: 'right', cell: (r) => money(r.amount, true), className: 'font-mono' },
@@ -82,7 +95,18 @@ export function PartyResultSheet({ detail, reset }: { detail: QueryPartyDetail; 
     ];
 
     const cnColumns: SheetColumn<QueryConsignment>[] = [
-        { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{r.cn_no}</span> },
+        {
+            key: 'cn',
+            header: 'CN No',
+            cell: (r) => (
+                <QueryRefLink
+                    loading={docs.isLoading(`cn:${r.id || r.cn_no}`)}
+                    onClick={() => void docs.openCn(r)}
+                >
+                    {r.cn_no}
+                </QueryRefLink>
+            ),
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(r.bkg_date) },
         { key: 'invoice', header: 'Invoice', cell: (r) => r.invoice_no || '—' },
         { key: 'vehicle', header: 'Vehicle', cell: (r) => upper(r.vehicle_no) || '—' },
@@ -95,7 +119,18 @@ export function PartyResultSheet({ detail, reset }: { detail: QueryPartyDetail; 
     ];
 
     const challanColumns: SheetColumn<QueryPartyChallanRow>[] = [
-        { key: 'no', header: 'Challan No', cell: (r) => <span className="font-mono font-semibold">{r.challan_no}</span> },
+        {
+            key: 'no',
+            header: 'Challan No',
+            cell: (r) => (
+                <QueryRefLink
+                    loading={docs.isLoading(`challan:${r.id || r.challan_no}`)}
+                    onClick={() => void docs.openChallan(r)}
+                >
+                    {r.challan_no}
+                </QueryRefLink>
+            ),
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(r.date_from) },
         { key: 'vehicle', header: 'Vehicle', cell: (r) => upper(r.vehicle_no) || '—' },
         { key: 'broker', header: 'Broker', cell: (r) => upper(r.broker_name) || '—' },
@@ -104,6 +139,7 @@ export function PartyResultSheet({ detail, reset }: { detail: QueryPartyDetail; 
     ];
 
     return (
+        <>
         <DocumentSheet
             eyebrow="Party Ledger Query"
             title={upper(party.name) || 'Party'}
@@ -214,5 +250,7 @@ export function PartyResultSheet({ detail, reset }: { detail: QueryPartyDetail; 
                 />
             </SheetSection>
         </DocumentSheet>
+        {docs.dialogs}
+        </>
     );
 }

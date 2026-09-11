@@ -13,6 +13,7 @@ import {
     SheetDataTable,
     type SheetColumn,
 } from './DocumentSheet';
+import { QueryRefLink, useQueryDocDialogs } from './QueryDocDialogs';
 import { money, num, upper, fmtDate, toNum } from './queryFormat';
 import type { QueryBillDetail } from '@/lib/types/query.types';
 
@@ -25,9 +26,11 @@ const str = (value: unknown) => {
 
 export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; reset: () => void }) {
     const [printOpen, setPrintOpen] = React.useState(false);
+    const docs = useQueryDocDialogs();
     const { record, party } = detail;
     const summary = detail.party_summary;
     const payments = detail.payments ?? [];
+    const consignments = detail.consignments ?? [];
 
     const status = String(get(record, 'status') || 'ACTIVE');
     const cancelled = status.toUpperCase() === 'CANCELLED';
@@ -42,6 +45,11 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
         : [];
     const issuingBranch = upper(snapshot[0]?.booking_branch) || upper(party?.branch_code) || '—';
 
+    const resolveCnId = (cnNo?: string | null) => {
+        if (!cnNo) return undefined;
+        return consignments.find((row) => row.cn_no === cnNo)?.id;
+    };
+
     const combinedOther = (row: SnapRow) =>
         toNum(get(row, 'other_charges')) +
         toNum(get(row, 'door_collection')) +
@@ -50,7 +58,22 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
 
     const columns: SheetColumn<SnapRow>[] = [
         { key: 'sl', header: '#', align: 'center', cell: (_r, i) => i + 1, width: '36px' },
-        { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{str(get(r, 'cn_no')) ?? '—'}</span> },
+        {
+            key: 'cn',
+            header: 'CN No',
+            cell: (r) => {
+                const cnNo = str(get(r, 'cn_no'));
+                if (!cnNo) return '—';
+                return (
+                    <QueryRefLink
+                        loading={docs.isLoading(`cn:${resolveCnId(cnNo) || cnNo}`)}
+                        onClick={() => void docs.openCn({ id: resolveCnId(cnNo), cn_no: cnNo })}
+                    >
+                        {cnNo}
+                    </QueryRefLink>
+                );
+            },
+        },
         { key: 'date', header: 'Date', cell: (r) => fmtDate(get(r, 'bkg_date') as string) },
         { key: 'inv', header: 'Invoice', cell: (r) => str(get(r, 'invoice_no')) ?? '—' },
         { key: 'veh', header: 'Vehicle', cell: (r) => upper(get(r, 'vehicle_no')) || '—' },
@@ -290,6 +313,7 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                 isAdmin={false}
                 onEdit={() => setPrintOpen(false)}
             />
+            {docs.dialogs}
         </>
     );
 }

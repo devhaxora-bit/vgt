@@ -104,7 +104,32 @@ export async function GET(
         parent_cn_no: record.parent_cn_id ? cnNoById.get(record.parent_cn_id) ?? null : null,
     }));
 
-    const consignments = allConsignments.filter((record) => {
+    const partyCnNos = allConsignments.map((record) => String(record.cn_no || '').trim()).filter(Boolean);
+    const billedOnOtherParty = new Set<string>();
+    if (partyCnNos.length > 0) {
+        const { data: foreignBills } = await supabase
+            .from('party_billing_records')
+            .select('covered_cn_nos, party_id')
+            .eq('status', 'ACTIVE')
+            .neq('party_id', partyId)
+            .overlaps('covered_cn_nos', partyCnNos);
+
+        (foreignBills || []).forEach((bill) => {
+            const covered = Array.isArray(bill.covered_cn_nos) ? bill.covered_cn_nos : [];
+            covered.forEach((cnNo) => {
+                const normalized = String(cnNo || '').trim();
+                if (normalized && partyCnNos.includes(normalized)) {
+                    billedOnOtherParty.add(normalized);
+                }
+            });
+        });
+    }
+
+    const partyOwnedConsignments = allConsignments.filter(
+        (record) => !billedOnOtherParty.has(String(record.cn_no || '').trim()),
+    );
+
+    const consignments = partyOwnedConsignments.filter((record) => {
         const bookingDate = record.bkg_date?.slice(0, 10) || '';
         if (dateFrom && bookingDate < dateFrom) return false;
         if (dateTo && bookingDate > dateTo) return false;
@@ -158,7 +183,7 @@ export async function GET(
 
         if (billedCnNos.size > 0) {
             const existingCnNos = new Set(summaryConsignments.map((c) => c.cn_no));
-            const additionalCns = (allConsignments || []).filter((c) =>
+            const additionalCns = (partyOwnedConsignments || []).filter((c) =>
                 billedCnNos.has(c.cn_no) && !existingCnNos.has(c.cn_no)
             );
             if (additionalCns.length > 0) {
@@ -198,7 +223,7 @@ export async function GET(
         account: account || null,
         summary,
         consignments: summaryConsignments || [],
-        all_consignments: allConsignments || [],
+        all_consignments: partyOwnedConsignments || [],
         billing_records: billingRecords || [],
         payment_receipts: paymentReceipts || [],
         all_billing_records: allBillingRecords || [],

@@ -258,15 +258,15 @@ const buildConsignmentSnapshot = (
 
 const fetchOverlappingBills = async (
     supabase: SupabaseLike,
-    partyId: string,
+    _partyId: string,
     normalizedCoveredCnNos: string[],
     excludeBillingRecordId?: string
 ) => {
     const { data, error } = await supabase
         .from('party_billing_records')
-        .select('id, bill_ref_no, covered_cn_nos')
-        .eq('party_id', partyId)
-        .eq('status', 'ACTIVE');
+        .select('id, bill_ref_no, party_id, covered_cn_nos')
+        .eq('status', 'ACTIVE')
+        .overlaps('covered_cn_nos', normalizedCoveredCnNos);
 
     if (error) return { data: null, error: error.message };
 

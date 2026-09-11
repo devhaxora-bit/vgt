@@ -224,6 +224,7 @@ export async function POST(request: Request) {
         invoice_no: body.invoice_no,
         invoice_date: body.invoice_date || null,
         invoice_amount: parseFloat(body.invoice_amount) || 0,
+        invoices: Array.isArray(body.invoices) ? body.invoices : [],
         indent_no: body.indent_no,
         indent_date: body.indent_date || null,
         eway_bill: body.eway_bill,
