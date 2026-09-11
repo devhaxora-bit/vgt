@@ -146,6 +146,12 @@ export function ChallanDetailsDialog({ isOpen, onClose, challan }: ChallanDetail
         }
     };
 
+    const money = (value: unknown) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '---';
+        return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
     const handlePrint = async (mode: 'print' | 'download' = 'print') => {
         if (mode === 'download') setIsDownloading(true);
         try {
@@ -528,16 +534,16 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                     <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border">
                         <div className="space-y-1">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">Origin</span>
-                            <div className="font-bold">{c.origin_branch?.name || '---'}</div>
+                            <div className="font-bold">{c.origin_branch?.name || c.origin_branch_code || '---'}</div>
                         </div>
                         <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center border shadow-sm text-muted-foreground">→</div>
                         <div className="space-y-1 text-right">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">Destination</span>
-                            <div className="font-bold">{c.destination_branch?.name || c.unloading_area || '---'}</div>
+                            <div className="font-bold">{c.destination_branch?.name || c.destination_branch_code || c.unloading_area || '---'}</div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card>
                             <CardHeader className="py-2 px-4 bg-slate-50 border-b">
                                 <CardTitle className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
@@ -549,25 +555,112 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                 <Separator />
                                 <InfoItem label="Driver Name" value={c.driver_name} />
                                 <InfoItem label="Driver Mobile" value={c.driver_mobile} />
+                                <InfoItem label="Owner Type" value={c.owner_type} />
+                                {(c.broker_name || c.broker?.name || c.owner_name) && (
+                                    <InfoItem
+                                        label={c.owner_type === 'DIRECT' ? 'Owner' : 'Broker'}
+                                        value={c.broker_name || c.broker?.name || c.owner_name}
+                                    />
+                                )}
                             </CardContent>
                         </Card>
                         <Card>
                             <CardHeader className="py-2 px-4 bg-slate-50 border-b">
                                 <CardTitle className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
-                                    <Info className="h-3.5 w-3.5" /> Additional Info
+                                    <Info className="h-3.5 w-3.5" /> Challan Info
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="p-4 space-y-3">
                                 <InfoItem label="Challan Type" value={c.challan_mode || c.challan_type} />
-                                <InfoItem label="Owner Type" value={c.owner_type} />
+                                <InfoItem label="Status" value={c.status} />
                                 <Separator />
                                 <div className="grid grid-cols-2 gap-2">
                                     <InfoItem label="From" value={formatDateSafe(c.date_from, 'dd/MM/yyyy')} />
                                     <InfoItem label="To" value={formatDateSafe(c.date_to, 'dd/MM/yyyy')} />
                                 </div>
+                                <InfoItem label="Unloading Area" value={c.unloading_area} />
                             </CardContent>
                         </Card>
                     </div>
+
+                    <Card>
+                        <CardHeader className="py-2 px-4 bg-slate-50 border-b">
+                            <CardTitle className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
+                                <FileText className="h-3.5 w-3.5" /> Lorry Hire
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <InfoItem label="Full Hire" value={money(c.total_hire_amount)} />
+                            <InfoItem label="Extra Hire" value={money(c.extra_hire_amount)} />
+                            <InfoItem label="Advance Paid" value={money(c.advance_amount)} />
+                            <InfoItem
+                                label="Net Payable"
+                                value={money(
+                                    Number(c.total_hire_amount || 0) + Number(c.extra_hire_amount || 0) - Number(c.advance_amount || 0)
+                                )}
+                            />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="py-2 px-4 bg-slate-50 border-b flex flex-row items-center justify-between">
+                            <CardTitle className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
+                                <FileText className="h-3.5 w-3.5" /> Linked Consignments
+                            </CardTitle>
+                            <span className="text-[10px] text-muted-foreground font-medium">
+                                {isLoadingCns
+                                    ? 'Loading…'
+                                    : `${linkedDetails.length || (Array.isArray(c.linked_cn_nos) ? c.linked_cn_nos.length : 0)} CN(s)`}
+                            </span>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            {isLoadingCns ? (
+                                <div className="p-4 text-sm text-muted-foreground">Loading linked CNs…</div>
+                            ) : linkedDetails.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-muted/40 border-b">
+                                            <tr>
+                                                <th className="text-left px-3 py-2 font-semibold">CN No</th>
+                                                <th className="text-left px-3 py-2 font-semibold">Date</th>
+                                                <th className="text-left px-3 py-2 font-semibold">From</th>
+                                                <th className="text-left px-3 py-2 font-semibold">To</th>
+                                                <th className="text-right px-3 py-2 font-semibold">Weight</th>
+                                                <th className="text-right px-3 py-2 font-semibold">Freight</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {linkedDetails.map((cn) => (
+                                                <tr key={cn.id || cn.cn_no} className="border-b last:border-0 even:bg-primary/5">
+                                                    <td className="px-3 py-1.5 font-mono font-bold text-primary">{cn.cn_no}</td>
+                                                    <td className="px-3 py-1.5">{cn.bkg_date || '—'}</td>
+                                                    <td className="px-3 py-1.5">{cn.loading_point || cn.booking_branch || '—'}</td>
+                                                    <td className="px-3 py-1.5">{cn.delivery_point || cn.dest_branch || '—'}</td>
+                                                    <td className="px-3 py-1.5 text-right font-mono">
+                                                        {formatLoadWeightDisplay(cn.actual_weight || cn.charged_weight, normalizeLoadUnit(cn.load_unit))}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-right font-mono">{money(cn.total_freight)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : Array.isArray(c.linked_cn_nos) && c.linked_cn_nos.length > 0 ? (
+                                <div className="p-4 text-sm font-mono">{c.linked_cn_nos.join(', ')}</div>
+                            ) : (
+                                <div className="p-4 text-sm text-muted-foreground">No linked consignments</div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {c.remarks ? (
+                        <Card>
+                            <CardHeader className="py-2 px-4 bg-slate-50 border-b">
+                                <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Remarks</CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-4 text-sm">{c.remarks}</CardContent>
+                        </Card>
+                    ) : null}
                 </div>
 
                 <div className="flex justify-between items-center mt-6 pt-4 border-t">

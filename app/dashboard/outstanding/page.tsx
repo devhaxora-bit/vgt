@@ -573,14 +573,14 @@ export default function OutstandingPage() {
                                                     className="bg-muted/60 hover:bg-muted/80 cursor-pointer select-none font-semibold border-t-2"
                                                     onClick={() => toggleParty(party.party_id)}
                                                 >
-                                                    <TableCell className="w-8 py-2.5">
+                                                    <TableCell className="w-8 py-1.5">
                                                         {isExpanded ? (
                                                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                                                         ) : (
                                                             <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                                         )}
                                                     </TableCell>
-                                                    <TableCell className="py-2.5">
+                                                    <TableCell className="py-1.5">
                                                         <div className="flex items-center gap-2">
                                                             <span className="font-bold text-sm">{party.party_name}</span>
                                                             <Badge variant="outline" className="text-xs font-mono">
@@ -596,14 +596,14 @@ export default function OutstandingPage() {
                                                             </span>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="py-2.5 text-muted-foreground text-xs">—</TableCell>
-                                                    <TableCell className="py-2.5 text-right tabular-nums font-bold">
+                                                    <TableCell className="py-1.5 text-muted-foreground text-xs">—</TableCell>
+                                                    <TableCell className="py-1.5 text-right tabular-nums font-bold">
                                                         ₹{fmt(party.total_billed)}
                                                     </TableCell>
-                                                    <TableCell className="py-2.5 text-right tabular-nums text-muted-foreground">
+                                                    <TableCell className="py-1.5 text-right tabular-nums text-muted-foreground">
                                                         ₹{fmt(party.total_paid)}
                                                     </TableCell>
-                                                    <TableCell className="py-2.5 text-right tabular-nums font-bold text-destructive">
+                                                    <TableCell className="py-1.5 text-right tabular-nums font-bold text-destructive">
                                                         ₹{fmt(party.total_outstanding)}
                                                     </TableCell>
                                                 </TableRow>
@@ -616,37 +616,37 @@ export default function OutstandingPage() {
                                                                 className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/10'}
                                                             >
                                                                 <TableCell className="w-8"></TableCell>
-                                                                <TableCell className="py-2 pl-8">
+                                                                <TableCell className="py-1.5 pl-8">
                                                                     <span className="font-medium text-sm font-mono">
                                                                         {bill.bill_ref_no || '—'}
                                                                     </span>
                                                                 </TableCell>
-                                                                <TableCell className="py-2 text-sm text-muted-foreground">
+                                                                <TableCell className="py-1.5 text-sm text-muted-foreground">
                                                                     {fmtDate(bill.billing_date)}
                                                                 </TableCell>
-                                                                <TableCell className="py-2 text-right tabular-nums text-sm">
+                                                                <TableCell className="py-1.5 text-right tabular-nums text-sm">
                                                                     ₹{fmt(bill.amount)}
                                                                 </TableCell>
-                                                                <TableCell className="py-2 text-right tabular-nums text-sm text-muted-foreground">
+                                                                <TableCell className="py-1.5 text-right tabular-nums text-sm text-muted-foreground">
                                                                     ₹{fmt(bill.paid_amount)}
                                                                 </TableCell>
-                                                                <TableCell className="py-2 text-right tabular-nums text-sm font-semibold text-destructive">
+                                                                <TableCell className="py-1.5 text-right tabular-nums text-sm font-semibold text-destructive">
                                                                     ₹{fmt(bill.outstanding)}
                                                                 </TableCell>
                                                             </TableRow>
                                                         ))}
                                                         <TableRow className="bg-primary/5 border-b-2">
                                                             <TableCell></TableCell>
-                                                            <TableCell colSpan={2} className="py-2 pl-8 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                            <TableCell colSpan={2} className="py-1.5 pl-8 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                                                                 {party.party_name} — Subtotal
                                                             </TableCell>
-                                                            <TableCell className="py-2 text-right tabular-nums text-sm font-bold">
+                                                            <TableCell className="py-1.5 text-right tabular-nums text-sm font-bold">
                                                                 ₹{fmt(party.total_billed)}
                                                             </TableCell>
-                                                            <TableCell className="py-2 text-right tabular-nums text-sm font-semibold text-muted-foreground">
+                                                            <TableCell className="py-1.5 text-right tabular-nums text-sm font-semibold text-muted-foreground">
                                                                 ₹{fmt(party.total_paid)}
                                                             </TableCell>
-                                                            <TableCell className="py-2 text-right tabular-nums text-sm font-bold text-destructive">
+                                                            <TableCell className="py-1.5 text-right tabular-nums text-sm font-bold text-destructive">
                                                                 ₹{fmt(party.total_outstanding)}
                                                             </TableCell>
                                                         </TableRow>
@@ -684,14 +684,14 @@ export default function OutstandingPage() {
                             <Table>
                                 <TableHeader className="bg-muted/40 border-b">
                                     <TableRow>
-                                        <TableHead className="font-bold py-4 w-24">Code</TableHead>
-                                        <TableHead className="font-bold py-4">Party</TableHead>
-                                        <TableHead className="font-bold py-4 w-28">Branch</TableHead>
-                                        <TableHead className="font-bold py-4 text-right">Bills</TableHead>
-                                        <TableHead className="font-bold py-4 text-right">Billed</TableHead>
-                                        <TableHead className="font-bold py-4 text-right">Paid</TableHead>
-                                        <TableHead className="font-bold py-4 text-right">Outstanding</TableHead>
-                                        <TableHead className="py-4 text-right"></TableHead>
+                                        <TableHead className="font-bold py-2.5 w-24">Code</TableHead>
+                                        <TableHead className="font-bold py-2.5">Party</TableHead>
+                                        <TableHead className="font-bold py-2.5 w-28">Branch</TableHead>
+                                        <TableHead className="font-bold py-2.5 text-right">Bills</TableHead>
+                                        <TableHead className="font-bold py-2.5 text-right">Billed</TableHead>
+                                        <TableHead className="font-bold py-2.5 text-right">Paid</TableHead>
+                                        <TableHead className="font-bold py-2.5 text-right">Outstanding</TableHead>
+                                        <TableHead className="py-2.5 text-right"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>

@@ -179,8 +179,8 @@ export default function DashboardNav() {
                         { title: 'Party Ledger Book', href: '/dashboard/ledger' },
                         { title: 'Broker Challan Ledger', href: '/dashboard/challan-ledger' },
                         { title: 'Party Outstanding', href: '/dashboard/outstanding' },
-                        { title: 'Invoicing', href: '#' },
-                        { title: 'Payment Entry', href: '#' },
+                        { title: 'Invoicing', href: '/dashboard/invoicing' },
+                        { title: 'Payment Entry', href: '/dashboard/payment-entry' },
                     ]
                 },
                 {

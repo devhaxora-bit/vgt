@@ -27,10 +27,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatLoadWeightDisplay, normalizeLoadUnit, resolveLoadWeight } from '@/lib/loadWeightDisplay';
 import { loadPdfLogo, PDF_HEADER_TITLE_COLOR, PDF_LOGO_BOX_IMG_CSS, tintPdfLogoBackground, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 import { applyPdfWatermarks } from '@/lib/pdfWatermark';
@@ -71,6 +69,8 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
     const [copyType, setCopyType] = React.useState<CopyType>('consignee');
     const [issuingOfficerName, setIssuingOfficerName] = React.useState('---');
     const [logoBase64, setLogoBase64] = React.useState<string | null>(null);
+    const [fullConsignment, setFullConsignment] = React.useState<any>(consignment);
+    const [isLoadingDetails, setIsLoadingDetails] = React.useState(false);
 
     React.useEffect(() => {
         let isMounted = true;
@@ -106,9 +106,77 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
         };
     }, []);
 
-    if (!consignment) return null;
+    React.useEffect(() => {
+        let cancelled = false;
+        setFullConsignment(consignment || null);
 
-    const c = consignment;
+        const loadFull = async () => {
+            if (!isOpen || !consignment?.id) return;
+            setIsLoadingDetails(true);
+            try {
+                const res = await fetch(`/api/consignments/${consignment.id}`);
+                if (!res.ok) return;
+                const json = await res.json();
+                const detail = json?.data && typeof json.data === 'object' ? json.data : json;
+                if (!cancelled && detail && typeof detail === 'object' && !detail.error) {
+                    setFullConsignment({ ...consignment, ...detail });
+                }
+            } catch (error) {
+                console.error('Failed to load full consignment details:', error);
+            } finally {
+                if (!cancelled) setIsLoadingDetails(false);
+            }
+        };
+
+        void loadFull();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, consignment]);
+
+    if (!fullConsignment) return null;
+
+    const c = fullConsignment;
+    const invoiceRows: Array<{
+        invoice_no: string;
+        date: string;
+        amount: number;
+        eway_bill: string;
+        eway_from_date?: string;
+        eway_to_date?: string;
+    }> = (() => {
+        if (Array.isArray(c.invoices) && c.invoices.length > 0) {
+            return c.invoices.map((inv: Record<string, unknown>) => ({
+                invoice_no: String(inv.invoice_no || '---'),
+                date: String(inv.invoice_date || inv.date || '---'),
+                amount: Number(inv.invoice_amount ?? inv.amount ?? 0),
+                eway_bill: String(inv.eway_bill || '---'),
+                eway_from_date: inv.eway_from_date ? String(inv.eway_from_date) : undefined,
+                eway_to_date: inv.eway_to_date ? String(inv.eway_to_date) : undefined,
+            }));
+        }
+        if (Array.isArray(c.invoice_details?.invoices) && c.invoice_details.invoices.length > 0) {
+            return c.invoice_details.invoices.map((inv: Record<string, unknown>) => ({
+                invoice_no: String(inv.invoice_no || '---'),
+                date: String(inv.date || inv.invoice_date || '---'),
+                amount: Number(inv.amount ?? inv.invoice_amount ?? 0),
+                eway_bill: String(inv.eway_bill || '---'),
+                eway_from_date: inv.eway_from_date ? String(inv.eway_from_date) : undefined,
+                eway_to_date: inv.eway_to_date ? String(inv.eway_to_date) : undefined,
+            }));
+        }
+        if (c.invoice_no || c.invoice_amount || c.eway_bill) {
+            return [{
+                invoice_no: String(c.invoice_no || '---'),
+                date: String(c.invoice_date || '---'),
+                amount: Number(c.invoice_amount || 0),
+                eway_bill: String(c.eway_bill || '---'),
+                eway_from_date: c.eway_from_date ? String(c.eway_from_date) : undefined,
+                eway_to_date: c.eway_to_date ? String(c.eway_to_date) : undefined,
+            }];
+        }
+        return [];
+    })();
     const consignor = {
         name: c.consignor_name || '---',
         code: c.consignor_code || '---',
@@ -171,13 +239,13 @@ export function ConsignmentDetailsDialog({ isOpen, onClose, consignment, isAdmin
             return normalized ? normalized.toUpperCase() : '---';
         };
 
-        const invoiceNo = c.invoice_no || c.invoice_details?.invoices?.[0]?.invoice_no || '---';
-        const invoiceDate = formatDate(c.invoice_date || c.invoice_details?.invoices?.[0]?.date);
+        const invoiceNo = invoiceRows[0]?.invoice_no || c.invoice_no || '---';
+        const invoiceDate = formatDate(invoiceRows[0]?.date || c.invoice_date);
         const remarks = String(c.remarks || '').trim();
-        const ewayNo = c.eway_bill || c.invoice_details?.invoices?.[0]?.eway_bill || '---';
-        const ewayValidUpto = formatDate(c.eway_to_date || c.invoice_details?.eway_to_date);
+        const ewayNo = invoiceRows[0]?.eway_bill || c.eway_bill || '---';
+        const ewayValidUpto = formatDate(invoiceRows[0]?.eway_to_date || c.eway_to_date || c.invoice_details?.eway_to_date);
         const cnDate = formatDate(c.bkg_date);
-        const invoiceAmountValue = Number(c.invoice_amount || c.invoice_details?.invoices?.[0]?.amount || 0);
+        const invoiceAmountValue = Number(invoiceRows[0]?.amount || c.invoice_amount || 0);
         const loadUnitDisplay = normalizeLoadUnit(c.load_unit || c.goods_details?.load_unit);
         const actualWeight = resolveLoadWeight(c.actual_weight, c.goods_details?.actual_weight);
         const chargedWeight = resolveLoadWeight(c.charged_weight, c.goods_details?.charged_weight);
@@ -662,19 +730,11 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                 </DialogHeader>
 
                 <div className="flex-1 overflow-y-auto bg-slate-50/50">
-                    <Tabs defaultValue="general" className="w-full h-full flex flex-col">
-                        <div className="px-6 py-3 bg-white border-b sticky top-0 z-10 shadow-sm">
-                            <TabsList className="h-9 bg-slate-100 p-1 w-auto inline-flex">
-                                <TabsTrigger value="general" className="text-xs px-4 h-7 data-[state=active]:bg-primary data-[state=active]:text-white">General</TabsTrigger>
-                                <TabsTrigger value="goods" className="text-xs px-4 h-7 data-[state=active]:bg-primary data-[state=active]:text-white">Package & Goods</TabsTrigger>
-                                <TabsTrigger value="financials" className="text-xs px-4 h-7 data-[state=active]:bg-primary data-[state=active]:text-white">Financials</TabsTrigger>
-                                <TabsTrigger value="docs" className="text-xs px-4 h-7 data-[state=active]:bg-primary data-[state=active]:text-white">Docs & Insurance</TabsTrigger>
-                                <TabsTrigger value="history" className="text-xs px-4 h-7 data-[state=active]:bg-primary data-[state=active]:text-white">History</TabsTrigger>
-                            </TabsList>
-                        </div>
-
-                        <div className="p-6">
-                            <TabsContent value="general" className="mt-0 space-y-6">
+                    <div className="p-6 space-y-6">
+                            {isLoadingDetails && (
+                                <div className="text-xs text-muted-foreground">Loading full details…</div>
+                            )}
+                            <div className="space-y-6">
                                 {/* General Section */}
                                 <Card>
                                     <CardHeader className="py-3 px-4 bg-slate-50 border-b">
@@ -744,9 +804,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </CardContent>
                                     </Card>
                                 </div>
-                            </TabsContent>
+                            </div>
 
-                            <TabsContent value="goods" className="mt-0 space-y-6">
+                            <div className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <Card className="h-full">
                                         <CardHeader className="py-3 px-4 bg-slate-50 border-b">
@@ -822,9 +882,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </CardContent>
                                     </Card>
                                 </div>
-                            </TabsContent>
+                            </div>
 
-                            <TabsContent value="financials" className="mt-0 space-y-6">
+                            <div className="space-y-6">
                                 {/* Billing Details */}
                                 <Card>
                                     <CardHeader className="py-3 px-4 bg-slate-50 border-b">
@@ -877,9 +937,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </div>
                                     </CardContent>
                                 </Card>
-                            </TabsContent>
+                            </div>
 
-                            <TabsContent value="docs" className="mt-0 space-y-6">
+                            <div className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {/* Insurance & PO */}
                                     <Card className="h-full">
@@ -918,16 +978,16 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </CardHeader>
                                         <CardContent className="p-4 space-y-4">
                                             <div className="grid grid-cols-2 gap-4">
-                                                <InfoItem label="Type of Business" value={c.other_details?.type_of_business} />
-                                                <InfoItem label="Transport Mode" value={c.other_details?.transport_mode} />
+                                                <InfoItem label="Type of Business" value={c.business_type || c.other_details?.type_of_business} />
+                                                <InfoItem label="Transport Mode" value={c.transport_mode || c.other_details?.transport_mode} />
                                             </div>
-                                            <InfoItem label="Doc Prepared By" value={c.other_details?.doc_prepared_by} />
+                                            <InfoItem label="Doc Prepared By" value={c.doc_prepared_by || c.other_details?.doc_prepared_by} />
                                             <Separator />
                                             <div className="space-y-2">
                                                 <div className="text-[10px] font-bold text-muted-foreground uppercase">eWay Bill Dates</div>
                                                 <div className="grid grid-cols-2 gap-4">
-                                                    <InfoItem label="From" value={c.invoice_details?.eway_from_date} />
-                                                    <InfoItem label="To" value={c.invoice_details?.eway_to_date} />
+                                                    <InfoItem label="From" value={invoiceRows[0]?.eway_from_date || c.eway_from_date || c.invoice_details?.eway_from_date} />
+                                                    <InfoItem label="To" value={invoiceRows[0]?.eway_to_date || c.eway_to_date || c.invoice_details?.eway_to_date} />
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -948,12 +1008,12 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                             <div>Amount</div>
                                             <div>eWay Bill</div>
                                         </div>
-                                        {c.invoice_details?.invoices?.length > 0 ? (
-                                            c.invoice_details.invoices.map((inv: any, i: number) => (
+                                        {invoiceRows.length > 0 ? (
+                                            invoiceRows.map((inv, i) => (
                                                 <div key={i} className="grid grid-cols-4 p-3 text-xs border-b last:border-0 hover:bg-slate-50">
                                                     <div className="font-medium">{inv.invoice_no}</div>
                                                     <div>{inv.date}</div>
-                                                    <div className="font-mono">₹ {inv.amount?.toLocaleString()}</div>
+                                                    <div className="font-mono">₹ {Number(inv.amount || 0).toLocaleString()}</div>
                                                     <div className="text-muted-foreground">{inv.eway_bill}</div>
                                                 </div>
                                             ))
@@ -964,9 +1024,9 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </div>
                                     </CardContent>
                                 </Card>
-                            </TabsContent>
+                            </div>
 
-                            <TabsContent value="history" className="mt-0 space-y-6">
+                            <div className="space-y-6">
                                 <Card>
                                     <CardContent className="p-6">
                                         {history.length > 0 ? (
@@ -1009,9 +1069,8 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </CardContent>
                                     </Card>
                                 </div>
-                            </TabsContent>
+                            </div>
                         </div>
-                    </Tabs>
                 </div>
 
                 <div className="bg-white border-t p-3 flex justify-between items-center shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-20">

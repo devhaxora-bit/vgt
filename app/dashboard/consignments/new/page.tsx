@@ -64,6 +64,41 @@ interface PackageItem {
     qty: number;
 }
 
+interface InvoiceItem {
+    id: string;
+    invoice_no: string;
+    invoice_date: string;
+    invoice_amount: string;
+    eway_bill: string;
+    eway_from_date: string;
+    eway_to_date: string;
+}
+
+const createEmptyInvoice = (): InvoiceItem => ({
+    id: Math.random().toString(36).slice(2, 10),
+    invoice_no: '',
+    invoice_date: '',
+    invoice_amount: '',
+    eway_bill: '',
+    eway_from_date: '',
+    eway_to_date: '',
+});
+
+const normalizeInsuranceComp = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    if (!raw || raw.toUpperCase() === 'NOT KNOWN') return 'not-known';
+    if (raw.toLowerCase() === 'lic' || raw.toUpperCase() === 'LIC') return 'lic';
+    if (raw.toLowerCase().includes('bajaj')) return 'bajaj';
+    return raw;
+};
+
+const insuranceCompLabel = (value: string) => {
+    if (value === 'not-known') return 'NOT KNOWN';
+    if (value === 'lic') return 'LIC';
+    if (value === 'bajaj') return 'BAJAJ ALLIANZ';
+    return value;
+};
+
 interface BranchCnSequenceState {
     status: 'idle' | 'loading' | 'ready' | 'range_exhausted' | 'configuration_required' | 'error';
     mode?: 'range' | 'legacy';
@@ -272,13 +307,8 @@ function NewConsignmentForm() {
     const [volume, setVolume] = useState("");
     const [privateMark, setPrivateMark] = useState("");
 
-    // Invoice fields
-    const [invoiceNo, setInvoiceNo] = useState("");
-    const [invoiceDate, setInvoiceDate] = useState("");
-    const [invoiceAmt, setInvoiceAmt] = useState("");
-    const [ewayBill, setEwayBill] = useState("");
-    const [ewayFrom, setEwayFrom] = useState("");
-    const [ewayTo, setEwayTo] = useState("");
+    // Invoice fields (multi-invoice, same Add More pattern as packages)
+    const [invoices, setInvoices] = useState<InvoiceItem[]>([createEmptyInvoice()]);
 
     // Insurance fields
     const [insuranceComp, setInsuranceComp] = useState("not-known");
@@ -544,17 +574,43 @@ function NewConsignmentForm() {
                     other: String(data.other_charges ?? "")
                 });
                 setAdvanceAmount(String(data.advance_amount ?? ""));
-                setInvoiceNo(data.invoice_no || "");
-                setInvoiceDate(formatDateForInput(data.invoice_date));
-                setInvoiceAmt(String(data.invoice_amount ?? ""));
-                setEwayBill(data.eway_bill || "");
-                setEwayFrom(formatDateForInput(data.eway_from_date));
-                setEwayTo(formatDateForInput(data.eway_to_date));
+                const loadedInvoices = Array.isArray(data.invoices)
+                    ? data.invoices
+                        .map((inv: Record<string, unknown>) => ({
+                            id: String(inv.id || Math.random().toString(36).slice(2, 10)),
+                            invoice_no: String(inv.invoice_no ?? ''),
+                            invoice_date: formatDateForInput(inv.invoice_date as string | null | undefined),
+                            invoice_amount: inv.invoice_amount != null && inv.invoice_amount !== '' ? String(inv.invoice_amount) : '',
+                            eway_bill: String(inv.eway_bill ?? ''),
+                            eway_from_date: formatDateForInput(inv.eway_from_date as string | null | undefined),
+                            eway_to_date: formatDateForInput(inv.eway_to_date as string | null | undefined),
+                        }))
+                        .filter((inv: InvoiceItem) => (
+                            inv.invoice_no || inv.invoice_date || inv.invoice_amount || inv.eway_bill || inv.eway_from_date || inv.eway_to_date
+                        ))
+                    : [];
+
+                if (loadedInvoices.length > 0) {
+                    setInvoices(loadedInvoices);
+                } else if (data.invoice_no || data.invoice_date || data.invoice_amount || data.eway_bill || data.eway_from_date || data.eway_to_date) {
+                    setInvoices([{
+                        id: Math.random().toString(36).slice(2, 10),
+                        invoice_no: data.invoice_no || '',
+                        invoice_date: formatDateForInput(data.invoice_date),
+                        invoice_amount: data.invoice_amount != null && data.invoice_amount !== '' ? String(data.invoice_amount) : '',
+                        eway_bill: data.eway_bill || '',
+                        eway_from_date: formatDateForInput(data.eway_from_date),
+                        eway_to_date: formatDateForInput(data.eway_to_date),
+                    }]);
+                } else {
+                    setInvoices([createEmptyInvoice()]);
+                }
+
                 setRemarks(data.remarks || "");
                 setLoadingPoint(data.loading_point || "");
                 setDeliveryPoint(data.delivery_point || "");
                 setVehicleNo(data.vehicle_no || "");
-                setInsuranceComp(data.insurance_company === 'NOT KNOWN' ? 'not-known' : (data.insurance_company || 'not-known'));
+                setInsuranceComp(normalizeInsuranceComp(data.insurance_company));
                 setPolicyNo(data.policy_no || "");
                 setPolicyDate(formatDateForInput(data.policy_date));
                 setPolicyAmount(String(data.policy_amount ?? ""));
@@ -564,6 +620,12 @@ function NewConsignmentForm() {
                 setStfDate(formatDateForInput(data.stf_date));
                 setStfValidUpto(formatDateForInput(data.stf_valid_upto));
 
+                const loadedBusiness = String(data.business_type || 'REGULAR').toUpperCase();
+                setBusinessType(loadedBusiness.includes('REGULAR') ? 'regular' : loadedBusiness.toLowerCase());
+                const loadedTransport = String(data.transport_mode || 'BY ROAD').toUpperCase();
+                setTransportMode(loadedTransport.includes('ROAD') ? 'road' : loadedTransport.toLowerCase());
+                if (data.private_mark) setOtherPrivateMark(data.private_mark);
+                if (data.doc_prepared_by) setDocPreparedBy(data.doc_prepared_by);
                 // Load freight include state
                 if (data.freight_included && data.parent_cn_id) {
                     setFreightIncluded(true);
@@ -614,6 +676,29 @@ function NewConsignmentForm() {
         setPackages([...packages, newPackage]);
         setCurrentPackageQty("");
     };
+
+    const updateInvoice = (id: string, patch: Partial<InvoiceItem>) => {
+        setInvoices((current) => current.map((inv) => (inv.id === id ? { ...inv, ...patch } : inv)));
+    };
+
+    const handleAddInvoice = () => {
+        setInvoices((current) => [...current, createEmptyInvoice()]);
+    };
+
+    const handleRemoveInvoice = (id: string) => {
+        setInvoices((current) => (current.length <= 1 ? [createEmptyInvoice()] : current.filter((inv) => inv.id !== id)));
+    };
+
+    const filledInvoices = invoices.filter((inv) => (
+        inv.invoice_no.trim()
+        || inv.invoice_date
+        || inv.invoice_amount.trim()
+        || inv.eway_bill.trim()
+        || inv.eway_from_date
+        || inv.eway_to_date
+    ));
+    const primaryInvoice = filledInvoices[0] || invoices[0] || createEmptyInvoice();
+    const invoiceGoodsValue = filledInvoices.reduce((sum, inv) => sum + (parseFloat(inv.invoice_amount) || 0), 0);
 
     const totalPackages = packages.length; // Or sum of qtys? Requirement says "Add more means we can multiplr package method it will dispalyed in the table then it will be shown in the toral packages"
     // Usually total packages is sum of Quantity.
@@ -767,7 +852,7 @@ function NewConsignmentForm() {
                 total_qty: isLoose ? packages.length : totalQty,
                 is_loose: isLoose,
                 packages: packages,
-                goods_value: invoiceAmt,
+                goods_value: invoiceGoodsValue || primaryInvoice.invoice_amount,
                 hsn_desc: hsnDesc,
                 goods_desc: goodsDesc,
                 actual_weight: actualWeight,
@@ -799,14 +884,23 @@ function NewConsignmentForm() {
                 parent_cn_id: freightIncluded ? parentCnId : null,
                 freight_included: freightIncluded,
 
-                invoice_no: invoiceNo,
-                invoice_date: parseDateForDB(invoiceDate),
-                invoice_amount: invoiceAmt,
-                eway_bill: ewayBill,
-                eway_from_date: parseDateForDB(ewayFrom),
-                eway_to_date: parseDateForDB(ewayTo),
+                invoice_no: primaryInvoice.invoice_no,
+                invoice_date: parseDateForDB(primaryInvoice.invoice_date),
+                invoice_amount: primaryInvoice.invoice_amount,
+                eway_bill: primaryInvoice.eway_bill,
+                eway_from_date: parseDateForDB(primaryInvoice.eway_from_date),
+                eway_to_date: parseDateForDB(primaryInvoice.eway_to_date),
+                invoices: filledInvoices.map((inv) => ({
+                    id: inv.id,
+                    invoice_no: inv.invoice_no,
+                    invoice_date: parseDateForDB(inv.invoice_date),
+                    invoice_amount: parseFloat(inv.invoice_amount) || 0,
+                    eway_bill: inv.eway_bill,
+                    eway_from_date: parseDateForDB(inv.eway_from_date),
+                    eway_to_date: parseDateForDB(inv.eway_to_date),
+                })),
 
-                insurance_company: insuranceComp === 'not-known' ? 'NOT KNOWN' : insuranceComp,
+                insurance_company: insuranceCompLabel(insuranceComp),
                 policy_no: policyNo,
                 policy_date: parseDateForDB(policyDate),
                 policy_amount: policyAmount,
@@ -893,8 +987,9 @@ function NewConsignmentForm() {
                             setCharges({ unloading: '', detention: '', extraKm: '', loading: '', doorColl: '', doorDel: '', trafficChallan: '', other: '' });
                             setHsnDesc(''); setGoodsDesc(''); setActualWeight(''); setLoadUnit('mt');
                             setDimL(''); setDimW(''); setDimH(''); setVolume(''); setPrivateMark('');
-                            setInvoiceNo(''); setInvoiceDate(''); setInvoiceAmt(''); setEwayBill(''); setEwayFrom(''); setEwayTo('');
+                            setInvoices([createEmptyInvoice()]);
                             setInsuranceComp('not-known'); setPolicyNo(''); setPolicyDate(''); setPolicyAmount('');
+                            setBusinessType('regular'); setTransportMode('road'); setOtherPrivateMark('');
                             setPoNo(''); setPoDate(''); setStfNo(''); setStfDate(''); setStfValidUpto('');
                             setRemarks(''); setAdvanceAmount(''); setVehicleNo(''); setLoadingPoint(''); setDeliveryPoint('');
                             setFreightIncluded(false); setParentCnId(null); setParentCnData(null); setParentCnSearch(''); setParentCnOptions([]);
@@ -1692,37 +1787,87 @@ function NewConsignmentForm() {
                                         <Card className="border-none shadow-md bg-white">
                                             <CardHeader className="py-3 px-4 bg-slate-50 border-b flex flex-row items-center justify-between">
                                                 <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Invoice Details</CardTitle>
-                                                <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                                                    onClick={handleAddInvoice}
+                                                >
                                                     <Plus className="h-3 w-3 mr-1" /> Add More Invoice
                                                 </Button>
                                             </CardHeader>
                                             <CardContent className="p-6 space-y-4">
-                                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Invoice No</Label>
-                                                        <Input className="h-8 text-xs" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} />
+                                                {invoices.map((inv, index) => (
+                                                    <div key={inv.id} className="space-y-3 rounded-lg border bg-slate-50/60 p-4">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="text-[11px] font-bold uppercase text-muted-foreground">
+                                                                Invoice {index + 1}
+                                                            </div>
+                                                            {invoices.length > 1 ? (
+                                                                <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                                                                    onClick={() => handleRemoveInvoice(inv.id)}
+                                                                >
+                                                                    <X className="h-3.5 w-3.5 mr-1" /> Remove
+                                                                </Button>
+                                                            ) : null}
+                                                        </div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[10px] font-bold text-muted-foreground">Invoice No</Label>
+                                                                <Input
+                                                                    className="h-8 text-xs"
+                                                                    value={inv.invoice_no}
+                                                                    onChange={(e) => updateInvoice(inv.id, { invoice_no: e.target.value })}
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[10px] font-bold text-muted-foreground">Invoice Date</Label>
+                                                                <DatePicker
+                                                                    className="h-8 text-xs w-full"
+                                                                    value={inv.invoice_date}
+                                                                    onChange={(val) => updateInvoice(inv.id, { invoice_date: val })}
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[10px] font-bold text-muted-foreground">Invoice Amt</Label>
+                                                                <Input
+                                                                    className="h-8 text-xs"
+                                                                    value={inv.invoice_amount}
+                                                                    onChange={(e) => updateInvoice(inv.id, { invoice_amount: e.target.value })}
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[10px] font-bold text-muted-foreground">eWay Bill</Label>
+                                                                <Input
+                                                                    className="h-8 text-xs"
+                                                                    value={inv.eway_bill}
+                                                                    onChange={(e) => updateInvoice(inv.id, { eway_bill: e.target.value })}
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[10px] font-bold text-muted-foreground">eWay From Date</Label>
+                                                                <DatePicker
+                                                                    className="h-8 text-xs w-full"
+                                                                    value={inv.eway_from_date}
+                                                                    onChange={(val) => updateInvoice(inv.id, { eway_from_date: val })}
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <Label className="text-[10px] font-bold text-muted-foreground">eWay To Date</Label>
+                                                                <DatePicker
+                                                                    className="h-8 text-xs w-full"
+                                                                    value={inv.eway_to_date}
+                                                                    onChange={(val) => updateInvoice(inv.id, { eway_to_date: val })}
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Invoice Date</Label>
-                                                        <DatePicker className="h-8 text-xs w-full" value={invoiceDate} onChange={(val) => setInvoiceDate(val)} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">Invoice Amt</Label>
-                                                        <Input className="h-8 text-xs" value={invoiceAmt} onChange={(e) => setInvoiceAmt(e.target.value)} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">eWay Bill</Label>
-                                                        <Input className="h-8 text-xs" value={ewayBill} onChange={(e) => setEwayBill(e.target.value)} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">eWay From Date</Label>
-                                                        <DatePicker className="h-8 text-xs w-full" value={ewayFrom} onChange={(val) => setEwayFrom(val)} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[10px] font-bold text-muted-foreground">eWay To Date</Label>
-                                                        <DatePicker className="h-8 text-xs w-full" value={ewayTo} onChange={(val) => setEwayTo(val)} />
-                                                    </div>
-                                                </div>
+                                                ))}
                                             </CardContent>
                                         </Card>
 
@@ -1735,7 +1880,7 @@ function NewConsignmentForm() {
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Type Of Business</Label>
-                                                        <Select defaultValue="regular">
+                                                        <Select value={businessType} onValueChange={setBusinessType}>
                                                             <SelectTrigger className="h-8 text-xs">
                                                                 <SelectValue />
                                                             </SelectTrigger>
@@ -1746,7 +1891,7 @@ function NewConsignmentForm() {
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Transport Mode</Label>
-                                                        <Select defaultValue="road">
+                                                        <Select value={transportMode} onValueChange={setTransportMode}>
                                                             <SelectTrigger className="h-8 text-xs">
                                                                 <SelectValue />
                                                             </SelectTrigger>
@@ -1757,7 +1902,11 @@ function NewConsignmentForm() {
                                                     </div>
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Private Mark</Label>
-                                                        <Input className="h-8 text-xs" />
+                                                        <Input
+                                                            className="h-8 text-xs"
+                                                            value={otherPrivateMark}
+                                                            onChange={(e) => setOtherPrivateMark(e.target.value)}
+                                                        />
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1765,7 +1914,7 @@ function NewConsignmentForm() {
                                                         <Label className="text-[10px] font-bold text-muted-foreground">Doc Prepared By</Label>
                                                         <Input
                                                             className="h-8 text-xs bg-slate-50"
-                                                            value={loggedInUserName}
+                                                            value={loggedInUserName || docPreparedBy}
                                                             readOnly
                                                         />
                                                     </div>

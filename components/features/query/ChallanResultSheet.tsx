@@ -13,6 +13,7 @@ import {
     SheetDataTable,
     type SheetColumn,
 } from './DocumentSheet';
+import { QueryRefLink, useQueryDocDialogs } from './QueryDocDialogs';
 import { money, num, upper, fmtDate } from './queryFormat';
 import type { QueryConsignment, QueryChallanDetail, QueryLinkedPayment } from '@/lib/types/query.types';
 
@@ -33,6 +34,7 @@ export function ChallanResultSheet({ detail, reset }: { detail: QueryChallanDeta
     const [printOpen, setPrintOpen] = React.useState(false);
     const [linked, setLinked] = React.useState<QueryConsignment[]>([]);
     const [loadingLinked, setLoadingLinked] = React.useState(false);
+    const docs = useQueryDocDialogs();
     const challan = detail.challan;
     const c = challan;
 
@@ -81,7 +83,18 @@ export function ChallanResultSheet({ detail, reset }: { detail: QueryChallanDeta
     const isPaid = pending <= 0.005 && (brokerBill != null || paidTotal > 0);
 
     const cnColumns: SheetColumn<QueryConsignment>[] = [
-        { key: 'cn', header: 'CN No', cell: (r) => <span className="font-mono font-semibold">{r.cn_no}</span> },
+        {
+            key: 'cn',
+            header: 'CN No',
+            cell: (r) => (
+                <QueryRefLink
+                    loading={docs.isLoading(`cn:${r.id || r.cn_no}`)}
+                    onClick={() => void docs.openCn(r)}
+                >
+                    {r.cn_no}
+                </QueryRefLink>
+            ),
+        },
         { key: 'from', header: 'Loading', cell: (r) => upper(r.loading_point || r.booking_branch) || '—' },
         { key: 'to', header: 'Unloading', cell: (r) => upper(r.delivery_point || r.dest_branch) || '—' },
         { key: 'goods', header: 'Goods', cell: (r) => upper(r.goods_class || r.goods_desc) || '—' },
@@ -297,6 +310,7 @@ export function ChallanResultSheet({ detail, reset }: { detail: QueryChallanDeta
             </DocumentSheet>
 
             <ChallanDetailsDialog isOpen={printOpen} onClose={() => setPrintOpen(false)} challan={challan} />
+            {docs.dialogs}
         </>
     );
 }
