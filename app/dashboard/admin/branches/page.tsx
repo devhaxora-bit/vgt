@@ -597,7 +597,7 @@ export default function BranchManagementPage() {
                             CN number assigning has moved to{' '}
                             <span className="font-semibold">More → Support → Documentation</span>.
                             Each branch has its own exclusive CN block issued by the Head Branch (VZM).
-                            No two branches can share or overlap CN ranges.
+                            CN blocks cannot overlap active, queued, or exhausted ranges (same or other branch).
                         </div>
                     </div>
                 </div>

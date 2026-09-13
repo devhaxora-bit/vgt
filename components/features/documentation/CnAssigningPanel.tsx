@@ -66,6 +66,8 @@ type CnRangeConflict = {
     branch_name: string;
     range_start: number;
     range_end: number;
+    status?: string;
+    same_branch?: boolean;
 };
 
 type CnRangeValidation = {
@@ -74,6 +76,7 @@ type CnRangeValidation = {
     existing_cns: number[];
     suggested_start: number | null;
     remaining_after_start: number;
+    all_used?: boolean;
     error?: string;
 };
 
@@ -83,6 +86,7 @@ const defaultValidation: CnRangeValidation = {
     existing_cns: [],
     suggested_start: null,
     remaining_after_start: 0,
+    all_used: false,
 };
 
 const defaultRangeForm = {
@@ -201,11 +205,12 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                     }
 
                     setValidation({
-                        status: data.has_conflicts ? 'conflict' : 'valid',
+                        status: data.has_conflicts || data.all_used ? 'conflict' : 'valid',
                         conflicts: data.conflicts || [],
                         existing_cns: data.existing_cns || [],
                         suggested_start: data.suggested_start ?? null,
                         remaining_after_start: data.remaining_after_start ?? 0,
+                        all_used: Boolean(data.all_used),
                     });
                 } catch {
                     setValidation({
@@ -235,8 +240,12 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
         if (!branch) return;
 
         if (validation.status === 'conflict') {
+            if (validation.all_used) {
+                toast.error('All CN numbers in this range are already used. Choose a different range.');
+                return;
+            }
             toast.error(
-                `Range overlaps with ${validation.conflicts.map((c) => c.branch_code).join(', ')}. Choose a different range.`
+                `Range overlaps an existing ${validation.conflicts.map((c) => `${c.status || 'issued'} ${c.range_start}–${c.range_end} (${c.branch_code})`).join(', ')}. Choose a different range.`
             );
             return;
         }
@@ -362,10 +371,21 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                         <XCircle className="h-3.5 w-3.5 shrink-0" />
                         Range conflict — cannot assign
                     </div>
+                    {v.all_used && (
+                        <div className="text-red-600 ml-5">
+                            All numbers in this range are already used in consignments.
+                        </div>
+                    )}
                     {v.conflicts.map((c, i) => (
                         <div key={i} className="text-red-600 ml-5">
-                            Numbers {c.range_start}–{c.range_end} are already issued to branch{' '}
-                            <span className="font-mono font-semibold">{c.branch_code}</span> ({c.branch_name})
+                            Numbers {c.range_start}–{c.range_end} already exist as{' '}
+                            <span className="font-semibold">{c.status || 'issued'}</span>
+                            {c.same_branch ? ' on this branch' : (
+                                <>
+                                    {' '}on branch{' '}
+                                    <span className="font-mono font-semibold">{c.branch_code}</span> ({c.branch_name})
+                                </>
+                            )}
                         </div>
                     ))}
                     <div className="text-red-600 ml-5">Please choose a different range.</div>
@@ -377,7 +397,7 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs space-y-1.5">
                 <div className="flex items-center gap-2 font-semibold text-emerald-700">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                    Range available — no conflicts with other branches
+                    Range available — no overlap with active, queued, or exhausted ranges
                 </div>
 
                 {v.existing_cns.length > 0 && (

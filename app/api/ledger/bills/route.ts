@@ -30,7 +30,12 @@ export async function GET(request: Request) {
             status,
             cn_total_amount,
             added_other_charges_amount,
+            vehicle_cancel_items,
             vehicle_cancel_charges_total,
+            consignment_snapshot,
+            extra_charge_items,
+            cancel_reason,
+            cancelled_at,
             created_at,
             parties:party_id (
                 name,
@@ -65,12 +70,17 @@ export async function GET(request: Request) {
             billing_period_to: row.billing_period_to,
             amount: Number(row.amount || 0),
             bill_ref_no: row.bill_ref_no,
-            narration: row.narration,
+            narration: row.narration || '',
             covered_cn_nos: row.covered_cn_nos || [],
             status: row.status,
             cn_total_amount: Number(row.cn_total_amount || 0),
             added_other_charges_amount: Number(row.added_other_charges_amount || 0),
+            vehicle_cancel_items: row.vehicle_cancel_items || [],
             vehicle_cancel_charges_total: Number(row.vehicle_cancel_charges_total || 0),
+            consignment_snapshot: row.consignment_snapshot || [],
+            extra_charge_items: row.extra_charge_items || [],
+            cancel_reason: row.cancel_reason,
+            cancelled_at: row.cancelled_at,
             created_at: row.created_at,
         };
     });
@@ -82,5 +92,16 @@ export async function GET(request: Request) {
         })
         : rows;
 
-    return NextResponse.json({ data: filtered });
+    const totalAmount = filtered
+        .filter((row) => row.status === 'ACTIVE')
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+
+    return NextResponse.json({
+        data: filtered,
+        summary: {
+            count: filtered.length,
+            active_count: filtered.filter((row) => row.status === 'ACTIVE').length,
+            total_amount: totalAmount,
+        },
+    });
 }

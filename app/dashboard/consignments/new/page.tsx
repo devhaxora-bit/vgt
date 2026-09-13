@@ -775,7 +775,7 @@ function NewConsignmentForm() {
                 && (parsedCn < cnSequenceState.rangeStart || parsedCn > cnSequenceState.rangeEnd)
             ) {
                 toast.error(
-                    `CN ${parsedCn} is outside the assigned range ${cnSequenceState.rangeStart}-${cnSequenceState.rangeEnd} for this branch.`,
+                    `CN ${parsedCn} is outside the active range ${cnSequenceState.rangeStart}-${cnSequenceState.rangeEnd} for this branch. Queued ranges can be used only after the current range is finished.`,
                 );
                 return;
             }
