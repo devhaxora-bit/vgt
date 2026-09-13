@@ -54,6 +54,7 @@ const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClie
                 mode: 'legacy' as const,
                 activeRange: null,
                 latestRange: null,
+                assignedRanges: [] as ManagedCnRange[],
                 expectedCn: Number(branch.next_cn_no || 800001),
             };
         }
@@ -61,27 +62,32 @@ const getBranchCnContext = async (supabase: Awaited<ReturnType<typeof createClie
         return { error: cnRangesError.message };
     }
 
-    const activeRange = ((cnRanges || []) as ManagedCnRange[]).find((range) => range.status === 'active') || null;
+    const assignedRanges = ((cnRanges || []) as ManagedCnRange[]).filter(
+        (range) => range.status === 'active' || range.status === 'pending' || range.status === 'exhausted',
+    );
+    const activeRange = assignedRanges.find((range) => range.status === 'active') || null;
     const latestRange = ((cnRanges || []) as ManagedCnRange[])[0] || null;
 
-    if (activeRange) {
-        const expectedCn = Number(activeRange.next_cn_no);
+    if (activeRange || assignedRanges.length > 0) {
+        const expectedCn = activeRange ? Number(activeRange.next_cn_no) : null;
 
         return {
             branch,
             mode: 'range' as const,
             activeRange,
             latestRange,
+            assignedRanges,
             expectedCn,
         };
     }
 
     return {
         branch,
-        mode: (latestRange ? 'range' : 'legacy') as 'range' | 'legacy',
+        mode: 'legacy' as const,
         activeRange: null,
         latestRange,
-        expectedCn: latestRange ? null : Number(branch.next_cn_no || 800001),
+        assignedRanges: [] as ManagedCnRange[],
+        expectedCn: Number(branch.next_cn_no || 800001),
     };
 };
 
@@ -279,7 +285,8 @@ export async function POST(request: Request) {
     }
 
     if (branchCnContext.mode === 'range') {
-        if (!branchCnContext.activeRange) {
+        const assignedRanges = branchCnContext.assignedRanges || [];
+        if (!branchCnContext.activeRange && assignedRanges.length === 0) {
             const exhaustedRange = branchCnContext.latestRange;
             const message = exhaustedRange?.status === 'exhausted'
                 ? `CN range ${exhaustedRange.range_start}-${exhaustedRange.range_end} is exhausted for branch ${bookingBranchCode}. Update Branch Management with a new range before creating more CNs.`
@@ -295,14 +302,24 @@ export async function POST(request: Request) {
             );
         }
 
-        const rangeStart = Number(branchCnContext.activeRange.range_start);
-        const rangeEnd = Number(branchCnContext.activeRange.range_end);
+        const owningRange = assignedRanges.find(
+            (range) =>
+                submittedCnNo >= Number(range.range_start)
+                && submittedCnNo <= Number(range.range_end),
+        );
 
-        if (submittedCnNo < rangeStart || submittedCnNo > rangeEnd) {
+        if (!owningRange) {
+            const active = branchCnContext.activeRange;
+            const hint = active
+                ? ` Active range is ${active.range_start}-${active.range_end}; free numbers in older assigned ranges are also allowed.`
+                : '';
             return NextResponse.json({
-                error: `CN ${submittedCnNo} is outside the assigned range ${rangeStart}-${rangeEnd} for branch ${bookingBranchCode}.`,
+                error: `CN ${submittedCnNo} is outside all assigned ranges for branch ${bookingBranchCode}.${hint}`,
             }, { status: 400 });
         }
+
+        const rangeStart = Number(owningRange.range_start);
+        const rangeEnd = Number(owningRange.range_end);
 
         const { error: advanceError } = await supabase.rpc('advance_branch_cn_sequence', {
             p_branch_code: bookingBranchCode,
@@ -314,12 +331,12 @@ export async function POST(request: Request) {
             let friendly = raw;
             if (/already used/i.test(raw)) {
                 friendly = `CN ${submittedCnNo} is already used. Enter a different CN number.`;
-            } else if (/outside the assigned range/i.test(raw)) {
-                friendly = `CN ${submittedCnNo} is outside the assigned range ${rangeStart}-${rangeEnd} for branch ${bookingBranchCode}.`;
+            } else if (/outside all assigned ranges|outside the assigned range/i.test(raw)) {
+                friendly = `CN ${submittedCnNo} is outside all assigned ranges for branch ${bookingBranchCode}.`;
             } else if (/exhausted/i.test(raw)) {
-                friendly = `CN range ${rangeStart}-${rangeEnd} is exhausted for branch ${bookingBranchCode}.`;
-            } else if (/no active cn range/i.test(raw)) {
-                friendly = `No active CN range is configured for branch ${bookingBranchCode}.`;
+                friendly = `CN range ${rangeStart}-${rangeEnd} has no free numbers left for branch ${bookingBranchCode}.`;
+            } else if (/no (active )?cn range/i.test(raw)) {
+                friendly = `No CN range is configured for branch ${bookingBranchCode}.`;
             } else if (/authentication required/i.test(raw)) {
                 friendly = 'Please sign in again and retry.';
             }

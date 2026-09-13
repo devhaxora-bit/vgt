@@ -262,16 +262,16 @@ export default function BillEntryPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
-                        <Table>
+                        <Table className="min-w-[1100px] table-fixed">
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Bill No</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Party</TableHead>
-                                    <TableHead>Covered CNs</TableHead>
-                                    <TableHead className="text-right">Amount</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead className="w-[160px]">Bill No</TableHead>
+                                    <TableHead className="w-[100px]">Date</TableHead>
+                                    <TableHead className="w-[200px]">Party</TableHead>
+                                    <TableHead className="w-[280px]">Covered CNs</TableHead>
+                                    <TableHead className="w-[120px] text-right">Amount</TableHead>
+                                    <TableHead className="w-[100px]">Status</TableHead>
+                                    <TableHead className="w-[220px] text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -287,28 +287,43 @@ export default function BillEntryPage() {
                                             No bills found. Create a bill to get started.
                                         </TableCell>
                                     </TableRow>
-                                ) : bills.map((bill) => (
+                                ) : bills.map((bill) => {
+                                    const covered = bill.covered_cn_nos || [];
+                                    const coveredLabel = covered.join(', ') || '—';
+                                    return (
                                     <TableRow key={bill.id}>
-                                        <TableCell className="font-mono font-semibold text-primary">
+                                        <TableCell className="font-mono font-semibold text-primary whitespace-nowrap">
                                             {bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase()}
                                         </TableCell>
-                                        <TableCell>{fmtDate(bill.billing_date)}</TableCell>
-                                        <TableCell>
-                                            <div className="font-medium">{bill.party_name}</div>
-                                            <div className="text-xs text-muted-foreground">{bill.party_code}</div>
+                                        <TableCell className="whitespace-nowrap">{fmtDate(bill.billing_date)}</TableCell>
+                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                            <div className="font-medium truncate" title={bill.party_name}>{bill.party_name}</div>
+                                            <div className="text-xs text-muted-foreground truncate">{bill.party_code}</div>
                                         </TableCell>
-                                        <TableCell className="max-w-[260px] text-xs font-mono break-words">
-                                            {(bill.covered_cn_nos || []).join(', ') || '—'}
+                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                            <div className="flex items-start gap-2 min-w-0">
+                                                {covered.length > 0 && (
+                                                    <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
+                                                        {covered.length}
+                                                    </Badge>
+                                                )}
+                                                <div
+                                                    className="text-xs font-mono text-muted-foreground line-clamp-2 break-all"
+                                                    title={coveredLabel}
+                                                >
+                                                    {coveredLabel}
+                                                </div>
+                                            </div>
                                         </TableCell>
-                                        <TableCell className="text-right font-mono font-semibold">
+                                        <TableCell className="text-right font-mono font-semibold whitespace-nowrap">
                                             ₹{fmtMoney(bill.amount)}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="whitespace-nowrap">
                                             <Badge variant={bill.status === 'ACTIVE' ? 'default' : 'secondary'}>
                                                 {bill.status}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-right">
+                                        <TableCell className="text-right whitespace-nowrap">
                                             <div className="flex justify-end gap-1">
                                                 <Button variant="ghost" size="sm" onClick={() => void openView(bill)}>
                                                     <Eye className="h-3.5 w-3.5 mr-1" /> View
@@ -329,7 +344,8 @@ export default function BillEntryPage() {
                                             </div>
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </div>

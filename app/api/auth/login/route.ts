@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const rememberMe = Boolean(validation.data.remember_me);
+        const rememberMe = validation.data.remember_me !== false;
         const result = await authService.login(validation.data);
 
         if (!result.success) {

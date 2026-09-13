@@ -45,6 +45,10 @@ export async function GET(request: Request) {
     }
 
     await supabase.rpc('ensure_active_cn_range', { p_branch_id: branch.id });
+    const { error: reconcileError } = await supabase.rpc('reconcile_branch_cn_ranges', { p_branch_id: branch.id });
+    if (reconcileError && reconcileError.code !== '42883') {
+        console.warn('CN range reconcile skipped:', reconcileError.message);
+    }
 
     const { data: cnRanges, error: cnRangesError } = await supabase
         .from('branch_cn_ranges')
@@ -82,6 +86,14 @@ export async function GET(request: Request) {
                 rangeStart: Number(activeRange.range_start),
                 rangeEnd,
                 nextNo,
+                assignedRanges: (cnRanges || [])
+                    .filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'exhausted')
+                    .map((r) => ({
+                        rangeStart: Number(r.range_start),
+                        rangeEnd: Number(r.range_end),
+                        nextNo: Number(r.next_cn_no),
+                        status: r.status,
+                    })),
                 message: `CN range ${activeRange.range_start}-${rangeEnd} is exhausted for branch ${branch.code}. Update Branch Management with a new range.`,
             });
         }
@@ -97,6 +109,14 @@ export async function GET(request: Request) {
             nextNo,
             remainingCount,
             isLowCn: remainingCount > 0 && remainingCount <= 5,
+            assignedRanges: (cnRanges || [])
+                .filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'exhausted')
+                .map((r) => ({
+                    rangeStart: Number(r.range_start),
+                    rangeEnd: Number(r.range_end),
+                    nextNo: Number(r.next_cn_no),
+                    status: r.status,
+                })),
         });
     }
 

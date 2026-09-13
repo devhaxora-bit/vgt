@@ -35,6 +35,7 @@ export function AddBillingDialog({
     partyLabel,
     relatedChallanNos = [],
     onCoveredCnNosChange,
+    partyField,
 }: {
     open: boolean;
     onClose: () => void;
@@ -45,6 +46,8 @@ export function AddBillingDialog({
     partyLabel?: string;
     relatedChallanNos?: string[];
     onCoveredCnNosChange?: (cnNos: string[]) => void;
+    /** Optional party picker rendered at the top of the form (create pages). */
+    partyField?: React.ReactNode;
 }) {
 
     const emptyForm = () => ({
@@ -71,7 +74,7 @@ export function AddBillingDialog({
     }, [open, partyId]);
 
     useEffect(() => {
-        if (!open) return;
+        if (!open || !partyId) return;
         const date = form.billing_date;
         const prefix = getBillRefPrefix(date);
         if (lastAutoPrefixRef.current && lastAutoPrefixRef.current === prefix) return;
@@ -116,6 +119,10 @@ export function AddBillingDialog({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!partyId) {
+            toast.error('Select a party first');
+            return;
+        }
         if (!form.bill_ref_no.trim()) {
             toast.error('Bill No is required');
             return;
@@ -164,13 +171,20 @@ export function AddBillingDialog({
 
     if (!open) return null;
 
-    const title = partyLabel ? `Generate Bill — ${partyLabel}` : 'Add Billing Record';
-    const description = 'Select covered CNs, set bill details, and save. Related challans for selected CNs are shown when available.';
+    const title = partyLabel ? `Generate Bill — ${partyLabel}` : 'Create Bill';
+    const description = 'Select the party, cover unbilled CNs, set bill details, and save.';
 
     const formBody = (
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
                     <div className="grid gap-6 p-6 lg:grid-cols-[1.05fr_0.95fr]">
                         <div className="space-y-4">
+                            {partyField ? (
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Party *</Label>
+                                    {partyField}
+                                </div>
+                            ) : null}
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
                                     <Label className="text-xs font-bold uppercase text-muted-foreground">Billing Date *</Label>
@@ -232,14 +246,20 @@ export function AddBillingDialog({
                         <div className="space-y-4">
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Covered CNs</Label>
-                                <BillingConsignmentPicker
-                                    consignments={consignments}
-                                    value={form.covered_cn_nos}
-                                    onChange={(covered_cn_nos) => {
-                                        setForm((f) => ({ ...f, covered_cn_nos }));
-                                        onCoveredCnNosChange?.(covered_cn_nos);
-                                    }}
-                                />
+                                {!partyId ? (
+                                    <div className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
+                                        Select a party to load unbilled CNs.
+                                    </div>
+                                ) : (
+                                    <BillingConsignmentPicker
+                                        consignments={consignments}
+                                        value={form.covered_cn_nos}
+                                        onChange={(covered_cn_nos) => {
+                                            setForm((f) => ({ ...f, covered_cn_nos }));
+                                            onCoveredCnNosChange?.(covered_cn_nos);
+                                        }}
+                                    />
+                                )}
                             </div>
 
                             {relatedChallanNos.length > 0 && (
@@ -324,7 +344,7 @@ export function AddBillingDialog({
                         {variant === 'dialog' && (
                             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                         )}
-                        <Button type="submit" disabled={saving} className="gap-2">
+                        <Button type="submit" disabled={saving || !partyId} className="gap-2">
                             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                             Generate Bill
                         </Button>

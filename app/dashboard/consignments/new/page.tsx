@@ -107,6 +107,12 @@ interface BranchCnSequenceState {
     rangeEnd?: number | null;
     remainingCount?: number | null;
     message?: string;
+    assignedRanges?: Array<{
+        rangeStart: number;
+        rangeEnd: number;
+        nextNo: number;
+        status: string;
+    }>;
 }
 
 const idleCnSequenceState: BranchCnSequenceState = {
@@ -398,6 +404,7 @@ function NewConsignmentForm() {
                             rangeEnd: data.rangeEnd ?? null,
                             remainingCount: data.remainingCount ?? null,
                             message: data.message,
+                            assignedRanges: Array.isArray(data.assignedRanges) ? data.assignedRanges : [],
                         });
                         return;
                     }
@@ -410,6 +417,7 @@ function NewConsignmentForm() {
                         rangeStart: data.rangeStart ?? null,
                         rangeEnd: data.rangeEnd ?? null,
                         message: data.message || 'No active CN range is available for this branch.',
+                        assignedRanges: Array.isArray(data.assignedRanges) ? data.assignedRanges : [],
                     });
                     return;
                 }
@@ -770,14 +778,24 @@ function NewConsignmentForm() {
             if (
                 isRangeManaged
                 && cnSequenceState.status === 'ready'
-                && typeof cnSequenceState.rangeStart === 'number'
-                && typeof cnSequenceState.rangeEnd === 'number'
-                && (parsedCn < cnSequenceState.rangeStart || parsedCn > cnSequenceState.rangeEnd)
             ) {
-                toast.error(
-                    `CN ${parsedCn} is outside the active range ${cnSequenceState.rangeStart}-${cnSequenceState.rangeEnd} for this branch. Queued ranges can be used only after the current range is finished.`,
+                const assigned = cnSequenceState.assignedRanges || [];
+                const inAssignedRange = assigned.some(
+                    (range) => parsedCn >= range.rangeStart && parsedCn <= range.rangeEnd,
                 );
-                return;
+                const inActiveOnly = (
+                    typeof cnSequenceState.rangeStart === 'number'
+                    && typeof cnSequenceState.rangeEnd === 'number'
+                    && parsedCn >= cnSequenceState.rangeStart
+                    && parsedCn <= cnSequenceState.rangeEnd
+                );
+
+                if (assigned.length > 0 ? !inAssignedRange : !inActiveOnly) {
+                    toast.error(
+                        `CN ${parsedCn} is outside all assigned ranges for this branch. Free numbers from older ranges can still be entered.`,
+                    );
+                    return;
+                }
             }
 
             if (

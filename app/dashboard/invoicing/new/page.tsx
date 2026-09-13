@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileText, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
@@ -10,7 +10,6 @@ import { PartyAutocomplete } from '@/components/PartyAutocomplete';
 import { AddBillingDialog } from '@/components/features/ledger/AddBillingDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Party } from '@/lib/types/party.types';
 import { type LedgerConsignment } from '@/lib/ledgerUi';
 
@@ -70,6 +69,8 @@ export default function CreateBillPage() {
         if (!party || party.id === 'new') {
             setSelectedParty(null);
             setConsignments([]);
+            setRelatedChallanNos([]);
+            setCoveredCnNosWatch([]);
             setLedgerError(party?.id === 'new' ? 'Select an existing party to generate a bill.' : null);
             return;
         }
@@ -99,11 +100,45 @@ export default function CreateBillPage() {
         return () => { cancelled = true; };
     }, [selectedParty, coveredCnNosWatch]);
 
-    const showForm = Boolean(selectedParty && !ledgerError && !loadingParty);
     const partyLabel = useMemo(() => {
         if (!selectedParty) return '';
         return selectedParty.code ? `${selectedParty.name} (${selectedParty.code})` : selectedParty.name;
     }, [selectedParty]);
+
+    const partyField = (
+        <div className="space-y-2">
+            <PartyAutocomplete
+                value={partyInput}
+                placeholder="Search party by name or code…"
+                onValueChange={(value) => {
+                    setPartyInput(value);
+                    if (!value.trim()) {
+                        setSelectedParty(null);
+                        setConsignments([]);
+                        setLedgerError(null);
+                    }
+                }}
+                onSelect={handlePartySelect}
+            />
+            {selectedParty && (
+                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <Badge variant="secondary">{selectedParty.code || 'No code'}</Badge>
+                    <span>{selectedParty.name}</span>
+                    {selectedParty.gstin ? <span>GSTIN: {selectedParty.gstin}</span> : null}
+                </div>
+            )}
+            {loadingParty && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading party billing data…
+                </div>
+            )}
+            {ledgerError && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {ledgerError}
+                </div>
+            )}
+        </div>
+    );
 
     return (
         <div className="space-y-6 p-4 md:p-6">
@@ -113,7 +148,7 @@ export default function CreateBillPage() {
                         <FileText className="h-6 w-6 text-primary" /> Create Bill
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Select a party, cover unbilled CNs, and generate the freight bill.
+                        Fill the bill form — pick the party inside, cover CNs, and save.
                     </p>
                 </div>
                 <Button variant="outline" size="sm" asChild>
@@ -123,77 +158,21 @@ export default function CreateBillPage() {
                 </Button>
             </div>
 
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Party</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="max-w-xl">
-                        <PartyAutocomplete
-                            value={partyInput}
-                            placeholder="Search party by name or code…"
-                            onValueChange={setPartyInput}
-                            onSelect={handlePartySelect}
-                        />
-                    </div>
-                    {selectedParty && (
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                            <Badge variant="secondary">{selectedParty.code || 'No code'}</Badge>
-                            <span>{selectedParty.name}</span>
-                            {selectedParty.gstin ? <span>GSTIN: {selectedParty.gstin}</span> : null}
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={() => {
-                                    setSelectedParty(null);
-                                    setPartyInput('');
-                                    setConsignments([]);
-                                    setLedgerError(null);
-                                }}
-                            >
-                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Clear
-                            </Button>
-                        </div>
-                    )}
-                    {loadingParty && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" /> Loading party billing data…
-                        </div>
-                    )}
-                    {ledgerError && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            {ledgerError}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {showForm && selectedParty && (
-                <AddBillingDialog
-                    open
-                    variant="inline"
-                    partyId={selectedParty.id}
-                    partyLabel={partyLabel}
-                    consignments={consignments}
-                    relatedChallanNos={relatedChallanNos}
-                    onCoveredCnNosChange={setCoveredCnNosWatch}
-                    onClose={() => undefined}
-                    onSuccess={() => {
-                        toast.success('Bill created');
-                        router.push('/dashboard/invoicing');
-                    }}
-                />
-            )}
-
-            {!selectedParty && (
-                <Card className="border-dashed">
-                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                        Choose a party above to open the bill generation form.
-                    </CardContent>
-                </Card>
-            )}
+            <AddBillingDialog
+                open
+                variant="inline"
+                partyId={selectedParty?.id || ''}
+                partyLabel={partyLabel || undefined}
+                consignments={ledgerError ? [] : consignments}
+                relatedChallanNos={relatedChallanNos}
+                onCoveredCnNosChange={setCoveredCnNosWatch}
+                partyField={partyField}
+                onClose={() => undefined}
+                onSuccess={() => {
+                    toast.success('Bill created');
+                    router.push('/dashboard/invoicing');
+                }}
+            />
         </div>
     );
 }
