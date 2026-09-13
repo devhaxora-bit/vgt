@@ -113,8 +113,20 @@ export default function DashboardNav() {
     }, []);
 
     const handleLogout = async () => {
-        const supabase = createClient();
-        await supabase.auth.signOut();
+        try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+        } catch (err) {
+            console.error('Logout API failed:', err);
+        }
+
+        // Belt-and-suspenders: clear any remaining client session storage.
+        try {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+        } catch {
+            // Ignore — server logout already ran.
+        }
+
         router.replace('/login');
         router.refresh();
     };

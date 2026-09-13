@@ -5,7 +5,9 @@ import {
     AlertTriangle,
     CheckCircle2,
     Crown,
+    Eye,
     Info,
+    Loader2,
     Pencil,
     RefreshCw,
     Trash2,
@@ -15,6 +17,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     Table,
     TableBody,
@@ -113,7 +123,7 @@ const formatDateTime = (value: string) => {
 
 const getStatusBadge = (status: string) => {
     if (status === 'active') {
-        return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Active</Badge>;
+        return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Available</Badge>;
     }
     if (status === 'pending') {
         return <Badge className="bg-sky-50 text-sky-700 border-sky-200">Queued</Badge>;
@@ -143,6 +153,17 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
     const [editForm, setEditForm] = useState(defaultRangeForm);
     const [validation, setValidation] = useState<CnRangeValidation>(defaultValidation);
     const validationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const [availableDialogOpen, setAvailableDialogOpen] = useState(false);
+    const [availableRange, setAvailableRange] = useState<CnRangeHistoryItem | null>(null);
+    const [availableLoading, setAvailableLoading] = useState(false);
+    const [availableData, setAvailableData] = useState<{
+        available: number[];
+        used: number[];
+        available_count: number;
+        used_count: number;
+        total: number;
+    } | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -302,6 +323,37 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
             toast.error(err instanceof Error ? err.message : 'Failed to delete range');
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const openAvailableCns = async (item: CnRangeHistoryItem) => {
+        setAvailableRange(item);
+        setAvailableDialogOpen(true);
+        setAvailableLoading(true);
+        setAvailableData(null);
+        try {
+            const res = await fetch('/api/references/branches/cn-ranges/available', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    range_start: item.range_start,
+                    range_end: item.range_end,
+                }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Failed to load available CNs');
+            setAvailableData({
+                available: json.available || [],
+                used: json.used || [],
+                available_count: json.available_count || 0,
+                used_count: json.used_count || 0,
+                total: json.total || 0,
+            });
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to load available CNs');
+            setAvailableDialogOpen(false);
+        } finally {
+            setAvailableLoading(false);
         }
     };
 
@@ -637,7 +689,7 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                             <TableRow className="bg-slate-50 hover:bg-slate-50">
                                 <TableHead>Date & Time</TableHead>
                                 <TableHead>CN Range</TableHead>
-                                <TableHead>Starting CN</TableHead>
+                                <TableHead>Next CN</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Issued By</TableHead>
                                 <TableHead>Note</TableHead>
@@ -705,9 +757,19 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                                         )}
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        {item.can_edit || item.can_delete ? (
-                                            <div className="flex justify-end gap-1">
-                                                {editingRangeId === item.id ? (
+                                        <div className="flex justify-end gap-1">
+                                            <Button
+                                                type="button"
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8"
+                                                title="View available CNs"
+                                                onClick={() => void openAvailableCns(item)}
+                                            >
+                                                <Eye className="h-4 w-4" />
+                                            </Button>
+                                            {item.can_edit || item.can_delete ? (
+                                                editingRangeId === item.id ? (
                                                     <>
                                                         <Button type="button" size="sm" variant="outline" onClick={() => setEditingRangeId(null)}>
                                                             Cancel
@@ -729,11 +791,9 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                                                             </Button>
                                                         )}
                                                     </>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <span className="text-muted-foreground text-xs">—</span>
-                                        )}
+                                                )
+                                            ) : null}
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -745,6 +805,87 @@ export function CnAssigningPanel({ branchCode }: CnAssigningPanelProps) {
                     </div>
                 )}
             </div>
+
+            <Dialog
+                open={availableDialogOpen}
+                onOpenChange={(open) => {
+                    setAvailableDialogOpen(open);
+                    if (!open) {
+                        setAvailableRange(null);
+                        setAvailableData(null);
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+                    <DialogHeader>
+                        <DialogTitle className="font-mono">
+                            {availableRange
+                                ? `Available CNs · ${formatRange(availableRange.range_start, availableRange.range_end)}`
+                                : 'Available CNs'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Free numbers in this block (soft-deleted CNs count as free). Used numbers are live consignments only.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {availableRange && (
+                        <div className="flex flex-wrap gap-2 text-xs">
+                            {getStatusBadge(availableRange.status)}
+                            <Badge variant="outline" className="font-mono">
+                                Next {availableRange.next_cn_no}
+                            </Badge>
+                            {availableData && (
+                                <>
+                                    <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-mono">
+                                        {availableData.available_count} available
+                                    </Badge>
+                                    <Badge variant="secondary" className="font-mono">
+                                        {availableData.used_count} used
+                                    </Badge>
+                                    <Badge variant="outline" className="font-mono">
+                                        {availableData.total} total
+                                    </Badge>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {availableLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading available CNs…
+                        </div>
+                    ) : availableData ? (
+                        <div className="space-y-3 min-h-0 flex-1 flex flex-col">
+                            {availableData.available_count === 0 ? (
+                                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-4 text-sm text-amber-800 text-center">
+                                    No free CNs left in this range.
+                                </div>
+                            ) : (
+                                <ScrollArea className="h-[320px] rounded-md border">
+                                    <div className="flex flex-wrap gap-1.5 p-3">
+                                        {availableData.available.map((cn) => (
+                                            <Badge
+                                                key={cn}
+                                                variant="outline"
+                                                className={`font-mono text-[11px] ${
+                                                    availableRange && cn === availableRange.next_cn_no
+                                                        ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+                                                        : ''
+                                                }`}
+                                            >
+                                                {cn}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </ScrollArea>
+                            )}
+                            <p className="text-[11px] text-muted-foreground">
+                                Highlighted badge is the current Next CN when it is still free.
+                            </p>
+                        </div>
+                    ) : null}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

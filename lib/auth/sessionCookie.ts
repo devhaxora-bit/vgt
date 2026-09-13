@@ -1,13 +1,18 @@
 /** Cookie / session lifetime helpers for Supabase SSR auth. */
 
-/** Default stay signed in: 30 days */
+/** Default long-term stay signed in: 30 days */
 export const SESSION_MAX_AGE_REMEMBERED_SEC = 60 * 60 * 24 * 30;
 
-/** Without Remember me: still keep a week so users are not bounced hourly */
-export const SESSION_MAX_AGE_DEFAULT_SEC = 60 * 60 * 24 * 7;
+/** Shorter window only when user explicitly turns off "Keep me signed in" */
+export const SESSION_MAX_AGE_SHORT_SEC = 60 * 60 * 24 * 7;
 
+/**
+ * Long-term session is the default.
+ * Pass `false` only when the user unchecks "Keep me signed in".
+ */
 export function sessionCookieMaxAge(rememberMe?: boolean | null): number {
-    return rememberMe ? SESSION_MAX_AGE_REMEMBERED_SEC : SESSION_MAX_AGE_DEFAULT_SEC;
+    if (rememberMe === false) return SESSION_MAX_AGE_SHORT_SEC;
+    return SESSION_MAX_AGE_REMEMBERED_SEC;
 }
 
 export function withSessionCookieOptions<T extends { maxAge?: number; path?: string; sameSite?: string | boolean }>(

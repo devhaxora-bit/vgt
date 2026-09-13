@@ -3,14 +3,13 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Banknote, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Banknote, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { PartyAutocomplete } from '@/components/PartyAutocomplete';
 import { AddPaymentDialog } from '@/components/features/ledger/AddPaymentDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Party } from '@/lib/types/party.types';
 import {
     type BillingRecord,
@@ -66,11 +65,45 @@ export default function CreatePaymentPage() {
         void loadPartyLedger(party.id);
     };
 
-    const showForm = Boolean(selectedParty && !ledgerError && !loadingParty);
     const partyLabel = useMemo(() => {
         if (!selectedParty) return '';
         return selectedParty.code ? `${selectedParty.name} (${selectedParty.code})` : selectedParty.name;
     }, [selectedParty]);
+
+    const partyField = (
+        <div className="space-y-2">
+            <PartyAutocomplete
+                value={partyInput}
+                placeholder="Search party by name or code…"
+                onValueChange={(value) => {
+                    setPartyInput(value);
+                    if (!value.trim()) {
+                        setSelectedParty(null);
+                        setBillingRecords([]);
+                        setPaymentReceipts([]);
+                        setLedgerError(null);
+                    }
+                }}
+                onSelect={handlePartySelect}
+            />
+            {selectedParty && (
+                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <Badge variant="secondary">{selectedParty.code || 'No code'}</Badge>
+                    <span>{selectedParty.name}</span>
+                </div>
+            )}
+            {loadingParty && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading party payment data…
+                </div>
+            )}
+            {ledgerError && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {ledgerError}
+                </div>
+            )}
+        </div>
+    );
 
     return (
         <div className="space-y-6 p-4 md:p-6">
@@ -80,7 +113,7 @@ export default function CreatePaymentPage() {
                         <Banknote className="h-6 w-6 text-primary" /> Create Payment
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Select a party, link unpaid bills, and record the receipt.
+                        Fill the payment form — pick the party inside, link bills, and save.
                     </p>
                 </div>
                 <Button variant="outline" size="sm" asChild>
@@ -90,77 +123,21 @@ export default function CreatePaymentPage() {
                 </Button>
             </div>
 
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Party</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="max-w-xl">
-                        <PartyAutocomplete
-                            value={partyInput}
-                            placeholder="Search party by name or code…"
-                            onValueChange={setPartyInput}
-                            onSelect={handlePartySelect}
-                        />
-                    </div>
-                    {selectedParty && (
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                            <Badge variant="secondary">{selectedParty.code || 'No code'}</Badge>
-                            <span>{selectedParty.name}</span>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={() => {
-                                    setSelectedParty(null);
-                                    setPartyInput('');
-                                    setBillingRecords([]);
-                                    setPaymentReceipts([]);
-                                    setLedgerError(null);
-                                }}
-                            >
-                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Clear
-                            </Button>
-                        </div>
-                    )}
-                    {loadingParty && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" /> Loading party payment data…
-                        </div>
-                    )}
-                    {ledgerError && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            {ledgerError}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {showForm && selectedParty && (
-                <AddPaymentDialog
-                    key={formKey}
-                    open
-                    variant="inline"
-                    partyId={selectedParty.id}
-                    partyLabel={partyLabel}
-                    billingRecords={billingRecords}
-                    paymentReceipts={paymentReceipts}
-                    onClose={() => undefined}
-                    onSuccess={() => {
-                        toast.success('Payment recorded');
-                        router.push('/dashboard/payment-entry');
-                    }}
-                />
-            )}
-
-            {!selectedParty && (
-                <Card className="border-dashed">
-                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                        Choose a party above to open the payment entry form.
-                    </CardContent>
-                </Card>
-            )}
+            <AddPaymentDialog
+                key={formKey}
+                open
+                variant="inline"
+                partyId={selectedParty?.id || ''}
+                partyLabel={partyLabel || undefined}
+                billingRecords={ledgerError ? [] : billingRecords}
+                paymentReceipts={ledgerError ? [] : paymentReceipts}
+                partyField={partyField}
+                onClose={() => undefined}
+                onSuccess={() => {
+                    toast.success('Payment recorded');
+                    router.push('/dashboard/payment-entry');
+                }}
+            />
         </div>
     );
 }

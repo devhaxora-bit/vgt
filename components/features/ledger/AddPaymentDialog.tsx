@@ -37,6 +37,7 @@ export function AddPaymentDialog({
     open, onClose, partyId, onSuccess, billingRecords, paymentReceipts, record,
     variant = 'dialog',
     partyLabel,
+    partyField,
 }: {
     open: boolean;
     onClose: () => void;
@@ -47,6 +48,8 @@ export function AddPaymentDialog({
     record?: PaymentReceipt | null;
     variant?: 'dialog' | 'inline';
     partyLabel?: string;
+    /** Optional party picker rendered at the top of the form (create pages). */
+    partyField?: React.ReactNode;
 }) {
     interface PaymentBillAllocationDraft {
         billing_record_id: string;
@@ -219,6 +222,11 @@ export function AddPaymentDialog({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        if (!partyId) {
+            toast.error('Select a party first');
+            return;
+        }
+
         if (!usingBillAllocations && !form.amount) {
             toast.error('Amount is required');
             return;
@@ -299,15 +307,22 @@ export function AddPaymentDialog({
 
     const title = isEditing
         ? 'Edit Payment Receipt'
-        : (partyLabel ? `Record Payment — ${partyLabel}` : 'Record Payment');
+        : (partyLabel ? `Record Payment — ${partyLabel}` : 'Create Payment');
     const description = isEditing
         ? 'Update receipt details, linked bills, settled amounts, and deduction breakup.'
-        : 'Link the receipt to bill numbers, enter how much is settled against each bill, and keep deduction breakup inside that settled amount.';
+        : 'Select the party, link unpaid bills, and record the receipt.';
 
     const formBody = (
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
                     <div className="grid gap-6 p-6 lg:grid-cols-[0.95fr_1.05fr]">
                         <div className="space-y-4">
+                            {partyField && !isEditing ? (
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Party *</Label>
+                                    {partyField}
+                                </div>
+                            ) : null}
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
                                     <Label className="text-xs font-bold uppercase text-muted-foreground">Receipt Date *</Label>
@@ -380,15 +395,21 @@ export function AddPaymentDialog({
 
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Bill Numbers</Label>
-                                <BillingRecordPicker
-                                    billingRecords={payableBillingRecords}
-                                    value={form.related_billing_record_ids}
-                                    onChange={(related_billing_record_ids) => setForm((current) => ({
-                                        ...current,
-                                        related_billing_record_ids,
-                                        bill_allocations: syncBillAllocationDrafts(related_billing_record_ids, current.bill_allocations),
-                                    }))}
-                                />
+                                {!partyId ? (
+                                    <div className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
+                                        Select a party to load unpaid bills.
+                                    </div>
+                                ) : (
+                                    <BillingRecordPicker
+                                        billingRecords={payableBillingRecords}
+                                        value={form.related_billing_record_ids}
+                                        onChange={(related_billing_record_ids) => setForm((current) => ({
+                                            ...current,
+                                            related_billing_record_ids,
+                                            bill_allocations: syncBillAllocationDrafts(related_billing_record_ids, current.bill_allocations),
+                                        }))}
+                                    />
+                                )}
                             </div>
                         </div>
 
@@ -518,7 +539,7 @@ export function AddPaymentDialog({
                         {variant === 'dialog' && (
                             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
                         )}
-                        <Button type="submit" disabled={saving} className="gap-2">
+                        <Button type="submit" disabled={saving || !partyId} className="gap-2">
                             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                             {isEditing ? 'Save Changes' : 'Record Payment'}
                         </Button>

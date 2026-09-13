@@ -122,6 +122,13 @@ export async function GET(
 
     const headBranch = await findHeadBranch(supabase);
 
+    await supabase.rpc('ensure_active_cn_range', { p_branch_id: branch.id });
+    // Re-open Exhausted ranges that still have free (soft-deleted) CN numbers.
+    const { error: reconcileError } = await supabase.rpc('reconcile_branch_cn_ranges', { p_branch_id: branch.id });
+    if (reconcileError && reconcileError.code !== '42883') {
+        console.warn('CN range reconcile skipped:', reconcileError.message);
+    }
+
     const { data: cnRanges, error: rangesError } = await supabase
         .from('branch_cn_ranges')
         .select(`

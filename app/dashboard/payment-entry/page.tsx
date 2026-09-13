@@ -222,17 +222,17 @@ export default function PaymentEntryPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
-                        <Table>
+                        <Table className="min-w-[1000px] table-fixed">
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Party</TableHead>
-                                    <TableHead>Mode</TableHead>
-                                    <TableHead>Reference</TableHead>
-                                    <TableHead className="text-right">Settled</TableHead>
-                                    <TableHead className="text-right">Received</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead className="w-[110px]">Date</TableHead>
+                                    <TableHead className="w-[220px]">Party</TableHead>
+                                    <TableHead className="w-[100px]">Mode</TableHead>
+                                    <TableHead className="w-[160px]">Reference</TableHead>
+                                    <TableHead className="w-[120px] text-right">Settled</TableHead>
+                                    <TableHead className="w-[120px] text-right">Received</TableHead>
+                                    <TableHead className="w-[100px]">Status</TableHead>
+                                    <TableHead className="w-[160px] text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -250,32 +250,36 @@ export default function PaymentEntryPage() {
                                     </TableRow>
                                 ) : payments.map((payment) => (
                                     <TableRow key={payment.id}>
-                                        <TableCell>{fmtDate(payment.receipt_date)}</TableCell>
-                                        <TableCell>
-                                            <div className="font-medium">{payment.party_name}</div>
-                                            <div className="text-xs text-muted-foreground">{payment.party_code}</div>
+                                        <TableCell className="whitespace-nowrap">{fmtDate(payment.receipt_date)}</TableCell>
+                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                            <div className="font-medium truncate" title={payment.party_name}>{payment.party_name}</div>
+                                            <div className="text-xs text-muted-foreground truncate">{payment.party_code}</div>
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="whitespace-nowrap">
                                             <Badge variant="secondary">{payment.payment_mode}</Badge>
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs">
-                                            {payment.reference_no || '—'}
+                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                            <div className="font-mono text-xs truncate" title={payment.reference_no || undefined}>
+                                                {payment.reference_no || '—'}
+                                            </div>
                                             {payment.bank_name ? (
-                                                <div className="text-muted-foreground">{payment.bank_name}</div>
+                                                <div className="text-muted-foreground text-xs truncate" title={payment.bank_name}>
+                                                    {payment.bank_name}
+                                                </div>
                                             ) : null}
                                         </TableCell>
-                                        <TableCell className="text-right font-mono font-semibold">
+                                        <TableCell className="text-right font-mono font-semibold whitespace-nowrap">
                                             ₹{fmtMoney(payment.amount)}
                                         </TableCell>
-                                        <TableCell className="text-right font-mono">
+                                        <TableCell className="text-right font-mono whitespace-nowrap">
                                             ₹{fmtMoney(payment.actual_received_amount ?? payment.amount)}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="whitespace-nowrap">
                                             <Badge variant={payment.status === 'ACTIVE' ? 'default' : 'secondary'}>
                                                 {payment.status}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-right">
+                                        <TableCell className="text-right whitespace-nowrap">
                                             <div className="flex justify-end gap-1">
                                                 {payment.status === 'ACTIVE' && (
                                                     <Button
