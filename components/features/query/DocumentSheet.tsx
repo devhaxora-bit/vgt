@@ -38,19 +38,19 @@ export function DocumentSheet({
     return (
         <div
             className={cn(
-                'animate-slideUp overflow-hidden rounded-xl border-2 border-[var(--doc-line)] bg-card shadow-sm',
+                'animate-slideUp w-full overflow-hidden rounded-lg border border-[var(--doc-line)] bg-card shadow-sm',
                 className,
             )}
         >
-            <div className="flex flex-col gap-3 border-b border-[var(--doc-line-soft)] bg-[var(--doc-head-bg)]/40 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-1">
+            <div className="flex flex-col gap-2 border-b border-[var(--doc-line-soft)] bg-[var(--doc-head-bg)]/40 px-3 py-2.5 sm:flex-row sm:items-start sm:justify-between md:px-4">
+                <div className="min-w-0 space-y-0.5">
                     {eyebrow ? (
                         <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--doc-head-fg)]">
                             {eyebrow}
                         </div>
                     ) : null}
                     <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate text-xl font-black tracking-tight text-foreground sm:text-2xl">
+                        <h2 className="truncate text-lg font-black tracking-tight text-foreground sm:text-xl">
                             {title}
                         </h2>
                         {status ? (
@@ -68,7 +68,7 @@ export function DocumentSheet({
                 </div>
                 {actions ? <div className="flex flex-shrink-0 flex-wrap gap-2">{actions}</div> : null}
             </div>
-            <div className="space-y-5 p-5">{children}</div>
+            <div className="space-y-3 p-3 md:p-4">{children}</div>
         </div>
     );
 }
@@ -95,7 +95,7 @@ export function SheetSection({
                 </h3>
                 {right ? <div className="text-[11px] font-semibold text-[var(--doc-head-fg)]">{right}</div> : null}
             </div>
-            <div className="p-3.5">{children}</div>
+            <div className="p-2.5 md:p-3">{children}</div>
         </section>
     );
 }

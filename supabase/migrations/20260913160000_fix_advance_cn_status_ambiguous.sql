@@ -1,11 +1,7 @@
--- Allow CN entry in ANY assigned branch range that still has that number free,
--- even when a different range is currently Active.
--- Example: Active 6801–7000, but free CN 5950 in older 5901–6000 → entry allowed.
---
--- IMPORTANT: RETURNS TABLE exposes OUT params named status / range_start /
--- range_end / next_cn_no. Every table-column reference inside this function
--- MUST be table-qualified or Postgres raises:
---   "column reference status is ambiguous"
+-- Fix: "column reference status is ambiguous" in advance_branch_cn_sequence.
+-- The 20260913150000 rewrite returned OUT columns named status / range_start /
+-- range_end / next_cn_no, then used those same names unqualified in SELECT/WHERE.
+-- Postgres cannot tell OUT params from branch_cn_ranges columns — qualify them.
 
 CREATE OR REPLACE FUNCTION public.advance_branch_cn_sequence(
   p_branch_code TEXT,
@@ -44,8 +40,6 @@ BEGIN
     RAISE EXCEPTION 'Branch % not found.', UPPER(BTRIM(p_branch_code));
   END IF;
 
-  -- Keep an active range when possible (for default Next CN), but do not require
-  -- the typed CN to belong only to that active range.
   v_active_range := public.ensure_active_cn_range(v_branch.id);
 
   SELECT bcr.*
@@ -79,7 +73,6 @@ BEGIN
 
   v_was_active := (v_target.status = 'active');
 
-  -- Recompute Next CN for this owning range, treating p_cn_no as about-to-be-used.
   v_scan := v_target.range_start;
   LOOP
     EXIT WHEN v_scan > v_target.range_end;
@@ -96,8 +89,6 @@ BEGIN
       status = CASE
         WHEN v_next > bcr.range_end THEN 'exhausted'
         WHEN v_was_active THEN 'active'
-        -- Older/queued ranges with remaining free numbers stay queued;
-        -- they do not steal the active slot.
         ELSE 'pending'
       END
   WHERE bcr.id = v_target.id
@@ -114,11 +105,9 @@ BEGIN
       v_active_range := v_target;
     END IF;
   ELSE
-    -- Keep branch pointer on the current active range.
     IF v_active_range IS NOT NULL AND v_active_range.id IS DISTINCT FROM v_target.id THEN
       NULL;
     ELSIF v_active_range IS NULL AND v_target.status = 'pending' THEN
-      -- No active range left; promote this free range.
       UPDATE public.branch_cn_ranges AS bcr
       SET status = 'active'
       WHERE bcr.id = v_target.id

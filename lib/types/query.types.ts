@@ -161,6 +161,8 @@ export interface QueryCnsDetail {
     bill: QueryLinkedBill | null;
     bills: QueryLinkedBill[];
     challans: QueryCnsChallan[];
+    /** Payment receipts that settled any bill covering this CN. */
+    payments?: QueryLinkedPayment[];
 }
 
 /** Full challan lookup payload: the challan plus its hire settlement and payment status. */

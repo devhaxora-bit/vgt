@@ -34,6 +34,7 @@ export default function BillQueryPage() {
             accentClass="bg-emerald-500/10 text-emerald-600"
             title="Bill Query"
             description="Search a freight bill by reference number or party to review every billed line item."
+            fullWidth
         >
             <QueryWorkbench
                 placeholder="Enter bill number or party name…"
