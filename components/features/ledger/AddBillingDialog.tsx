@@ -52,8 +52,6 @@ export function AddBillingDialog({
 
     const emptyForm = () => ({
         billing_date: new Date().toISOString().split('T')[0],
-        billing_period_from: '',
-        billing_period_to: '',
         amount: '',
         bill_ref_no: '',
         narration: '',
@@ -145,8 +143,6 @@ export function AddBillingDialog({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     billing_date: form.billing_date,
-                    billing_period_from: form.billing_period_from || null,
-                    billing_period_to: form.billing_period_to || null,
                     bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no),
                     narration: form.narration,
                     added_other_charges_amount: enteredOtherChargeAmount,
@@ -204,18 +200,6 @@ export function AddBillingDialog({
                                             required
                                         />
                                     </div>
-                                </div>
-                            </div>
-
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Period From</Label>
-                                    <Input type="date" value={form.billing_period_from} onChange={e => setForm(f => ({ ...f, billing_period_from: e.target.value }))} className="h-9" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Period To</Label>
-                                    <Input type="date" value={form.billing_period_to} onChange={e => setForm(f => ({ ...f, billing_period_to: e.target.value }))} className="h-9" />
                                 </div>
                             </div>
 

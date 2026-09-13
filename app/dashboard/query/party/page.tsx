@@ -34,6 +34,7 @@ export default function PartyQueryPage() {
             accentClass="bg-sky-500/10 text-sky-600"
             title="Party Query"
             description="Search a party by name, code, or GSTIN to review bills, payments, dues, consignments, and related challans."
+            fullWidth
         >
             <QueryWorkbench
                 placeholder="Enter party name, code, or GSTIN…"

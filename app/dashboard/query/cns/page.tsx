@@ -33,7 +33,8 @@ export default function CnsQueryPage() {
             icon={<FileText className="h-6 w-6" />}
             accentClass="bg-blue-500/10 text-blue-600"
             title="CNS Query"
-            description="Search a consignment note number to view its complete details."
+            description="Search a consignment note number to view its complete tracking details."
+            fullWidth
         >
             <QueryWorkbench
                 placeholder="Enter CNS number…"

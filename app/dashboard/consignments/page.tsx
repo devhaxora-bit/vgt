@@ -961,7 +961,7 @@ export default function ConsignmentsPage() {
                                                             (() => {
                                                                 const parentCnNo = item.parent_cn_id ? (consignments || []).find(c => c.id === item.parent_cn_id)?.cn_no : null;
                                                                 return (
-                                                                    <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-200 px-1.5 py-0 font-bold" title={parentCnNo ? `Included in CN ${parentCnNo}` : 'Included in parent CN'}>
+                                                                    <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-200 px-1.5 py-0 font-bold" title={parentCnNo ? `Included in main CN ${parentCnNo}` : 'Included in main CN'}>
                                                                         <Link2 className="h-2.5 w-2.5 mr-0.5 inline-block shrink-0" />
                                                                         ↳ Incl. {parentCnNo ? `(${parentCnNo})` : ''}
                                                                     </Badge>
@@ -972,8 +972,8 @@ export default function ConsignmentsPage() {
                                                             const children = parentMap.get(item.id) || [];
                                                             if (children.length > 0) {
                                                                 return (
-                                                                    <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 px-1.5 py-0 font-bold" title={`Linked child CNs: ${children.join(', ')}`}>
-                                                                        Parent ({children.length})
+                                                                    <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 px-1.5 py-0 font-bold" title={`Included CNs: ${children.join(', ')}`}>
+                                                                        Main ({children.length})
                                                                     </Badge>
                                                                 );
                                                             }

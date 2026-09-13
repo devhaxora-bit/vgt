@@ -34,6 +34,7 @@ export default function ChallanQueryPage() {
             accentClass="bg-violet-500/10 text-violet-600"
             title="Challan Query"
             description="Search a lorry challan number to view its vehicle, broker and linked consignments."
+            fullWidth
         >
             <QueryWorkbench
                 placeholder="Enter challan number or vehicle no…"

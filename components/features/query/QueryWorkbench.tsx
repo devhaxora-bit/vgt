@@ -123,11 +123,18 @@ export function QueryWorkbench<TDetail>({
 
     const showDropdown = open && term.trim().length > 0;
 
+    const compact = Boolean(detail) || loadingDetail;
+
     return (
-        <div className="space-y-6">
-            <div className="relative">
+        <div className={cn('space-y-4', compact && 'space-y-3')}>
+            <div className={cn('relative', compact && 'max-w-xl')}>
                 <div className="relative flex items-center">
-                    <Search className="pointer-events-none absolute left-4 h-5 w-5 text-muted-foreground" />
+                    <Search
+                        className={cn(
+                            'pointer-events-none absolute text-muted-foreground',
+                            compact ? 'left-3 h-4 w-4' : 'left-4 h-5 w-5',
+                        )}
+                    />
                     <Input
                         ref={inputRef}
                         value={term}
@@ -139,7 +146,12 @@ export function QueryWorkbench<TDetail>({
                         onBlur={() => window.setTimeout(() => setOpen(false), 150)}
                         onKeyDown={handleKeyDown}
                         placeholder={placeholder}
-                        className="h-14 rounded-xl border-2 pl-12 pr-32 text-base font-medium shadow-sm focus-visible:ring-2"
+                        className={cn(
+                            'border-2 font-medium shadow-sm focus-visible:ring-2',
+                            compact
+                                ? 'h-10 rounded-lg pl-9 pr-28 text-sm'
+                                : 'h-14 rounded-xl pl-12 pr-32 text-base',
+                        )}
                         autoComplete="off"
                         spellCheck={false}
                     />
@@ -149,7 +161,8 @@ export function QueryWorkbench<TDetail>({
                         ) : null}
                         <Button
                             type="button"
-                            className="h-10 gap-1.5 rounded-lg"
+                            size={compact ? 'sm' : 'default'}
+                            className={cn('gap-1.5', compact ? 'h-7 rounded-md' : 'h-10 rounded-lg')}
                             disabled={!term.trim()}
                             onClick={() => {
                                 if (activeIndex >= 0 && suggestions[activeIndex]) {

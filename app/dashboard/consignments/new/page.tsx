@@ -1994,7 +1994,7 @@ function NewConsignmentForm() {
                                                             onCheckedChange={(c) => {
                                                                 const checked = !!c;
                                                                 if (isEditMode && !checked && parentCnId) {
-                                                                    const confirm = window.confirm("Warning: Removing the linking will remove the parent association, and you will need to re-enter all freight details. Do you want to proceed?");
+                                                                    const confirm = window.confirm("Warning: Removing the linking will remove the main CN association, and you will need to re-enter all freight details. Do you want to proceed?");
                                                                     if (!confirm) return;
                                                                 }
                                                                 setFreightIncluded(checked);
@@ -2010,30 +2010,30 @@ function NewConsignmentForm() {
                                                             disabled={isFreightPending || hasChildren}
                                                         />
                                                         <Label htmlFor="freight-include" className="text-xs font-bold cursor-pointer flex items-center gap-1">
-                                                            <Link2 className="h-3 w-3" /> Include Freight
+                                                            <Link2 className="h-3 w-3" /> Include in Main CN
                                                         </Label>
                                                     </div>
                                                     {hasChildren && (
                                                         <div className="text-[10px] text-amber-600 font-medium pl-6">
-                                                            This CN has child CNs linked to it, so it cannot be included in another CN.
+                                                            This is a main CN with included CNs, so it cannot be included in another CN.
                                                         </div>
                                                     )}
                                                 </div>
 
-                                                {/* Parent CN Selector */}
+                                                {/* Main CN selector (this CN will be included under it) */}
                                                 {freightIncluded && (
                                                     <div className="space-y-2 pt-1">
                                                         {parentCnData ? (
                                                             <div className="bg-blue-50 border border-blue-200 rounded-md p-2 space-y-1">
                                                                 <div className="flex items-center justify-between">
-                                                                    <span className="text-[10px] font-bold text-blue-700 uppercase">Linked to Parent CN</span>
+                                                                    <span className="text-[10px] font-bold text-blue-700 uppercase">Included in Main CN</span>
                                                                     <Button
                                                                         variant="ghost"
                                                                         size="icon"
                                                                         className="h-5 w-5 text-blue-500 hover:text-destructive hover:bg-destructive/10"
                                                                         onClick={() => {
                                                                             if (isEditMode && parentCnId) {
-                                                                                const confirm = window.confirm("Warning: Removing the linking will remove the parent association, and you will need to re-enter all freight details. Do you want to proceed?");
+                                                                                const confirm = window.confirm("Warning: Removing the linking will remove the main CN association, and you will need to re-enter all freight details. Do you want to proceed?");
                                                                                 if (!confirm) return;
                                                                             }
                                                                             setParentCnId(null);
@@ -2051,7 +2051,7 @@ function NewConsignmentForm() {
                                                             <Popover open={isParentCnPopoverOpen} onOpenChange={setIsParentCnPopoverOpen}>
                                                                 <PopoverTrigger asChild>
                                                                     <Button variant="outline" className="w-full h-8 justify-start text-xs font-normal text-muted-foreground">
-                                                                        <Search className="h-3 w-3 mr-2" /> Select Parent CN...
+                                                                        <Search className="h-3 w-3 mr-2" /> Select Main CN...
                                                                     </Button>
                                                                 </PopoverTrigger>
                                                                 <PopoverContent className="w-64 p-0" align="start">
@@ -2116,7 +2116,7 @@ function NewConsignmentForm() {
                                             {freightIncluded && parentCnData && (
                                                 <div className="bg-blue-50/70 border border-blue-100 rounded px-2 py-1.5 text-[10px] text-blue-700 font-medium flex items-center gap-1.5">
                                                     <Link2 className="h-3 w-3 flex-shrink-0" />
-                                                    Freight included in CN {parentCnData.cn_no}. Values below are from parent (saved as ₹0).
+                                                    Freight included in main CN {parentCnData.cn_no}. Values below are from the main CN (saved as ₹0).
                                                 </div>
                                             )}
 

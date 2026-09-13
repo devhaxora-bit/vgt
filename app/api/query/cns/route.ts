@@ -105,6 +105,47 @@ export async function GET(request: Request) {
         total_hire: toNumber(ch.total_hire_amount) + toNumber(ch.extra_hire_amount),
     }));
 
+    // Payments that settle any bill covering this CN
+    const billIds = bills.map((b) => b.id).filter(Boolean);
+    let payments: Array<{
+        id: string;
+        receipt_date: string | null;
+        amount: number;
+        payment_mode: string | null;
+        reference_no: string | null;
+        status: string;
+    }> = [];
+
+    if (billIds.length > 0) {
+        const { data: paymentRows } = await supabase
+            .from('party_payment_receipts')
+            .select('id, receipt_date, amount, payment_mode, reference_no, status, related_billing_record_ids, bill_allocations')
+            .eq('status', 'ACTIVE')
+            .order('receipt_date', { ascending: false })
+            .limit(100);
+
+        payments = (paymentRows || [])
+            .filter((row) => {
+                const related = Array.isArray(row.related_billing_record_ids)
+                    ? row.related_billing_record_ids.map(String)
+                    : [];
+                if (related.some((id) => billIds.includes(id))) return true;
+                const allocations = Array.isArray(row.bill_allocations) ? row.bill_allocations : [];
+                return allocations.some((alloc) => {
+                    const id = String((alloc as { billing_record_id?: string })?.billing_record_id || '');
+                    return id && billIds.includes(id);
+                });
+            })
+            .map((row) => ({
+                id: row.id,
+                receipt_date: row.receipt_date,
+                amount: toNumber(row.amount),
+                payment_mode: row.payment_mode,
+                reference_no: row.reference_no,
+                status: row.status,
+            }));
+    }
+
     const childCount = children?.length ?? 0;
 
     return NextResponse.json({
@@ -114,5 +155,6 @@ export async function GET(request: Request) {
         bill,
         bills,
         challans,
+        payments,
     });
 }

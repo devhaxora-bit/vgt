@@ -33,6 +33,7 @@ export default function TruckQueryPage() {
             accentClass="bg-amber-500/10 text-amber-600"
             title="Truck Query"
             description="Enter a vehicle number to view its master record and full movement history."
+            fullWidth
         >
             <QueryWorkbench
                 placeholder="Enter truck / vehicle number…"

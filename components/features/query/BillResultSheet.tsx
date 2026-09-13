@@ -113,7 +113,7 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                     </>
                 }
             >
-                <div className="grid gap-5 lg:grid-cols-2">
+                <div className="grid gap-3 lg:grid-cols-2">
                     <SheetSection title="Billed Party" icon={<Building2 className="h-3.5 w-3.5" />}>
                         <SheetInfoGrid columns={2}>
                             <SheetField label="Party" value={upper(party?.name)} accent />
