@@ -1,40 +1,41 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Banknote, Loader2, RotateCcw, Search } from 'lucide-react';
+import { Banknote, Loader2, Pencil, Plus, RotateCcw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { PartyAutocomplete } from '@/components/PartyAutocomplete';
 import { AddPaymentDialog } from '@/components/features/ledger/AddPaymentDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import type { Party } from '@/lib/types/party.types';
 import {
     fmtMoney,
     type BillingRecord,
     type PaymentReceipt,
 } from '@/lib/ledgerUi';
 
-type PaymentListRow = {
-    id: string;
+type PaymentListRow = PaymentReceipt & {
     party_id: string;
     party_name: string;
     party_code: string;
-    receipt_date: string;
-    amount: number;
-    actual_received_amount?: number;
-    payment_mode: string;
-    reference_no?: string;
-    bank_name?: string;
-    narration?: string;
-    status: string;
+    branch_code?: string;
+};
+
+type ListSummary = {
+    count: number;
+    active_count: number;
+    total_settled: number;
+    total_received: number;
 };
 
 const fmtDate = (d?: string | null) => {
@@ -43,191 +44,181 @@ const fmtDate = (d?: string | null) => {
 };
 
 export default function PaymentEntryPage() {
-    const [selectedParty, setSelectedParty] = useState<Party | null>(null);
-    const [partyInput, setPartyInput] = useState('');
-    const [loadingParty, setLoadingParty] = useState(false);
+    const [payments, setPayments] = useState<PaymentListRow[]>([]);
+    const [summary, setSummary] = useState<ListSummary>({
+        count: 0, active_count: 0, total_settled: 0, total_received: 0,
+    });
+    const [loading, setLoading] = useState(false);
+    const [search, setSearch] = useState('');
+    const [status, setStatus] = useState('ALL');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+
+    const [editing, setEditing] = useState<PaymentListRow | null>(null);
     const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
     const [paymentReceipts, setPaymentReceipts] = useState<PaymentReceipt[]>([]);
-    const [payments, setPayments] = useState<PaymentListRow[]>([]);
-    const [paymentsLoading, setPaymentsLoading] = useState(false);
-    const [search, setSearch] = useState('');
-    const [ledgerError, setLedgerError] = useState<string | null>(null);
-    const [formKey, setFormKey] = useState(0);
+    const [editLoading, setEditLoading] = useState(false);
 
     const loadPayments = useCallback(async () => {
-        setPaymentsLoading(true);
+        setLoading(true);
         try {
-            const params = new URLSearchParams({ limit: '200' });
+            const params = new URLSearchParams({ limit: '300' });
             if (search.trim()) params.set('search', search.trim());
+            if (status !== 'ALL') params.set('status', status);
+            if (dateFrom) params.set('date_from', dateFrom);
+            if (dateTo) params.set('date_to', dateTo);
             const res = await fetch(`/api/ledger/payments?${params.toString()}`);
             if (!res.ok) throw new Error('Failed to load payments');
             const json = await res.json();
             setPayments(Array.isArray(json.data) ? json.data : []);
+            setSummary(json.summary || { count: 0, active_count: 0, total_settled: 0, total_received: 0 });
         } catch (err) {
             console.error(err);
             toast.error('Failed to load payments list');
         } finally {
-            setPaymentsLoading(false);
+            setLoading(false);
         }
-    }, [search]);
+    }, [search, status, dateFrom, dateTo]);
 
     useEffect(() => {
         void loadPayments();
     }, [loadPayments]);
 
-    const loadPartyLedger = useCallback(async (partyId: string) => {
-        setLoadingParty(true);
-        setLedgerError(null);
-        try {
-            const res = await fetch(`/api/ledger/${partyId}`);
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.error || 'Failed to load party ledger');
-            if (!json.account) {
-                setLedgerError('This party has no ledger account yet. Open Party Ledger Book once to create it, then return here.');
-                setBillingRecords([]);
-                setPaymentReceipts([]);
-                return;
-            }
-
-            setBillingRecords(json.all_billing_records || json.billing_records || []);
-            setPaymentReceipts(json.all_payment_receipts || json.payment_receipts || []);
-            setFormKey((key) => key + 1);
-        } catch (err) {
-            setLedgerError(err instanceof Error ? err.message : 'Failed to load party');
-            setBillingRecords([]);
-            setPaymentReceipts([]);
-        } finally {
-            setLoadingParty(false);
-        }
-    }, []);
-
-    const handlePartySelect = (party: Party | null) => {
-        if (!party || party.id === 'new') {
-            setSelectedParty(null);
-            setBillingRecords([]);
-            setPaymentReceipts([]);
-            setLedgerError(party?.id === 'new' ? 'Select an existing party to record a payment.' : null);
+    const openEdit = async (payment: PaymentListRow) => {
+        if (payment.status !== 'ACTIVE') {
+            toast.error('Only active payments can be edited');
             return;
         }
-        setSelectedParty(party);
-        setPartyInput(party.name);
-        void loadPartyLedger(party.id);
+        setEditLoading(true);
+        try {
+            const res = await fetch(`/api/ledger/${payment.party_id}`);
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Failed to load party ledger');
+            const allPayments: PaymentReceipt[] = json.all_payment_receipts || json.payment_receipts || [];
+            const fresh = allPayments.find((p) => p.id === payment.id) || payment;
+            setBillingRecords(json.all_billing_records || json.billing_records || []);
+            setPaymentReceipts(allPayments);
+            setEditing({
+                ...payment,
+                ...fresh,
+                party_id: payment.party_id,
+                party_name: payment.party_name,
+                party_code: payment.party_code,
+            });
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to open edit');
+            setEditing(null);
+        } finally {
+            setEditLoading(false);
+        }
     };
 
-    const showForm = Boolean(selectedParty && !ledgerError && !loadingParty);
-
-    const partyLabel = useMemo(() => {
-        if (!selectedParty) return '';
-        return selectedParty.code ? `${selectedParty.name} (${selectedParty.code})` : selectedParty.name;
-    }, [selectedParty]);
+    const clearFilters = () => {
+        setSearch('');
+        setStatus('ALL');
+        setDateFrom('');
+        setDateTo('');
+    };
 
     return (
         <div className="space-y-6 p-4 md:p-6">
-            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                         <Banknote className="h-6 w-6 text-primary" /> Payment Entry
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Select any party, link unpaid bills, and record a receipt. All payments are listed below.
+                        Search and filter all receipts. Create a new payment or edit an existing one.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" asChild>
-                    <Link href="/dashboard/ledger">Open Party Ledger</Link>
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                        <Link href="/dashboard/ledger">Party Ledger</Link>
+                    </Button>
+                    <Button size="sm" asChild>
+                        <Link href="/dashboard/payment-entry/new">
+                            <Plus className="h-4 w-4 mr-1" /> Create Payment
+                        </Link>
+                    </Button>
+                </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Payments Shown</CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-2xl font-bold font-mono">{summary.count}</CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Active Settled</CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-2xl font-bold font-mono">
+                        ₹{fmtMoney(summary.total_settled)}
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Active Received</CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-2xl font-bold font-mono text-primary">
+                        ₹{fmtMoney(summary.total_received)}
+                    </CardContent>
+                </Card>
             </div>
 
             <Card>
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Party</CardTitle>
+                    <CardTitle className="text-base">Filters</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="max-w-xl">
-                        <PartyAutocomplete
-                            value={partyInput}
-                            placeholder="Search party by name or code…"
-                            onValueChange={setPartyInput}
-                            onSelect={handlePartySelect}
-                        />
+                <CardContent className="grid gap-3 md:grid-cols-5">
+                    <div className="space-y-1.5 md:col-span-2">
+                        <Label className="text-xs uppercase text-muted-foreground">Search</Label>
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                className="h-9 pl-8"
+                                placeholder="Party / UTR / mode…"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </div>
                     </div>
-                    {selectedParty && (
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                            <Badge variant="secondary">{selectedParty.code || 'No code'}</Badge>
-                            <span>{selectedParty.name}</span>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={() => {
-                                    setSelectedParty(null);
-                                    setPartyInput('');
-                                    setBillingRecords([]);
-                                    setPaymentReceipts([]);
-                                    setLedgerError(null);
-                                }}
-                            >
-                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Clear
-                            </Button>
-                        </div>
-                    )}
-                    {loadingParty && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" /> Loading party payment data…
-                        </div>
-                    )}
-                    {ledgerError && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            {ledgerError}
-                        </div>
-                    )}
+                    <div className="space-y-1.5">
+                        <Label className="text-xs uppercase text-muted-foreground">Status</Label>
+                        <Select value={status} onValueChange={setStatus}>
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="ALL">All</SelectItem>
+                                <SelectItem value="ACTIVE">Active</SelectItem>
+                                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs uppercase text-muted-foreground">From</Label>
+                        <Input type="date" className="h-9" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs uppercase text-muted-foreground">To</Label>
+                        <Input type="date" className="h-9" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                    </div>
+                    <div className="md:col-span-5 flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => void loadPayments()} disabled={loading}>
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+                            Refresh
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>
+                    </div>
                 </CardContent>
             </Card>
 
-            {showForm && selectedParty && (
-                <AddPaymentDialog
-                    key={formKey}
-                    open
-                    variant="inline"
-                    partyId={selectedParty.id}
-                    partyLabel={partyLabel}
-                    billingRecords={billingRecords}
-                    paymentReceipts={paymentReceipts}
-                    onClose={() => undefined}
-                    onSuccess={() => {
-                        void loadPartyLedger(selectedParty.id);
-                        void loadPayments();
-                    }}
-                />
-            )}
-
-            {!selectedParty && (
-                <Card className="border-dashed">
-                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                        Choose a party above to open the payment entry form.
-                    </CardContent>
-                </Card>
-            )}
-
             <Card>
                 <CardHeader className="pb-3">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <CardTitle className="text-base">All Payments</CardTitle>
-                        <div className="flex gap-2">
-                            <div className="relative w-full md:w-72">
-                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    className="h-9 pl-8"
-                                    placeholder="Search party / UTR / mode…"
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                />
-                            </div>
-                            <Button variant="outline" size="sm" onClick={() => void loadPayments()} disabled={paymentsLoading}>
-                                {paymentsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                            </Button>
-                        </div>
-                    </div>
+                    <CardTitle className="text-base">All Payments</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
@@ -241,11 +232,11 @@ export default function PaymentEntryPage() {
                                     <TableHead className="text-right">Settled</TableHead>
                                     <TableHead className="text-right">Received</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead />
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {paymentsLoading && payments.length === 0 ? (
+                                {loading && payments.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                                             Loading payments…
@@ -254,7 +245,7 @@ export default function PaymentEntryPage() {
                                 ) : payments.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                                            No payments found
+                                            No payments found. Create a payment to get started.
                                         </TableCell>
                                     </TableRow>
                                 ) : payments.map((payment) => (
@@ -285,11 +276,21 @@ export default function PaymentEntryPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            {payment.party_id ? (
+                                            <div className="flex justify-end gap-1">
+                                                {payment.status === 'ACTIVE' && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        disabled={editLoading}
+                                                        onClick={() => void openEdit(payment)}
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                                                    </Button>
+                                                )}
                                                 <Button variant="ghost" size="sm" asChild>
                                                     <Link href={`/dashboard/ledger/${payment.party_id}`}>Ledger</Link>
                                                 </Button>
-                                            ) : null}
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -298,6 +299,20 @@ export default function PaymentEntryPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            <AddPaymentDialog
+                open={!!editing}
+                onClose={() => setEditing(null)}
+                partyId={editing?.party_id || ''}
+                partyLabel={editing ? `${editing.party_name}${editing.party_code ? ` (${editing.party_code})` : ''}` : undefined}
+                billingRecords={billingRecords}
+                paymentReceipts={paymentReceipts}
+                record={editing}
+                onSuccess={() => {
+                    setEditing(null);
+                    void loadPayments();
+                }}
+            />
         </div>
     );
 }

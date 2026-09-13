@@ -30,6 +30,8 @@ export async function GET(request: Request) {
             status,
             related_billing_record_ids,
             bill_allocations,
+            reversal_reason,
+            reversed_at,
             created_at,
             parties:party_id (
                 name,
@@ -65,10 +67,12 @@ export async function GET(request: Request) {
             payment_mode: row.payment_mode,
             reference_no: row.reference_no,
             bank_name: row.bank_name,
-            narration: row.narration,
+            narration: row.narration || '',
             status: row.status,
             related_billing_record_ids: row.related_billing_record_ids || [],
             bill_allocations: row.bill_allocations || [],
+            reversal_reason: row.reversal_reason,
+            reversed_at: row.reversed_at,
             created_at: row.created_at,
         };
     });
@@ -80,5 +84,20 @@ export async function GET(request: Request) {
         })
         : rows;
 
-    return NextResponse.json({ data: filtered });
+    const totalSettled = filtered
+        .filter((row) => row.status === 'ACTIVE')
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const totalReceived = filtered
+        .filter((row) => row.status === 'ACTIVE')
+        .reduce((sum, row) => sum + Number(row.actual_received_amount ?? row.amount ?? 0), 0);
+
+    return NextResponse.json({
+        data: filtered,
+        summary: {
+            count: filtered.length,
+            active_count: filtered.filter((row) => row.status === 'ACTIVE').length,
+            total_settled: totalSettled,
+            total_received: totalReceived,
+        },
+    });
 }
