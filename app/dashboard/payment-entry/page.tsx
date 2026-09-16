@@ -251,14 +251,14 @@ export default function PaymentEntryPage() {
                                 ) : payments.map((payment) => (
                                     <TableRow key={payment.id}>
                                         <TableCell className="whitespace-nowrap">{fmtDate(payment.receipt_date)}</TableCell>
-                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                        <TableCell className="vgt-table-cell-wrap min-w-0 overflow-hidden">
                                             <div className="font-medium truncate" title={payment.party_name}>{payment.party_name}</div>
                                             <div className="text-xs text-muted-foreground truncate">{payment.party_code}</div>
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap">
                                             <Badge variant="secondary">{payment.payment_mode}</Badge>
                                         </TableCell>
-                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                        <TableCell className="vgt-table-cell-wrap min-w-0 overflow-hidden">
                                             <div className="font-mono text-xs truncate" title={payment.reference_no || undefined}>
                                                 {payment.reference_no || '—'}
                                             </div>

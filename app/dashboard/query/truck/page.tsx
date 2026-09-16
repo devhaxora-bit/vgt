@@ -37,11 +37,13 @@ export default function TruckQueryPage() {
         >
             <QueryWorkbench
                 placeholder="Enter truck / vehicle number…"
-                helperText="Pick a registered truck, or press Enter to search any vehicle number."
+                helperText="All rows stay on screen. Search a vehicle to fill the placeholders."
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
                 allowFreeSubmit
                 buildFreeSuggestion={(value) => ({ value: value.toUpperCase(), primary: value.toUpperCase() })}
+                keepLayout
+                emptyHint={<TruckResultSheet detail={null} reset={() => undefined} />}
                 renderResult={(detail, { reset }) => <TruckResultSheet detail={detail} reset={reset} />}
             />
         </QueryPageShell>

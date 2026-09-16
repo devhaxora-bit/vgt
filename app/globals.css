@@ -73,6 +73,18 @@
     --doc-head-bg: #e8f1fd;
     --doc-head-fg: #1d2f7a;
     --doc-table-head-bg: #d7e8fb;
+
+    /* Register-style data tables (yellowish-green zebra, like legacy iTMS) */
+    --table-row-even: #e9f0d5;
+    --table-row-hover: #dde8b6;
+    --table-head-bg: #d4d4d4;
+    --table-head-fg: #1a1a1a;
+    --table-cell-border: #c8c8c8;
+    --table-row-h: 26px;
+    --table-cell-py: 1px;
+    --table-cell-px: 8px;
+    --table-font-size: 0.75rem;
+    --table-line-height: 1.25rem;
   }
 
   .dark {
@@ -109,6 +121,12 @@
     --doc-head-bg: rgba(91, 115, 196, 0.16);
     --doc-head-fg: #b9c6f0;
     --doc-table-head-bg: rgba(91, 115, 196, 0.22);
+
+    --table-row-even: rgba(233, 240, 213, 0.12);
+    --table-row-hover: rgba(221, 232, 182, 0.2);
+    --table-head-bg: hsl(217.2 32.6% 22%);
+    --table-head-fg: hsl(210 40% 98%);
+    --table-cell-border: hsl(217.2 32.6% 28%);
   }
 }
 
@@ -120,6 +138,58 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  /* Plain HTML tables (query sheets, legacy layouts) */
+  table.vgt-register-table {
+    border-collapse: collapse;
+  }
+
+  table.vgt-register-table th {
+    background: var(--table-head-bg);
+    color: var(--table-head-fg);
+    border: 1px solid var(--table-cell-border);
+  }
+
+  table.vgt-register-table td {
+    border: 1px solid var(--table-cell-border);
+  }
+
+  table.vgt-register-table tbody tr:nth-child(even) {
+    background-color: var(--table-row-even);
+  }
+
+  table.vgt-register-table tbody tr:hover {
+    background-color: var(--table-row-hover);
+  }
+
+  /* Dense rows — all shadcn data tables */
+  [data-slot='table'] {
+    font-size: var(--table-font-size);
+  }
+
+  [data-slot='table-head'] {
+    height: var(--table-row-h);
+    padding: var(--table-cell-py) var(--table-cell-px);
+    font-size: var(--table-font-size);
+    line-height: var(--table-line-height);
+    vertical-align: middle;
+  }
+
+  [data-slot='table-cell'] {
+    min-height: var(--table-row-h);
+    padding: var(--table-cell-py) var(--table-cell-px);
+    font-size: var(--table-font-size);
+    line-height: var(--table-line-height);
+    vertical-align: middle;
+  }
+
+  [data-slot='table-cell'].vgt-table-cell-wrap,
+  [data-slot='table-cell'][data-wrap='true'] {
+    height: auto;
+    white-space: normal;
   }
 }
 

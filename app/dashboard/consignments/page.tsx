@@ -895,38 +895,38 @@ export default function ConsignmentsPage() {
                         <Table>
                             <TableHeader className="bg-muted/40 border-b">
                                 <TableRow className="hover:bg-transparent">
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('booking_branch')}>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('booking_branch')}>
                                         Bkg Branch <SortIcon field="booking_branch" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('cn_no')}>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('cn_no')}>
                                         CNS No <SortIcon field="cn_no" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_date')}>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_date')}>
                                         Bkg Date <SortIcon field="bkg_date" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('dest_branch')}>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('dest_branch')}>
                                         Dest Branch <SortIcon field="dest_branch" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('consignor_name')}>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('consignor_name')}>
                                         Consignor <SortIcon field="consignor_name" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 text-center cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('no_of_pkg')}>
+                                    <TableHead className="font-bold text-center cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('no_of_pkg')}>
                                         Pkgs <SortIcon field="no_of_pkg" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('actual_weight')}>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('actual_weight')}>
                                         Weight <SortIcon field="actual_weight" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('delivery_type')}>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('delivery_type')}>
                                         Del. Type <SortIcon field="delivery_type" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_basis')}>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('bkg_basis')}>
                                         Basis <SortIcon field="bkg_basis" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_freight')}>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_freight')}>
                                         Freight <SortIcon field="total_freight" />
                                     </TableHead>
-                                    <TableHead className="font-bold py-2.5 min-w-[100px]">Bill No</TableHead>
-                                    <TableHead className="text-right py-2.5" />
+                                    <TableHead className="font-bold min-w-[100px]">Bill No</TableHead>
+                                    <TableHead className="text-right" />
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -938,48 +938,46 @@ export default function ConsignmentsPage() {
                                     </TableRow>
                                 ) : paginatedData.length > 0 ? (
                                     paginatedData.map((item) => (
-                                        <TableRow key={item.id || item.cn_no} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
+                                        <TableRow key={item.id || item.cn_no} className="transition-colors border-b last:border-0 group">
                                             <TableCell>
                                                 <span className="font-mono text-xs font-semibold text-foreground bg-muted px-2 py-0.5 rounded">
                                                     {item.booking_branch || '—'}
                                                 </span>
                                             </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col gap-1 items-start">
+                                            <TableCell className="max-w-[200px]">
+                                                <div className="flex min-w-0 items-center gap-1 overflow-hidden">
                                                     <button
                                                         type="button"
                                                         onClick={() => {
                                                             setSelectedConsignment(item);
                                                             setIsDetailsOpen(true);
                                                         }}
-                                                        className="font-mono font-bold text-primary text-xs hover:underline underline-offset-4"
+                                                        className="shrink-0 font-mono font-bold text-primary text-xs hover:underline underline-offset-2"
                                                     >
                                                         {item.cn_no}
                                                     </button>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {item.freight_included && (
-                                                            (() => {
-                                                                const parentCnNo = item.parent_cn_id ? (consignments || []).find(c => c.id === item.parent_cn_id)?.cn_no : null;
-                                                                return (
-                                                                    <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-200 px-1.5 py-0 font-bold" title={parentCnNo ? `Included in main CN ${parentCnNo}` : 'Included in main CN'}>
-                                                                        <Link2 className="h-2.5 w-2.5 mr-0.5 inline-block shrink-0" />
-                                                                        ↳ Incl. {parentCnNo ? `(${parentCnNo})` : ''}
-                                                                    </Badge>
-                                                                );
-                                                            })()
-                                                        )}
-                                                        {(() => {
-                                                            const children = parentMap.get(item.id) || [];
-                                                            if (children.length > 0) {
-                                                                return (
-                                                                    <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 px-1.5 py-0 font-bold" title={`Included CNs: ${children.join(', ')}`}>
-                                                                        Main ({children.length})
-                                                                    </Badge>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })()}
-                                                    </div>
+                                                    {item.freight_included && (
+                                                        (() => {
+                                                            const parentCnNo = item.parent_cn_id ? (consignments || []).find(c => c.id === item.parent_cn_id)?.cn_no : null;
+                                                            return (
+                                                                <Badge variant="outline" className="h-4 shrink-0 text-[9px] bg-blue-50 text-blue-700 border-blue-200 px-1 py-0 font-bold" title={parentCnNo ? `Included in main CN ${parentCnNo}` : 'Included in main CN'}>
+                                                                    <Link2 className="h-2 w-2 mr-0.5 inline-block shrink-0" />
+                                                                    Incl.
+                                                                </Badge>
+                                                            );
+                                                        })()
+                                                    )}
+                                                    {(() => {
+                                                        const children = parentMap.get(item.id) || [];
+                                                        if (children.length > 0) {
+                                                            return (
+                                                                <Badge variant="outline" className="h-4 shrink-0 text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 px-1 py-0 font-bold" title={`Included CNs: ${children.join(', ')}`}>
+                                                                    Main ({children.length})
+                                                                </Badge>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-xs font-medium">{item.bkg_date || '—'}</TableCell>
@@ -996,18 +994,18 @@ export default function ConsignmentsPage() {
                                                 {Number(item.actual_weight || 0).toLocaleString()} {item.load_unit?.toLowerCase() || 'kg'}
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">
+                                                <Badge variant="outline" className="h-4 text-[9px] bg-indigo-50 text-indigo-700 border-indigo-200 px-1.5 py-0">
                                                     {item.delivery_type || '—'}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="outline" className="text-[10px] font-mono">
+                                                <Badge variant="outline" className="h-4 text-[9px] font-mono px-1.5 py-0">
                                                     {item.bkg_basis || '—'}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 {Number(item.total_freight || 0) > 0 ? (
-                                                    <span className="font-mono font-bold text-sm text-primary">₹{fmt(Number(item.total_freight))}</span>
+                                                    <span className="font-mono font-bold text-xs text-primary">₹{fmt(Number(item.total_freight))}</span>
                                                 ) : (
                                                     <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">No Freight</span>
                                                 )}

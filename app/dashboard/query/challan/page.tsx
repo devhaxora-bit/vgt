@@ -38,9 +38,11 @@ export default function ChallanQueryPage() {
         >
             <QueryWorkbench
                 placeholder="Enter challan number or vehicle no…"
-                helperText="Search by challan number or vehicle number."
+                helperText="All rows stay on screen. Search a challan to fill the placeholders."
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
+                keepLayout
+                emptyHint={<ChallanResultSheet detail={null} reset={() => undefined} />}
                 renderResult={(detail, { reset }) => <ChallanResultSheet detail={detail} reset={reset} />}
             />
         </QueryPageShell>

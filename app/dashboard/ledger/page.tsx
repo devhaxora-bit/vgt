@@ -502,15 +502,15 @@ export default function LedgerPage() {
                         <Table>
                             <TableHeader className="bg-muted/40 border-b">
                                 <TableRow>
-                                    <TableHead className="font-bold py-2.5 w-24 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('party_code')}>Code <SortIcon field="party_code" /></TableHead>
-                                    <TableHead className="font-bold py-2.5 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('party_name')}>Party <SortIcon field="party_name" /></TableHead>
-                                    <TableHead className="font-bold py-2.5 w-28 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('branch_code')}>Branch <SortIcon field="branch_code" /></TableHead>
-                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_cns_amount')}>CNS Amount <SortIcon field="total_cns_amount" /></TableHead>
-                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_billed')}>Billed <SortIcon field="total_billed" /></TableHead>
-                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('unbilled_amount')}>Unbilled <SortIcon field="unbilled_amount" /></TableHead>
-                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_paid')}>Paid <SortIcon field="total_paid" /></TableHead>
-                                    <TableHead className="font-bold py-2.5 text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('outstanding')}>Outstanding <SortIcon field="outstanding" /></TableHead>
-                                    <TableHead className="py-2.5 text-right"></TableHead>
+                                    <TableHead className="font-bold w-24 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('party_code')}>Code <SortIcon field="party_code" /></TableHead>
+                                    <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('party_name')}>Party <SortIcon field="party_name" /></TableHead>
+                                    <TableHead className="font-bold w-28 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('branch_code')}>Branch <SortIcon field="branch_code" /></TableHead>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_cns_amount')}>CNS Amount <SortIcon field="total_cns_amount" /></TableHead>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_billed')}>Billed <SortIcon field="total_billed" /></TableHead>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('unbilled_amount')}>Unbilled <SortIcon field="unbilled_amount" /></TableHead>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_paid')}>Paid <SortIcon field="total_paid" /></TableHead>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('outstanding')}>Outstanding <SortIcon field="outstanding" /></TableHead>
+                                    <TableHead className="text-right"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -527,7 +527,7 @@ export default function LedgerPage() {
                                         </TableCell>
                                     </TableRow>
                                 ) : filtered.map(p => (
-                                    <TableRow key={p.party_id} className="hover:bg-primary/5 transition-colors border-b last:border-0 group">
+                                    <TableRow key={p.party_id} className="transition-colors border-b last:border-0 group">
                                         <TableCell><span className="font-mono font-bold text-primary text-xs">{p.party_code}</span></TableCell>
                                         <TableCell>
                                             <div className="font-semibold text-sm">{p.party_name}</div>
