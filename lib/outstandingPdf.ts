@@ -65,10 +65,14 @@ const buildBillRows = (bills: OutstandingBill[]) =>
 const buildPartyBlock = (party: OutstandingPartyRow) => `
     <tr class="party-header-row">
         <td colspan="6">
-            <span class="party-name">${safe(party.party_name)}</span>
-            <span class="party-code">${safe(party.party_code)}</span>
-            ${party.branch_code ? `<span class="party-branch">${safe(party.branch_name || party.branch_code)}</span>` : ''}
-            <span class="party-bill-count">${party.bills.length} bill${party.bills.length !== 1 ? 's' : ''}</span>
+            <div class="party-header-line">
+                <span class="party-name">${safe(party.party_name)}</span>
+                <span class="party-meta">
+                    <span class="party-code">${safe(party.party_code)}</span>
+                    ${party.branch_code ? `<span class="party-branch">${safe(party.branch_name || party.branch_code)}</span>` : ''}
+                    <span class="party-bill-count">${party.bills.length} bill${party.bills.length !== 1 ? 's' : ''}</span>
+                </span>
+            </div>
         </td>
     </tr>
     ${buildBillRows(party.bills)}
@@ -232,12 +236,14 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .amount { text-align: right; padding-right: 7px; font-variant-numeric: tabular-nums; }
 .items-table .bill-no-cell { font-family: monospace; font-size: 10.5px; padding-left: 18px; }
 .items-table .outstanding-cell:not(:empty) { background: rgba(255, 162, 162, 0.22); }
-/* Party header row */
-.party-header-row td { background: rgba(144, 202, 249, 0.35); padding: 6px 8px; font-size: 12.5px; font-weight: 800; border-bottom: 1px solid #1d2f7a; }
-.party-name { color: #17308b; margin-right: 8px; }
-.party-code { font-size: 11px; color: #555; font-family: monospace; background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; margin-right: 6px; }
-.party-branch { font-size: 11px; color: #444; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 3px; margin-right: 6px; }
-.party-bill-count { font-size: 10.5px; color: #777; }
+/* Party header row — single line: name left, meta/bills right */
+.party-header-row td { background: rgba(144, 202, 249, 0.35); padding: 3px 8px; font-size: 12px; font-weight: 800; border-bottom: 1px solid #1d2f7a; height: 20px; white-space: nowrap; }
+.party-header-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; }
+.party-name { color: #17308b; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-meta { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
+.party-code { font-size: 10.5px; color: #555; font-family: monospace; background: rgba(0,0,0,0.06); padding: 0 5px; border-radius: 3px; }
+.party-branch { font-size: 10.5px; color: #444; background: rgba(0,0,0,0.05); padding: 0 5px; border-radius: 3px; }
+.party-bill-count { font-size: 10.5px; color: #555; font-family: monospace; }
 /* Bill rows */
 .bill-row:nth-child(odd) td { background: #fff; }
 .bill-row:nth-child(even) td { background: ${PDF_TABLE_STRIPE_BG}; }
