@@ -18,6 +18,8 @@ interface QueryWorkbenchProps<TDetail> {
     allowFreeSubmit?: boolean;
     buildFreeSuggestion?: (term: string) => QuerySuggestion;
     emptyHint?: React.ReactNode;
+    /** Keep emptyHint / previous layout visible while a record is loading. */
+    keepLayout?: boolean;
 }
 
 export function QueryWorkbench<TDetail>({
@@ -29,6 +31,7 @@ export function QueryWorkbench<TDetail>({
     allowFreeSubmit = false,
     buildFreeSuggestion,
     emptyHint,
+    keepLayout = false,
 }: QueryWorkbenchProps<TDetail>) {
     const [term, setTerm] = React.useState('');
     const debouncedTerm = useDebounce(term, 250);
@@ -239,11 +242,7 @@ export function QueryWorkbench<TDetail>({
                 </p>
             ) : null}
 
-            {loadingDetail ? (
-                <div className="flex items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-sm text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" /> Loading details…
-                </div>
-            ) : error ? (
+            {error ? (
                 <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-4 text-sm text-destructive">
                     <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                     <div>
@@ -251,11 +250,25 @@ export function QueryWorkbench<TDetail>({
                         <p className="text-destructive/80">{error}</p>
                     </div>
                 </div>
-            ) : detail ? (
+            ) : null}
+
+            {loadingDetail && !keepLayout ? (
+                <div className="flex items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-sm text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" /> Loading details…
+                </div>
+            ) : null}
+
+            {loadingDetail && keepLayout ? (
+                <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Filling table values…
+                </div>
+            ) : null}
+
+            {detail ? (
                 renderResult(detail, { reset })
-            ) : (
+            ) : !loadingDetail || keepLayout ? (
                 emptyHint ?? null
-            )}
+            ) : null}
         </div>
     );
 }

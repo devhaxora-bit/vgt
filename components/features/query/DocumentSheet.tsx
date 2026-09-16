@@ -179,7 +179,7 @@ export function SheetDataTable<T>({
 
     return (
         <div className="overflow-x-auto rounded-md border border-[var(--doc-line-soft)]">
-            <table className="w-full border-collapse text-xs">
+            <table className="vgt-register-table w-full border-collapse text-xs">
                 <thead>
                     <tr>
                         {columns.map((col) => (
@@ -209,7 +209,7 @@ export function SheetDataTable<T>({
                         </tr>
                     ) : (
                         rows.map((row, index) => (
-                            <tr key={getRowKey(row, index)} className="even:bg-primary/5 hover:bg-primary/10">
+                            <tr key={getRowKey(row, index)}>
                                 {columns.map((col) => (
                                     <td
                                         key={col.key}

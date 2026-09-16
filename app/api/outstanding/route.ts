@@ -38,6 +38,8 @@ export type OutstandingBill = {
     amount: number;
     paid_amount: number;
     outstanding: number;
+    /** paid = fully settled, partial = some paid still due, due = nothing paid yet */
+    pay_status: 'paid' | 'partial' | 'due';
 };
 
 export type OutstandingPartyRow = {
@@ -53,7 +55,7 @@ export type OutstandingPartyRow = {
 };
 
 // GET /api/outstanding
-// Returns bill-wise outstanding amounts grouped by party.
+// Returns bill-wise amounts grouped by party (all ACTIVE bills: due / partial / paid).
 // Query params:
 //   branch     - branch code filter
 //   date_from  - billing_date >= (YYYY-MM-DD)
@@ -160,7 +162,7 @@ export async function GET(request: Request) {
         });
     }
 
-    // Step 5: Group by party, compute per-bill outstanding
+    // Step 5: Group by party — include all ACTIVE bills (due / partial / paid)
     const partyMap = new Map<string, OutstandingPartyRow>();
 
     filteredBills.forEach((bill) => {
@@ -168,11 +170,10 @@ export async function GET(request: Request) {
         if (!party) return;
 
         const billAmount = toMoney(bill.amount);
-        const paidAmount = paidByBillId.get(bill.id) || 0;
-        const outstanding = roundMoney(billAmount - paidAmount);
-
-        // Only include bills that still have outstanding > 0
-        if (outstanding <= 0) return;
+        const paidAmount = Math.min(paidByBillId.get(bill.id) || 0, billAmount);
+        const outstanding = roundMoney(Math.max(billAmount - paidAmount, 0));
+        const payStatus: OutstandingBill['pay_status'] =
+            outstanding <= 0.005 ? 'paid' : paidAmount > 0.005 ? 'partial' : 'due';
 
         const partyBranchCode = party.branch_code;
         const partyBranchName = partyBranchCode ? (branchNameMap.get(partyBranchCode) || null) : null;
@@ -199,13 +200,13 @@ export async function GET(request: Request) {
             amount: billAmount,
             paid_amount: paidAmount,
             outstanding,
+            pay_status: payStatus,
         });
         partyRow.total_billed = roundMoney(partyRow.total_billed + billAmount);
         partyRow.total_paid = roundMoney(partyRow.total_paid + paidAmount);
         partyRow.total_outstanding = roundMoney(partyRow.total_outstanding + outstanding);
     });
 
-    // Sort bills within each party by billing_date desc
     const result = Array.from(partyMap.values())
         .sort((a, b) => a.party_name.localeCompare(b.party_name));
 

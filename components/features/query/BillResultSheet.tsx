@@ -1,21 +1,23 @@
 'use client';
 
 import * as React from 'react';
-import { Printer, RotateCcw, Building2, FileText, Wallet, CreditCard } from 'lucide-react';
+import { Printer, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { numberToWords } from '@/lib/utils';
 import { BillingRecordViewDialog } from '@/components/features/ledger/BillingRecordDialogs';
-import {
-    DocumentSheet,
-    SheetSection,
-    SheetInfoGrid,
-    SheetField,
-    SheetDataTable,
-    type SheetColumn,
-} from './DocumentSheet';
+import { SheetDataTable, type SheetColumn } from './DocumentSheet';
 import { QueryRefLink, useQueryDocDialogs } from './QueryDocDialogs';
+import {
+    TrackPanel,
+    PartyLine,
+    PlaceholderCell,
+    SummaryTable,
+    PLACEHOLDER,
+    withPlaceholderRow,
+} from './QueryTrackLayout';
 import { money, num, upper, fmtDate, toNum } from './queryFormat';
-import type { QueryBillDetail } from '@/lib/types/query.types';
+import type { QueryBillDetail, QueryBillPayment } from '@/lib/types/query.types';
 
 type SnapRow = Record<string, unknown>;
 const get = (record: Record<string, unknown>, key: string): unknown => record[key];
@@ -24,46 +26,65 @@ const str = (value: unknown) => {
     return text || undefined;
 };
 
-export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; reset: () => void }) {
+const EMPTY_DETAIL: QueryBillDetail = {
+    record: {},
+    party: { id: '', name: '', code: '', phone: null, gstin: null, address: null, branch_code: null },
+    consignments: [],
+    party_summary: null,
+    payments: [],
+};
+
+const emptySnap: SnapRow = {};
+const emptyPayment: QueryBillPayment = {
+    id: '',
+    receipt_date: null,
+    amount: 0,
+    actual_received_amount: 0,
+    payment_mode: null,
+    reference_no: null,
+    bank_name: null,
+    narration: null,
+    status: '',
+    settled_amount: 0,
+    deduction_items: [],
+};
+
+export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail | null; reset: () => void }) {
     const [printOpen, setPrintOpen] = React.useState(false);
     const docs = useQueryDocDialogs();
-    const { record, party } = detail;
-    const summary = detail.party_summary;
-    const payments = detail.payments ?? [];
-    const consignments = detail.consignments ?? [];
+
+    const data = detail ?? EMPTY_DETAIL;
+    const hasRecord = Boolean(detail);
+    const { record, party } = data;
+    const summary = data.party_summary;
+    const realPayments = data.payments ?? [];
+    const payments = withPlaceholderRow(realPayments, emptyPayment);
+    const consignments = data.consignments ?? [];
 
     const status = String(get(record, 'status') || 'ACTIVE');
     const cancelled = status.toUpperCase() === 'CANCELLED';
     const amount = toNum(get(record, 'amount'));
-    const billRef = str(get(record, 'bill_ref_no')) ?? '—';
+    const billRef = str(get(record, 'bill_ref_no'));
 
     const snapshot = Array.isArray(get(record, 'consignment_snapshot'))
         ? (get(record, 'consignment_snapshot') as SnapRow[])
         : [];
-    const vehicleCancel = Array.isArray(get(record, 'vehicle_cancel_items'))
-        ? (get(record, 'vehicle_cancel_items') as SnapRow[])
-        : [];
-    const issuingBranch = upper(snapshot[0]?.booking_branch) || upper(party?.branch_code) || '—';
+    const snapRows = withPlaceholderRow(snapshot, emptySnap);
+    const issuingBranch = upper(snapshot[0]?.booking_branch) || upper(party?.branch_code) || PLACEHOLDER;
 
     const resolveCnId = (cnNo?: string | null) => {
         if (!cnNo) return undefined;
         return consignments.find((row) => row.cn_no === cnNo)?.id;
     };
 
-    const combinedOther = (row: SnapRow) =>
-        toNum(get(row, 'other_charges')) +
-        toNum(get(row, 'door_collection')) +
-        toNum(get(row, 'door_delivery')) +
-        toNum(get(row, 'traffic_challan'));
-
-    const columns: SheetColumn<SnapRow>[] = [
-        { key: 'sl', header: '#', align: 'center', cell: (_r, i) => i + 1, width: '36px' },
+    const lineColumns: SheetColumn<SnapRow>[] = [
+        { key: 'sl', header: '#', align: 'center', cell: (_r, i) => (hasRecord && snapshot.length ? i + 1 : PLACEHOLDER), width: '36px' },
         {
             key: 'cn',
             header: 'CN No',
             cell: (r) => {
                 const cnNo = str(get(r, 'cn_no'));
-                if (!cnNo) return '—';
+                if (!cnNo) return <PlaceholderCell>{PLACEHOLDER}</PlaceholderCell>;
                 return (
                     <QueryRefLink
                         loading={docs.isLoading(`cn:${resolveCnId(cnNo) || cnNo}`)}
@@ -74,242 +95,118 @@ export function BillResultSheet({ detail, reset }: { detail: QueryBillDetail; re
                 );
             },
         },
-        { key: 'date', header: 'Date', cell: (r) => fmtDate(get(r, 'bkg_date') as string) },
-        { key: 'inv', header: 'Invoice', cell: (r) => str(get(r, 'invoice_no')) ?? '—' },
-        { key: 'veh', header: 'Vehicle', cell: (r) => upper(get(r, 'vehicle_no')) || '—' },
-        { key: 'load', header: 'Loading', cell: (r) => upper(get(r, 'loading_station') || get(r, 'booking_branch')) || '—' },
-        { key: 'dest', header: 'Destination', cell: (r) => upper(get(r, 'delivery_station')) || '—' },
-        { key: 'wt', header: 'Charge Wt', align: 'right', cell: (r) => str(get(r, 'charge_wt')) ?? '—' },
-        { key: 'rate', header: 'Rate', align: 'right', cell: (r) => num(get(r, 'freight_rate')) },
-        { key: 'freight', header: 'Freight', align: 'right', cell: (r) => money(get(r, 'freight')), className: 'font-mono' },
-        { key: 'detention', header: 'Detention', align: 'right', cell: (r) => money(get(r, 'detention')), className: 'font-mono' },
-        { key: 'loading', header: 'Loading', align: 'right', cell: (r) => money(get(r, 'loading')), className: 'font-mono' },
-        { key: 'unload', header: 'Unload', align: 'right', cell: (r) => money(get(r, 'unloading')), className: 'font-mono' },
-        { key: 'extrakm', header: 'Extra KM', align: 'right', cell: (r) => money(get(r, 'extra_km')), className: 'font-mono' },
-        { key: 'other', header: 'Other', align: 'right', cell: (r) => money(combinedOther(r)), className: 'font-mono' },
-        { key: 'total', header: 'Total', align: 'right', cell: (r) => money(get(r, 'total_amount')), className: 'font-mono font-semibold' },
+        { key: 'date', header: 'Date', cell: (r) => <PlaceholderCell>{fmtDate(get(r, 'bkg_date') as string)}</PlaceholderCell> },
+        { key: 'inv', header: 'Invoice', cell: (r) => <PlaceholderCell>{str(get(r, 'invoice_no')) ?? PLACEHOLDER}</PlaceholderCell> },
+        { key: 'veh', header: 'Vehicle', cell: (r) => <PlaceholderCell>{upper(get(r, 'vehicle_no')) || PLACEHOLDER}</PlaceholderCell> },
+        { key: 'load', header: 'Loading', cell: (r) => <PlaceholderCell>{upper(get(r, 'loading_station') || get(r, 'booking_branch')) || PLACEHOLDER}</PlaceholderCell> },
+        { key: 'dest', header: 'Destination', cell: (r) => <PlaceholderCell>{upper(get(r, 'delivery_station')) || PLACEHOLDER}</PlaceholderCell> },
+        { key: 'freight', header: 'Freight', align: 'right', cell: (r) => <PlaceholderCell>{str(get(r, 'cn_no')) ? money(get(r, 'freight'), true) : PLACEHOLDER}</PlaceholderCell> },
+        { key: 'total', header: 'Total', align: 'right', cell: (r) => <PlaceholderCell>{str(get(r, 'cn_no')) ? money(get(r, 'total_amount'), true) : PLACEHOLDER}</PlaceholderCell> },
+    ];
+
+    const paymentColumns: SheetColumn<QueryBillPayment>[] = [
+        { key: 'date', header: 'Date', cell: (r) => <PlaceholderCell>{fmtDate(r.receipt_date)}</PlaceholderCell> },
+        { key: 'mode', header: 'Mode', cell: (r) => <PlaceholderCell>{r.payment_mode ?? PLACEHOLDER}</PlaceholderCell> },
+        { key: 'ref', header: 'Ref / Bank', cell: (r) => <PlaceholderCell>{[r.reference_no, r.bank_name].filter(Boolean).join(' · ') || PLACEHOLDER}</PlaceholderCell> },
+        { key: 'settled', header: 'Settled', align: 'right', cell: (r) => <PlaceholderCell>{r.id ? money(r.settled_amount, true) : PLACEHOLDER}</PlaceholderCell> },
+        { key: 'received', header: 'Received', align: 'right', cell: (r) => <PlaceholderCell>{r.id ? money(r.actual_received_amount, true) : PLACEHOLDER}</PlaceholderCell> },
+        { key: 'status', header: 'Status', cell: (r) => <PlaceholderCell>{upper(r.status) || PLACEHOLDER}</PlaceholderCell> },
     ];
 
     return (
         <>
-            <DocumentSheet
-                eyebrow="Freight Bill"
-                title={billRef}
-                status={cancelled ? 'Cancelled' : status}
-                statusTone={cancelled ? 'danger' : 'success'}
-                meta={
-                    <span>
-                        {party?.name ?? 'Party'} · Billed {fmtDate(get(record, 'billing_date') as string)}
-                    </span>
-                }
-                actions={
-                    <>
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={reset}>
-                            <RotateCcw className="h-4 w-4" /> New search
-                        </Button>
-                        <Button size="sm" className="gap-1.5" onClick={() => setPrintOpen(true)}>
-                            <Printer className="h-4 w-4" /> Official copy
-                        </Button>
-                    </>
-                }
-            >
-                <div className="grid gap-3 lg:grid-cols-2">
-                    <SheetSection title="Billed Party" icon={<Building2 className="h-3.5 w-3.5" />}>
-                        <SheetInfoGrid columns={2}>
-                            <SheetField label="Party" value={upper(party?.name)} accent />
-                            <SheetField label="Code" value={upper(party?.code)} mono />
-                            <SheetField label="Phone" value={str(party?.phone)} mono />
-                            <SheetField label="GSTIN" value={upper(party?.gstin)} mono />
-                            <SheetField label="Home Branch" value={upper(party?.branch_name) || upper(party?.branch_code)} />
-                            <SheetField label="Issuing Branch" value={issuingBranch} />
-                            <SheetField label="Address" value={upper(party?.address)} className="col-span-full" />
-                        </SheetInfoGrid>
-                    </SheetSection>
-
-                    <SheetSection title="Bill Summary" icon={<FileText className="h-3.5 w-3.5" />}>
-                        <SheetInfoGrid columns={2}>
-                            <SheetField label="Bill Ref No" value={billRef} mono accent />
-                            <SheetField label="Bill Date" value={fmtDate(get(record, 'billing_date') as string)} />
-                            <SheetField label="Covered CNs" value={num(snapshot.length || (Array.isArray(get(record, 'covered_cn_nos')) ? (get(record, 'covered_cn_nos') as unknown[]).length : 0))} mono />
-                            <SheetField label="Bill Amount" value={money(amount, true)} mono accent />
-                            <SheetField label="Amount In Words" value={numberToWords(amount)} className="col-span-full" />
-                        </SheetInfoGrid>
-                    </SheetSection>
-                </div>
-
-                {summary ? (
-                    <SheetSection title="Party Ledger Snapshot" icon={<Wallet className="h-3.5 w-3.5" />}>
-                        <SheetInfoGrid>
-                            <SheetField label="Opening Balance" value={money(summary.opening_balance, true)} mono />
-                            <SheetField label="Total Billed" value={money(summary.total_billed, true)} mono />
-                            <SheetField label="Total Received" value={money(summary.total_paid, true)} mono />
-                            <SheetField label="Unbilled Amount" value={money(summary.unbilled_amount, true)} mono />
-                            <SheetField
-                                label="Outstanding"
-                                value={
-                                    <span className={summary.outstanding > 0.005 ? 'text-amber-600' : 'text-emerald-600'}>
-                                        {money(summary.outstanding, true)}
-                                    </span>
-                                }
-                            />
-                        </SheetInfoGrid>
-                    </SheetSection>
-                ) : null}
-
-                {/* Payments Received against this bill */}
-                <SheetSection
-                    title="Payments Received"
-                    icon={<CreditCard className="h-3.5 w-3.5" />}
-                    right={
-                        payments.length > 0
-                            ? `${payments.length} receipt${payments.length > 1 ? 's' : ''} · ${money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.settled_amount, 0), true)} settled`
-                            : 'No payments'
-                    }
-                >
-                    {payments.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-1">No payment receipts linked to this bill yet.</p>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-xs border-collapse">
-                                <thead>
-                                    <tr className="bg-muted/50">
-                                        <th className="text-left px-3 py-2 font-semibold border border-border">#</th>
-                                        <th className="text-left px-3 py-2 font-semibold border border-border">Date</th>
-                                        <th className="text-left px-3 py-2 font-semibold border border-border">Mode</th>
-                                        <th className="text-left px-3 py-2 font-semibold border border-border">Ref / Bank</th>
-                                        <th className="text-right px-3 py-2 font-semibold border border-border">Settled</th>
-                                        <th className="text-right px-3 py-2 font-semibold border border-border">Received</th>
-                                        <th className="text-right px-3 py-2 font-semibold border border-border">Deductions</th>
-                                        <th className="text-left px-3 py-2 font-semibold border border-border">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {payments.map((p, idx) => {
-                                        const deductionTotal = p.deduction_items.reduce((s, d) => s + d.amount, 0);
-                                        const isReversed = p.status === 'REVERSED';
-                                        return (
-                                            <tr key={p.id} className={isReversed ? 'opacity-50 line-through' : idx % 2 === 1 ? 'bg-primary/5' : undefined}>
-                                                <td className="px-3 py-2 border border-border text-center text-muted-foreground">{idx + 1}</td>
-                                                <td className="px-3 py-2 border border-border">{fmtDate(p.receipt_date)}</td>
-                                                <td className="px-3 py-2 border border-border font-medium">{p.payment_mode ?? '—'}</td>
-                                                <td className="px-3 py-2 border border-border font-mono text-muted-foreground">
-                                                    {[p.reference_no, p.bank_name].filter(Boolean).join(' · ') || '—'}
-                                                </td>
-                                                <td className="px-3 py-2 border border-border text-right font-mono font-semibold">{money(p.settled_amount)}</td>
-                                                <td className="px-3 py-2 border border-border text-right font-mono text-emerald-700">{money(p.actual_received_amount)}</td>
-                                                <td className="px-3 py-2 border border-border text-right font-mono text-amber-700">
-                                                    {deductionTotal > 0 ? (
-                                                        <span title={p.deduction_items.map(d => `${d.label}: ₹${d.amount}`).join(', ')}>
-                                                            {money(deductionTotal)}
-                                                        </span>
-                                                    ) : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 border border-border">
-                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${isReversed ? 'bg-destructive/10 text-destructive' : 'bg-emerald-100 text-emerald-700'}`}>
-                                                        {p.status}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                                {payments.length > 1 && (
-                                    <tfoot>
-                                        <tr className="bg-muted font-semibold">
-                                            <td colSpan={4} className="px-3 py-2 border border-border text-right uppercase text-[10px] tracking-wide">Total</td>
-                                            <td className="px-3 py-2 border border-border text-right font-mono">
-                                                {money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.settled_amount, 0))}
-                                            </td>
-                                            <td className="px-3 py-2 border border-border text-right font-mono text-emerald-700">
-                                                {money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.actual_received_amount, 0))}
-                                            </td>
-                                            <td className="px-3 py-2 border border-border text-right font-mono text-amber-700">
-                                                {money(payments.filter(p => p.status !== 'REVERSED').reduce((s, p) => s + p.deduction_items.reduce((d, i) => d + i.amount, 0), 0))}
-                                            </td>
-                                            <td className="px-3 py-2 border border-border"></td>
-                                        </tr>
-                                    </tfoot>
-                                )}
-                            </table>
+            <div className="animate-slideUp space-y-3">
+                {hasRecord ? (
+                    <div className="flex flex-col gap-2 rounded-md border bg-card px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-lg font-black text-primary">{billRef ?? PLACEHOLDER}</span>
+                            <Badge variant={cancelled ? 'destructive' : 'default'}>{cancelled ? 'Cancelled' : upper(status)}</Badge>
+                            <span className="text-xs text-muted-foreground">
+                                {upper(party?.name) || PLACEHOLDER} · Billed {fmtDate(get(record, 'billing_date') as string)}
+                            </span>
                         </div>
-                    )}
-                </SheetSection>
-
-                <SheetSection title="Covered Consignments" icon={<FileText className="h-3.5 w-3.5" />} right={`${snapshot.length} rows`}>
-                    <SheetDataTable
-                        columns={columns}
-                        rows={snapshot}
-                        getRowKey={(r, i) => `${str(get(r, 'cn_no')) ?? 'row'}-${i}`}
-                        emptyText="This bill has no frozen line items. Open the official copy to view the full bill."
-                        footer={
-                            snapshot.length > 0 || vehicleCancel.length > 0 ? (
-                                <>
-                                    {vehicleCancel.map((item, index) => (
-                                        <tr key={`vc-${index}`} className="bg-amber-50/50">
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5 text-center">
-                                                {snapshot.length + index + 1}
-                                            </td>
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5">—</td>
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5">
-                                                {fmtDate(get(item, 'cancellation_date') as string)}
-                                            </td>
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5">—</td>
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5 font-mono">
-                                                {upper(get(item, 'vehicle_no')) || '—'}
-                                            </td>
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5">
-                                                {upper(get(item, 'from_station')) || '—'}
-                                            </td>
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5">
-                                                {upper(get(item, 'to_station')) || '—'}
-                                            </td>
-                                            <td
-                                                colSpan={8}
-                                                className="border border-[var(--doc-line-soft)] px-2.5 py-1.5 text-xs font-bold uppercase text-amber-800"
-                                            >
-                                                Vehicle Cancellation Charges
-                                            </td>
-                                            <td className="border border-[var(--doc-line-soft)] px-2.5 py-1.5 text-right font-mono font-semibold text-amber-700">
-                                                {money(get(item, 'charges'))}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr>
-                                        <td
-                                            colSpan={15}
-                                            className="border border-[var(--doc-line-soft)] bg-[var(--doc-head-bg)] px-2.5 py-2 text-right text-[11px] font-bold uppercase tracking-wide text-[var(--doc-head-fg)]"
-                                        >
-                                            Total
-                                        </td>
-                                        <td className="border border-[var(--doc-line-soft)] bg-[var(--doc-head-bg)] px-2.5 py-2 text-right font-mono text-sm font-black text-foreground">
-                                            {money(amount, true)}
-                                        </td>
-                                    </tr>
-                                </>
-                            ) : null
-                        }
-                    />
-                </SheetSection>
-
-                {str(get(record, 'narration')) ? (
-                    <SheetSection title="Narration">
-                        <p className="text-sm text-foreground">{String(get(record, 'narration'))}</p>
-                    </SheetSection>
+                        <div className="flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={reset}>
+                                <RotateCcw className="mr-1 h-3.5 w-3.5" /> New search
+                            </Button>
+                            <Button type="button" size="sm" onClick={() => setPrintOpen(true)}>
+                                <Printer className="mr-1 h-3.5 w-3.5" /> Official copy
+                            </Button>
+                        </div>
+                    </div>
                 ) : null}
 
-                {cancelled && str(get(record, 'cancel_reason')) ? (
-                    <SheetSection title="Cancellation Reason">
-                        <p className="text-sm text-destructive">{String(get(record, 'cancel_reason'))}</p>
-                    </SheetSection>
-                ) : null}
-            </DocumentSheet>
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
+                    <div className="min-w-0 space-y-3">
+                        <TrackPanel title="Bill Summary">
+                            <SummaryTable
+                                minWidth={800}
+                                headers={['Bill Ref', 'Bill Date', 'Party', 'Code', 'GSTIN', 'Issuing Branch', 'Covered CNs', 'Bill Amount']}
+                                cells={[
+                                    billRef ?? PLACEHOLDER,
+                                    fmtDate(get(record, 'billing_date') as string),
+                                    upper(party?.name) || PLACEHOLDER,
+                                    upper(party?.code) || PLACEHOLDER,
+                                    upper(party?.gstin) || PLACEHOLDER,
+                                    issuingBranch,
+                                    hasRecord ? num(snapshot.length || (Array.isArray(get(record, 'covered_cn_nos')) ? (get(record, 'covered_cn_nos') as unknown[]).length : 0)) : PLACEHOLDER,
+                                    hasRecord ? money(amount, true) : PLACEHOLDER,
+                                ]}
+                            />
+                            <div className="grid gap-2 border-t bg-muted/20 px-3 py-2 md:grid-cols-2">
+                                <PartyLine label="Phone" value={str(party?.phone)} />
+                                <PartyLine label="Home Branch" value={upper(party?.branch_name) || upper(party?.branch_code)} />
+                                <PartyLine label="Address" value={upper(party?.address)} />
+                                <PartyLine label="Amount In Words" value={hasRecord ? numberToWords(amount) : undefined} />
+                            </div>
+                        </TrackPanel>
+
+                        <TrackPanel title="Payments Received" bodyClassName="p-2">
+                            <SheetDataTable
+                                columns={paymentColumns}
+                                rows={payments}
+                                getRowKey={(r, i) => r.id || `bill-pay-${i}`}
+                            />
+                        </TrackPanel>
+
+                        <TrackPanel title="Covered Consignments" bodyClassName="p-2">
+                            <SheetDataTable
+                                columns={lineColumns}
+                                rows={snapRows}
+                                getRowKey={(r, i) => `${str(get(r, 'cn_no')) ?? 'row'}-${i}`}
+                            />
+                        </TrackPanel>
+
+                        <TrackPanel title="Narration" bodyClassName="p-3 text-xs">
+                            <span className={!str(get(record, 'narration')) ? 'text-muted-foreground/70' : undefined}>
+                                {str(get(record, 'narration')) || PLACEHOLDER}
+                            </span>
+                        </TrackPanel>
+                    </div>
+
+                    <aside className="space-y-3 xl:sticky xl:top-4 xl:self-start">
+                        {summary || !hasRecord ? (
+                            <TrackPanel title="Party Ledger Snapshot" bodyClassName="space-y-1 p-3 text-xs">
+                                <div className="flex justify-between"><span className="text-muted-foreground">Opening</span><span className="font-mono">{summary ? money(summary.opening_balance, true) : PLACEHOLDER}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Total Billed</span><span className="font-mono">{summary ? money(summary.total_billed, true) : PLACEHOLDER}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Total Received</span><span className="font-mono">{summary ? money(summary.total_paid, true) : PLACEHOLDER}</span></div>
+                                <div className="flex justify-between"><span className="text-muted-foreground">Unbilled</span><span className="font-mono">{summary ? money(summary.unbilled_amount, true) : PLACEHOLDER}</span></div>
+                                <div className="flex justify-between border-t pt-1.5 font-bold"><span>Outstanding</span><span className="font-mono text-primary">{summary ? money(summary.outstanding, true) : PLACEHOLDER}</span></div>
+                            </TrackPanel>
+                        ) : null}
+                        <TrackPanel title="Bill Total" bodyClassName="p-3">
+                            <div className="text-center font-mono text-xl font-black text-primary">{hasRecord ? money(amount, true) : PLACEHOLDER}</div>
+                        </TrackPanel>
+                    </aside>
+                </div>
+            </div>
 
             <BillingRecordViewDialog
                 open={printOpen}
                 onClose={() => setPrintOpen(false)}
                 party={party as unknown as React.ComponentProps<typeof BillingRecordViewDialog>['party']}
                 record={record as unknown as React.ComponentProps<typeof BillingRecordViewDialog>['record']}
-                consignments={detail.consignments as unknown as React.ComponentProps<typeof BillingRecordViewDialog>['consignments']}
+                consignments={consignments as unknown as React.ComponentProps<typeof BillingRecordViewDialog>['consignments']}
                 isAdmin={false}
                 onEdit={() => setPrintOpen(false)}
             />

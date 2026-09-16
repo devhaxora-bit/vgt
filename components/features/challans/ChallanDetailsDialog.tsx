@@ -631,7 +631,7 @@ body { font-family: "Times New Roman", Georgia, serif; font-size: 11px; color: #
                                         </thead>
                                         <tbody>
                                             {linkedDetails.map((cn) => (
-                                                <tr key={cn.id || cn.cn_no} className="border-b last:border-0 even:bg-primary/5">
+                                                <tr key={cn.id || cn.cn_no} className="border-b last:border-0 even:bg-[var(--table-row-even)]">
                                                     <td className="px-3 py-1.5 font-mono font-bold text-primary">{cn.cn_no}</td>
                                                     <td className="px-3 py-1.5">{cn.bkg_date || '—'}</td>
                                                     <td className="px-3 py-1.5">{cn.loading_point || cn.booking_branch || '—'}</td>

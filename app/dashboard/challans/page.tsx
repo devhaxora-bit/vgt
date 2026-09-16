@@ -320,7 +320,7 @@ export default function ChallanListPage() {
             <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-slate-50 hover:bg-slate-50">
+                        <TableRow className="hover:bg-transparent">
                             <TableHead className="w-[120px]">Challan Branch</TableHead>
                             <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('challan_no')}>
                                 Challan No <SortIcon field="challan_no" />
@@ -355,7 +355,7 @@ export default function ChallanListPage() {
                             </TableRow>
                         ) : sortedChallans.length > 0 ? (
                             sortedChallans.map((challan) => (
-                                <TableRow key={challan.id} className="hover:bg-slate-50/50">
+                                <TableRow key={challan.id}>
                                     <TableCell className="font-medium">{challan.origin_branch?.name || 'N/A'}</TableCell>
                                     <TableCell className="font-mono text-primary font-semibold">{challan.challan_no}</TableCell>
                                     <TableCell>{challan.date_from ? format(new Date(challan.date_from), 'dd/MM/yyyy') : '—'}</TableCell>

@@ -365,7 +365,7 @@ export default function ChallanLedgerPage() {
                                 ) : filtered.length === 0 ? (
                                     <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No brokers found</TableCell></TableRow>
                                 ) : filtered.map((b) => (
-                                    <TableRow key={b.broker_id} className="hover:bg-primary/5 group">
+                                    <TableRow key={b.broker_id} className="group">
                                         <TableCell><span className="font-mono font-bold text-primary text-xs">{b.broker_code}</span></TableCell>
                                         <TableCell>
                                             <div className="font-semibold text-sm">{b.broker_name}</div>

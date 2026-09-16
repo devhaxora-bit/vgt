@@ -7,6 +7,7 @@ export type OutstandingPdfFilters = {
     branch?: string;
     branchName?: string;
     search?: string;
+    status?: string;
 };
 
 export type OutstandingPdfPayload = {
@@ -38,6 +39,7 @@ const describeFilters = (filters: OutstandingPdfFilters) => {
     if (filters.branch) {
         parts.push(`Branch: ${formatBranchLabel(filters.branch, filters.branchName)}`);
     }
+    if (filters.status) parts.push(`Status: ${filters.status}`);
     if (filters.search) parts.push(`Party: ${filters.search}`);
     return parts.length > 0 ? parts.join(' | ') : 'All Branches';
 };
@@ -49,6 +51,9 @@ const buildBillRows = (bills: OutstandingBill[]) =>
     <tr class="bill-row">
         <td class="bill-no-cell">${safe(bill.bill_ref_no || '—')}</td>
         <td class="center">${safe(fmtDate(bill.billing_date))}</td>
+        <td class="center">${safe(
+            bill.pay_status === 'paid' ? 'Paid' : bill.pay_status === 'partial' ? 'Partial' : 'To be paid'
+        )}</td>
         <td class="amount">${fmt(bill.amount)}</td>
         <td class="amount">${fmt(bill.paid_amount)}</td>
         <td class="amount outstanding-cell">${fmt(bill.outstanding)}</td>
@@ -59,7 +64,7 @@ const buildBillRows = (bills: OutstandingBill[]) =>
 
 const buildPartyBlock = (party: OutstandingPartyRow) => `
     <tr class="party-header-row">
-        <td colspan="5">
+        <td colspan="6">
             <span class="party-name">${safe(party.party_name)}</span>
             <span class="party-code">${safe(party.party_code)}</span>
             ${party.branch_code ? `<span class="party-branch">${safe(party.branch_name || party.branch_code)}</span>` : ''}
@@ -68,7 +73,7 @@ const buildPartyBlock = (party: OutstandingPartyRow) => `
     </tr>
     ${buildBillRows(party.bills)}
     <tr class="subtotal-row">
-        <td colspan="2" class="subtotal-label">Subtotal — ${safe(party.party_name)}</td>
+        <td colspan="3" class="subtotal-label">Subtotal — ${safe(party.party_name)}</td>
         <td class="amount">${fmt(party.total_billed)}</td>
         <td class="amount">${fmt(party.total_paid)}</td>
         <td class="amount outstanding-cell">${fmt(party.total_outstanding)}</td>
@@ -115,18 +120,19 @@ const buildTableSection = (
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width:22%;">Bill No.</th>
-                <th style="width:15%;">Bill Date</th>
-                <th style="width:21%;">Bill Amount</th>
-                <th style="width:21%;">Paid</th>
-                <th style="width:21%;">Outstanding</th>
+                <th style="width:20%;">Bill No.</th>
+                <th style="width:12%;">Bill Date</th>
+                <th style="width:12%;">Status</th>
+                <th style="width:18%;">Bill Amount</th>
+                <th style="width:18%;">Paid</th>
+                <th style="width:20%;">Outstanding</th>
             </tr>
         </thead>
         <tbody>
             ${pageRows.map(buildPartyBlock).join('')}
             ${isLastPage ? `
             <tr class="grand-total-row">
-                <td colspan="2" class="grand-total-label">
+                <td colspan="3" class="grand-total-label">
                     GRAND TOTAL — ${allRows.length} ${allRows.length === 1 ? 'Party' : 'Parties'} / ${totals.totalBills} Bills
                 </td>
                 <td class="amount">${fmt(totals.totalBilled)}</td>

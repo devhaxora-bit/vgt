@@ -188,7 +188,7 @@ export function ChallanLinkedCnsCell({ linkedCnNos, onOpenCn }: ChallanLinkedCns
     }
 
     return (
-        <div className="flex flex-wrap gap-x-1 gap-y-0.5 max-w-[200px]">
+        <div className="flex max-w-[200px] flex-nowrap items-center gap-x-0.5 overflow-hidden">
             {sortedCnNos.map((cnNo, index) => (
                 <React.Fragment key={cnNo}>
                     <LinkedCnLink
@@ -198,7 +198,7 @@ export function ChallanLinkedCnsCell({ linkedCnNos, onOpenCn }: ChallanLinkedCns
                         onPrefetch={prefetchCn}
                     />
                     {index < sortedCnNos.length - 1 ? (
-                        <span className="text-muted-foreground text-[10px]">,</span>
+                        <span className="shrink-0 text-muted-foreground text-[10px]">,</span>
                     ) : null}
                 </React.Fragment>
             ))}

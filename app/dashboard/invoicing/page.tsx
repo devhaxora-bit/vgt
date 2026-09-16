@@ -296,11 +296,11 @@ export default function BillEntryPage() {
                                             {bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase()}
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap">{fmtDate(bill.billing_date)}</TableCell>
-                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                        <TableCell className="vgt-table-cell-wrap min-w-0 overflow-hidden">
                                             <div className="font-medium truncate" title={bill.party_name}>{bill.party_name}</div>
                                             <div className="text-xs text-muted-foreground truncate">{bill.party_code}</div>
                                         </TableCell>
-                                        <TableCell className="min-w-0 whitespace-normal overflow-hidden">
+                                        <TableCell className="vgt-table-cell-wrap min-w-0 overflow-hidden">
                                             <div className="flex items-start gap-2 min-w-0">
                                                 {covered.length > 0 && (
                                                     <Badge variant="outline" className="shrink-0 font-mono text-[10px]">

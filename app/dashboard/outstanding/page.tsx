@@ -37,10 +37,20 @@ import {
 } from '@/components/ui/table';
 
 import { downloadOutstandingPdf } from '@/lib/outstandingPdf';
-import type { OutstandingPartyRow } from '@/app/api/outstanding/route';
+import type { OutstandingPartyRow, OutstandingBill } from '@/app/api/outstanding/route';
+
+type PayStatusFilter = 'all' | 'due' | 'paid';
+
+const PAY_STATUS_LABELS: Record<PayStatusFilter, string> = {
+    all: 'Billed (all)',
+    due: 'To be paid',
+    paid: 'Paid',
+};
 
 const fmt = (n: number) =>
     new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+
+const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const fmtDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
@@ -52,6 +62,37 @@ const fmtDateInput = (dateStr: string) => {
     if (!dateStr) return '';
     const [y, m, d] = dateStr.split('-');
     return `${d}/${m}/${y}`;
+};
+
+const billMatchesStatus = (bill: OutstandingBill, status: PayStatusFilter) => {
+    if (status === 'all') return true;
+    if (status === 'paid') return bill.pay_status === 'paid';
+    return bill.pay_status === 'due' || bill.pay_status === 'partial';
+};
+
+const filterPartyByStatus = (
+    party: OutstandingPartyRow,
+    status: PayStatusFilter,
+): OutstandingPartyRow | null => {
+    const bills = party.bills.filter((bill) => billMatchesStatus(bill, status));
+    if (bills.length === 0) return null;
+    return {
+        ...party,
+        bills,
+        total_billed: roundMoney(bills.reduce((sum, bill) => sum + bill.amount, 0)),
+        total_paid: roundMoney(bills.reduce((sum, bill) => sum + bill.paid_amount, 0)),
+        total_outstanding: roundMoney(bills.reduce((sum, bill) => sum + bill.outstanding, 0)),
+    };
+};
+
+const payStatusBadge = (status: OutstandingBill['pay_status']) => {
+    if (status === 'paid') {
+        return <Badge className="h-5 px-1.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Paid</Badge>;
+    }
+    if (status === 'partial') {
+        return <Badge className="h-5 px-1.5 text-[10px] font-bold bg-amber-100 text-amber-800 hover:bg-amber-100">Partial</Badge>;
+    }
+    return <Badge className="h-5 px-1.5 text-[10px] font-bold bg-red-100 text-red-800 hover:bg-red-100">To be paid</Badge>;
 };
 
 export default function OutstandingPage() {
@@ -66,6 +107,7 @@ export default function OutstandingPage() {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    const [payStatusFilter, setPayStatusFilter] = useState<PayStatusFilter>('due');
     const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set());
     const [selectedPartyId, setSelectedPartyId] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
@@ -134,18 +176,35 @@ export default function OutstandingPage() {
     }, [branchFilter, dateFrom, dateTo, loadAllParties]);
 
     const filteredParties = useMemo(() => {
-        if (!searchTerm.trim()) return allParties;
-        const q = searchTerm.toLowerCase();
-        return allParties.filter(
-            (p) =>
-                p.party_name.toLowerCase().includes(q) ||
-                (p.party_code ?? '').toLowerCase().includes(q)
-        );
-    }, [allParties, searchTerm]);
+        const q = searchTerm.trim().toLowerCase();
+        return allParties
+            .filter(
+                (p) =>
+                    !q ||
+                    p.party_name.toLowerCase().includes(q) ||
+                    (p.party_code ?? '').toLowerCase().includes(q),
+            )
+            .map((p) => filterPartyByStatus(p, payStatusFilter))
+            .filter((p): p is OutstandingPartyRow => p !== null);
+    }, [allParties, searchTerm, payStatusFilter]);
 
-    const displayedData = selectedPartyId
-        ? allParties.filter((p) => p.party_id === selectedPartyId)
-        : [];
+    // If status filter removes the selected party, return to the list.
+    useEffect(() => {
+        if (!selectedPartyId) return;
+        if (!filteredParties.some((p) => p.party_id === selectedPartyId)) {
+            setSelectedPartyId(null);
+            setExpandedParties(new Set());
+        }
+    }, [filteredParties, selectedPartyId]);
+
+    const displayedData = useMemo(() => {
+        if (!selectedPartyId) return [];
+        return filteredParties.filter((p) => p.party_id === selectedPartyId);
+    }, [filteredParties, selectedPartyId]);
+
+    /** PDF/Print always use the current filtered set — one party detail or all parties in the list. */
+    const exportRows = selectedPartyId && displayedData.length > 0 ? displayedData : filteredParties;
+    const canExportPdf = exportRows.length > 0 && !allPartiesLoading;
 
     const grandTotals = useMemo(
         () =>
@@ -198,12 +257,12 @@ export default function OutstandingPage() {
 
     const resetFilters = () => {
         setSearchTerm('');
+        setPayStatusFilter('due');
         setBranchFilter(defaultBranchFilterValue(userScope));
         setDateFrom('');
         setDateTo('');
         setSelectedPartyId(null);
         setExpandedParties(new Set());
-        // allParties reset will be triggered by the branchFilter/date effect
     };
 
     const branchNameByCode = useMemo(
@@ -227,7 +286,7 @@ export default function OutstandingPage() {
     };
 
     const handleExportPdf = async () => {
-        if (displayedData.length === 0) return;
+        if (exportRows.length === 0) return;
         setIsPdfExporting(true);
         try {
             const now = new Date();
@@ -241,7 +300,7 @@ export default function OutstandingPage() {
             });
 
             await downloadOutstandingPdf({
-                rows: displayedData,
+                rows: exportRows,
                 periodLabel: buildPeriodLabel(),
                 filters: {
                     branch: branchFilter && branchFilter !== 'all' ? branchFilter : undefined,
@@ -250,6 +309,7 @@ export default function OutstandingPage() {
                             ? branchNameByCode.get(branchFilter)
                             : undefined,
                     search: searchTerm.trim() || undefined,
+                    status: PAY_STATUS_LABELS[payStatusFilter],
                 },
                 generatedAt,
             });
@@ -261,7 +321,7 @@ export default function OutstandingPage() {
     };
 
     const handlePrint = async () => {
-        if (displayedData.length === 0) return;
+        if (exportRows.length === 0) return;
         setIsPrinting(true);
         try {
             const now = new Date();
@@ -294,7 +354,7 @@ export default function OutstandingPage() {
             doc.write(
                 buildOutstandingHtml(
                     {
-                        rows: displayedData,
+                        rows: exportRows,
                         periodLabel: buildPeriodLabel(),
                         filters: {
                             branch: branchFilter && branchFilter !== 'all' ? branchFilter : undefined,
@@ -303,6 +363,7 @@ export default function OutstandingPage() {
                                     ? branchNameByCode.get(branchFilter)
                                     : undefined,
                             search: searchTerm.trim() || undefined,
+                            status: PAY_STATUS_LABELS[payStatusFilter],
                         },
                         generatedAt,
                     },
@@ -341,6 +402,7 @@ export default function OutstandingPage() {
         !!dateFrom,
         !!dateTo,
         !!searchTerm.trim(),
+        payStatusFilter !== 'due',
     ].filter(Boolean).length;
 
     return (
@@ -370,7 +432,7 @@ export default function OutstandingPage() {
                         variant="outline"
                         size="sm"
                         onClick={handlePrint}
-                        disabled={isPrinting || displayedData.length === 0}
+                        disabled={isPrinting || !canExportPdf}
                         className="gap-2"
                     >
                         {isPrinting ? (
@@ -383,7 +445,7 @@ export default function OutstandingPage() {
                     <Button
                         size="sm"
                         onClick={handleExportPdf}
-                        disabled={isPdfExporting || displayedData.length === 0}
+                        disabled={isPdfExporting || !canExportPdf}
                         className="gap-2"
                     >
                         {isPdfExporting ? (
@@ -391,7 +453,11 @@ export default function OutstandingPage() {
                         ) : (
                             <Download className="h-4 w-4" />
                         )}
-                        {isPdfExporting ? 'Exporting…' : 'Export PDF'}
+                        {isPdfExporting
+                            ? 'Exporting…'
+                            : selectedPartyId
+                                ? 'Export PDF'
+                                : `Export PDF (${filteredParties.length})`}
                     </Button>
                 </div>
             </div>
@@ -462,6 +528,26 @@ export default function OutstandingPage() {
                                 onChange={(e) => setDateTo(e.target.value)}
                                 className="h-9 text-sm"
                             />
+                        </div>
+
+                        {/* Pay status */}
+                        <div className="flex flex-col gap-1 min-w-[180px]">
+                            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                                <FileText className="h-3 w-3" /> Bill Status
+                            </label>
+                            <Select
+                                value={payStatusFilter}
+                                onValueChange={(v) => setPayStatusFilter(v as PayStatusFilter)}
+                            >
+                                <SelectTrigger className="h-9 text-sm w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Billed (all)</SelectItem>
+                                    <SelectItem value="due">To be paid</SelectItem>
+                                    <SelectItem value="paid">Paid</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         {/* Party Search */}
@@ -559,6 +645,7 @@ export default function OutstandingPage() {
                                         <TableHead className="w-8"></TableHead>
                                         <TableHead className="font-semibold">Party / Bill No.</TableHead>
                                         <TableHead className="font-semibold">Bill Date</TableHead>
+                                        <TableHead className="font-semibold">Status</TableHead>
                                         <TableHead className="font-semibold text-right">Bill Amount</TableHead>
                                         <TableHead className="font-semibold text-right">Paid</TableHead>
                                         <TableHead className="font-semibold text-right">Outstanding</TableHead>
@@ -573,37 +660,38 @@ export default function OutstandingPage() {
                                                     className="bg-muted/60 hover:bg-muted/80 cursor-pointer select-none font-semibold border-t-2"
                                                     onClick={() => toggleParty(party.party_id)}
                                                 >
-                                                    <TableCell className="w-8 py-1.5">
+                                                    <TableCell className="w-8 ">
                                                         {isExpanded ? (
-                                                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                                                         ) : (
-                                                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                                                         )}
                                                     </TableCell>
-                                                    <TableCell className="py-1.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-bold text-sm">{party.party_name}</span>
-                                                            <Badge variant="outline" className="text-xs font-mono">
+                                                    <TableCell className="">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-bold text-xs">{party.party_name}</span>
+                                                            <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-mono">
                                                                 {party.party_code}
                                                             </Badge>
                                                             {party.branch_code && (
-                                                                <Badge variant="secondary" className="text-xs">
+                                                                <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
                                                                     {party.branch_name || party.branch_code}
                                                                 </Badge>
                                                             )}
-                                                            <span className="text-xs text-muted-foreground ml-1">
+                                                            <span className="text-[10px] text-muted-foreground ml-1">
                                                                 {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
                                                             </span>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="py-1.5 text-muted-foreground text-xs">—</TableCell>
-                                                    <TableCell className="py-1.5 text-right tabular-nums font-bold">
+                                                    <TableCell className=" text-muted-foreground text-[11px]">—</TableCell>
+                                                    <TableCell className=" text-muted-foreground text-[11px]">—</TableCell>
+                                                    <TableCell className=" text-right tabular-nums text-xs font-bold">
                                                         ₹{fmt(party.total_billed)}
                                                     </TableCell>
-                                                    <TableCell className="py-1.5 text-right tabular-nums text-muted-foreground">
+                                                    <TableCell className=" text-right tabular-nums text-xs text-muted-foreground">
                                                         ₹{fmt(party.total_paid)}
                                                     </TableCell>
-                                                    <TableCell className="py-1.5 text-right tabular-nums font-bold text-destructive">
+                                                    <TableCell className=" text-right tabular-nums text-xs font-bold text-destructive">
                                                         ₹{fmt(party.total_outstanding)}
                                                     </TableCell>
                                                 </TableRow>
@@ -613,40 +701,43 @@ export default function OutstandingPage() {
                                                         {party.bills.map((bill, idx) => (
                                                             <TableRow
                                                                 key={bill.id}
-                                                                className={idx % 2 === 0 ? 'bg-background' : 'bg-muted/10'}
+                                                                className={idx % 2 === 0 ? 'bg-background' : 'bg-[var(--table-row-even)]'}
                                                             >
-                                                                <TableCell className="w-8"></TableCell>
-                                                                <TableCell className="py-1.5 pl-8">
-                                                                    <span className="font-medium text-sm font-mono">
+                                                                <TableCell className="w-8 "></TableCell>
+                                                                <TableCell className=" pl-8">
+                                                                    <span className="font-medium text-xs font-mono">
                                                                         {bill.bill_ref_no || '—'}
                                                                     </span>
                                                                 </TableCell>
-                                                                <TableCell className="py-1.5 text-sm text-muted-foreground">
+                                                                <TableCell className=" text-xs text-muted-foreground">
                                                                     {fmtDate(bill.billing_date)}
                                                                 </TableCell>
-                                                                <TableCell className="py-1.5 text-right tabular-nums text-sm">
+                                                                <TableCell className="">
+                                                                    {payStatusBadge(bill.pay_status)}
+                                                                </TableCell>
+                                                                <TableCell className=" text-right tabular-nums text-xs">
                                                                     ₹{fmt(bill.amount)}
                                                                 </TableCell>
-                                                                <TableCell className="py-1.5 text-right tabular-nums text-sm text-muted-foreground">
+                                                                <TableCell className=" text-right tabular-nums text-xs text-muted-foreground">
                                                                     ₹{fmt(bill.paid_amount)}
                                                                 </TableCell>
-                                                                <TableCell className="py-1.5 text-right tabular-nums text-sm font-semibold text-destructive">
+                                                                <TableCell className={`text-right tabular-nums text-xs font-semibold ${bill.outstanding > 0.005 ? 'text-destructive' : 'text-emerald-700'}`}>
                                                                     ₹{fmt(bill.outstanding)}
                                                                 </TableCell>
                                                             </TableRow>
                                                         ))}
                                                         <TableRow className="bg-primary/5 border-b-2">
-                                                            <TableCell></TableCell>
-                                                            <TableCell colSpan={2} className="py-1.5 pl-8 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                            <TableCell className=""></TableCell>
+                                                            <TableCell colSpan={3} className="pl-8 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                                                                 {party.party_name} — Subtotal
                                                             </TableCell>
-                                                            <TableCell className="py-1.5 text-right tabular-nums text-sm font-bold">
+                                                            <TableCell className=" text-right tabular-nums text-xs font-bold">
                                                                 ₹{fmt(party.total_billed)}
                                                             </TableCell>
-                                                            <TableCell className="py-1.5 text-right tabular-nums text-sm font-semibold text-muted-foreground">
+                                                            <TableCell className=" text-right tabular-nums text-xs font-semibold text-muted-foreground">
                                                                 ₹{fmt(party.total_paid)}
                                                             </TableCell>
-                                                            <TableCell className="py-1.5 text-right tabular-nums text-sm font-bold text-destructive">
+                                                            <TableCell className=" text-right tabular-nums text-xs font-bold text-destructive">
                                                                 ₹{fmt(party.total_outstanding)}
                                                             </TableCell>
                                                         </TableRow>
@@ -657,18 +748,18 @@ export default function OutstandingPage() {
                                     })}
 
                                     <TableRow className="bg-muted border-t-2 font-bold">
-                                        <TableCell></TableCell>
-                                        <TableCell colSpan={2} className="py-3 text-sm font-bold uppercase tracking-wide">
+                                        <TableCell className=""></TableCell>
+                                        <TableCell colSpan={3} className="text-xs font-bold uppercase tracking-wide">
                                             Grand Total — {displayedData.length} {displayedData.length === 1 ? 'Party' : 'Parties'} /{' '}
                                             {displayedData.reduce((s, p) => s + p.bills.length, 0)} Bills
                                         </TableCell>
-                                        <TableCell className="py-3 text-right tabular-nums font-bold text-base">
+                                        <TableCell className="text-right tabular-nums text-xs font-bold">
                                             ₹{fmt(grandTotals.billed)}
                                         </TableCell>
-                                        <TableCell className="py-3 text-right tabular-nums font-semibold text-muted-foreground">
+                                        <TableCell className="text-right tabular-nums text-xs font-semibold text-muted-foreground">
                                             ₹{fmt(grandTotals.paid)}
                                         </TableCell>
-                                        <TableCell className="py-3 text-right tabular-nums font-bold text-destructive text-base">
+                                        <TableCell className="text-right tabular-nums text-xs font-bold text-destructive">
                                             ₹{fmt(grandTotals.outstanding)}
                                         </TableCell>
                                     </TableRow>
@@ -684,21 +775,21 @@ export default function OutstandingPage() {
                             <Table>
                                 <TableHeader className="bg-muted/40 border-b">
                                     <TableRow>
-                                        <TableHead className="font-bold py-2.5 w-24">Code</TableHead>
-                                        <TableHead className="font-bold py-2.5">Party</TableHead>
-                                        <TableHead className="font-bold py-2.5 w-28">Branch</TableHead>
-                                        <TableHead className="font-bold py-2.5 text-right">Bills</TableHead>
-                                        <TableHead className="font-bold py-2.5 text-right">Billed</TableHead>
-                                        <TableHead className="font-bold py-2.5 text-right">Paid</TableHead>
-                                        <TableHead className="font-bold py-2.5 text-right">Outstanding</TableHead>
-                                        <TableHead className="py-2.5 text-right"></TableHead>
+                                        <TableHead className="font-bold w-24">Code</TableHead>
+                                        <TableHead className="font-bold">Party</TableHead>
+                                        <TableHead className="font-bold w-28">Branch</TableHead>
+                                        <TableHead className="font-bold text-right">Bills</TableHead>
+                                        <TableHead className="font-bold text-right">Billed</TableHead>
+                                        <TableHead className="font-bold text-right">Paid</TableHead>
+                                        <TableHead className="font-bold text-right">Outstanding</TableHead>
+                                        <TableHead className="text-right w-20"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {allPartiesLoading ? (
                                         <TableRow>
-                                            <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                                                <div className="flex items-center justify-center gap-2">
+                                            <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                                                <div className="flex items-center justify-center gap-2 text-xs">
                                                     <Loader2 className="h-4 w-4 animate-spin" />
                                                     Loading outstanding parties…
                                                 </div>
@@ -706,10 +797,10 @@ export default function OutstandingPage() {
                                         </TableRow>
                                     ) : fetchError ? (
                                         <TableRow>
-                                            <TableCell colSpan={8} className="h-32 text-center">
+                                            <TableCell colSpan={8} className="h-24 text-center">
                                                 <div className="flex flex-col items-center gap-2 text-destructive">
-                                                    <AlertCircle className="h-8 w-8" />
-                                                    <p className="text-sm font-medium">{fetchError}</p>
+                                                    <AlertCircle className="h-7 w-7" />
+                                                    <p className="text-xs font-medium">{fetchError}</p>
                                                     <Button variant="outline" size="sm" onClick={() => void loadAllParties()}>
                                                         Retry
                                                     </Button>
@@ -718,14 +809,14 @@ export default function OutstandingPage() {
                                         </TableRow>
                                     ) : filteredParties.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={8} className="h-32 text-center">
+                                            <TableCell colSpan={8} className="h-24 text-center">
                                                 <div className="flex flex-col items-center gap-2 opacity-40">
-                                                    <FileText className="h-10 w-10 text-muted-foreground" />
-                                                    <p className="text-sm font-medium">
+                                                    <FileText className="h-8 w-8 text-muted-foreground" />
+                                                    <p className="text-xs font-medium">
                                                         {allPartiesLoaded
                                                             ? searchTerm
                                                                 ? `No parties found for "${searchTerm}"`
-                                                                : 'No outstanding bills found'
+                                                                : `No ${PAY_STATUS_LABELS[payStatusFilter].toLowerCase()} bills found`
                                                             : 'Select a branch to view outstanding parties'}
                                                     </p>
                                                 </div>
@@ -735,38 +826,38 @@ export default function OutstandingPage() {
                                         filteredParties.map((party) => (
                                             <TableRow
                                                 key={party.party_id}
-                                                className="hover:bg-primary/5 transition-colors border-b last:border-0 group cursor-pointer"
+                                                className="transition-colors border-b last:border-0 group cursor-pointer"
                                                 onClick={() => selectParty(party.party_id)}
                                             >
-                                                <TableCell>
-                                                    <span className="font-mono font-bold text-primary text-xs">{party.party_code}</span>
+                                                <TableCell className="">
+                                                    <span className="font-mono font-bold text-primary text-[11px]">{party.party_code}</span>
                                                 </TableCell>
-                                                <TableCell>
-                                                    <div className="font-semibold text-sm">{party.party_name}</div>
-                                                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                                <TableCell className="">
+                                                    <div className="font-semibold text-xs leading-tight">{party.party_name}</div>
+                                                    <div className="text-[10px] text-muted-foreground font-mono">
                                                         {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell>
+                                                <TableCell className="">
                                                     {party.branch_code ? (
-                                                        <span className="font-mono text-xs font-semibold text-foreground bg-muted px-2 py-0.5 rounded">
+                                                        <span className="font-mono text-[10px] font-semibold text-foreground bg-muted px-1.5 py-0 rounded">
                                                             {party.branch_name || party.branch_code}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-muted-foreground/40 text-xs">-</span>
+                                                        <span className="text-muted-foreground/40 text-[10px]">-</span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="text-right font-mono text-sm">{party.bills.length}</TableCell>
-                                                <TableCell className="text-right font-mono font-bold text-sm">₹{fmt(party.total_billed)}</TableCell>
-                                                <TableCell className="text-right font-mono font-bold text-sm text-indigo-700">₹{fmt(party.total_paid)}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <span className="font-mono font-bold text-sm text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                                                <TableCell className=" text-right font-mono text-xs">{party.bills.length}</TableCell>
+                                                <TableCell className=" text-right font-mono font-bold text-xs">₹{fmt(party.total_billed)}</TableCell>
+                                                <TableCell className=" text-right font-mono font-bold text-xs text-indigo-700">₹{fmt(party.total_paid)}</TableCell>
+                                                <TableCell className=" text-right">
+                                                    <span className={`font-mono font-bold text-xs px-1.5 py-0 rounded ${party.total_outstanding > 0.005 ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'}`}>
                                                         ₹{fmt(party.total_outstanding)}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button size="sm" variant="ghost" className="h-8 gap-1 text-primary hover:bg-primary/10">
-                                                        Details <ChevronRight className="h-3.5 w-3.5" />
+                                                <TableCell className=" text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button size="sm" variant="ghost" className="h-6 gap-1 px-1.5 text-[11px] text-primary hover:bg-primary/10">
+                                                        Details <ChevronRight className="h-3 w-3" />
                                                     </Button>
                                                 </TableCell>
                                             </TableRow>
@@ -776,8 +867,8 @@ export default function OutstandingPage() {
                             </Table>
                         </div>
                         {filteredParties.length > 0 && !allPartiesLoading && (
-                            <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-8 gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                <div className="col-span-2">Total ({filteredParties.length} parties)</div>
+                            <div className="px-3 py-2 border-t bg-muted/20 grid grid-cols-8 gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                <div className="col-span-2">Total ({filteredParties.length} parties) · {PAY_STATUS_LABELS[payStatusFilter]}</div>
                                 <div></div>
                                 <div className="text-right font-mono text-foreground">{listTotals.bills}</div>
                                 <div className="text-right font-mono text-foreground">₹{fmt(listTotals.billed)}</div>

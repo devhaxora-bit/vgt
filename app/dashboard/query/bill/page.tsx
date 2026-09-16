@@ -38,9 +38,11 @@ export default function BillQueryPage() {
         >
             <QueryWorkbench
                 placeholder="Enter bill number or party name…"
-                helperText="Search by bill reference number or the billed party’s name."
+                helperText="All rows stay on screen. Search a bill to fill the placeholders."
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
+                keepLayout
+                emptyHint={<BillResultSheet detail={null} reset={() => undefined} />}
                 renderResult={(detail, { reset }) => <BillResultSheet detail={detail} reset={reset} />}
             />
         </QueryPageShell>

@@ -1426,16 +1426,16 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
-                                            <TableHead className="font-bold text-xs py-2">CN No</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Date</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">From</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">To</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-center">Pkgs</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Weight</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Freight</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Basis</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Billing</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Bill Ref</TableHead>
+                                            <TableHead className="font-bold">CN No</TableHead>
+                                            <TableHead className="font-bold">Date</TableHead>
+                                            <TableHead className="font-bold">From</TableHead>
+                                            <TableHead className="font-bold">To</TableHead>
+                                            <TableHead className="font-bold text-center">Pkgs</TableHead>
+                                            <TableHead className="font-bold text-right">Weight</TableHead>
+                                            <TableHead className="font-bold text-right">Freight</TableHead>
+                                            <TableHead className="font-bold">Basis</TableHead>
+                                            <TableHead className="font-bold">Billing</TableHead>
+                                            <TableHead className="font-bold">Bill Ref</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1451,7 +1451,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                 const meta = billCellMeta[idx];
 
                                                 return (
-                                                <TableRow key={c.id} className="hover:bg-primary/5 transition-colors border-b last:border-0">
+                                                <TableRow key={c.id} className="transition-colors border-b last:border-0">
                                                     <TableCell>
                                                         <Link href={`/dashboard/consignments/new?edit=${c.id}`}
                                                             className="font-bold text-primary text-xs hover:underline font-mono">
@@ -1595,16 +1595,16 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
-                                            <TableHead className="font-bold text-xs py-2">Bill Ref</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Date</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Period</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Narration</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">CNs</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Billed</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Paid</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Balance</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Status</TableHead>
-                                            <TableHead className="py-2" />
+                                            <TableHead className="font-bold">Bill Ref</TableHead>
+                                            <TableHead className="font-bold">Date</TableHead>
+                                            <TableHead className="font-bold">Period</TableHead>
+                                            <TableHead className="font-bold">Narration</TableHead>
+                                            <TableHead className="font-bold">CNs</TableHead>
+                                            <TableHead className="font-bold text-right">Billed</TableHead>
+                                            <TableHead className="font-bold text-right">Paid</TableHead>
+                                            <TableHead className="font-bold text-right">Balance</TableHead>
+                                            <TableHead className="font-bold">Status</TableHead>
+                                            <TableHead />
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1622,17 +1622,20 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     : 0;
 
                                                 return (
-                                                <TableRow key={b.id} className={`hover:bg-primary/5 transition-colors border-b last:border-0 ${b.status === 'CANCELLED' ? 'opacity-50' : ''}`}>
+                                                <TableRow key={b.id} className={`transition-colors border-b last:border-0 ${b.status === 'CANCELLED' ? 'opacity-50' : ''}`}>
                                                     <TableCell className="font-mono text-xs text-primary font-bold">{b.bill_ref_no || '—'}</TableCell>
                                                     <TableCell className="text-xs">{fmtDate(b.billing_date)}</TableCell>
                                                     <TableCell className="text-xs text-muted-foreground">
                                                         {b.billing_period_from ? `${fmtDate(b.billing_period_from)} – ${fmtDate(b.billing_period_to)}` : '—'}
                                                     </TableCell>
                                                     <TableCell className="text-xs max-w-[180px] truncate" title={b.narration}>{b.narration}</TableCell>
-                                                    <TableCell className="text-xs font-mono text-muted-foreground">
+                                                    <TableCell
+                                                        className="max-w-[160px] truncate text-xs font-mono text-muted-foreground"
+                                                        title={b.covered_cn_nos?.join(', ') || undefined}
+                                                    >
                                                         {b.covered_cn_nos?.join(', ') || '—'}
                                                     </TableCell>
-                                                    <TableCell className="text-right font-black text-sm text-emerald-700 font-mono">
+                                                    <TableCell className="text-right font-black text-xs text-emerald-700 font-mono">
                                                         ₹{fmt(b.amount)}
                                                     </TableCell>
                                                     <TableCell className="text-right text-xs font-bold text-indigo-700 font-mono">
@@ -1652,7 +1655,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                             <Button
                                                                 size="sm"
                                                                 variant="ghost"
-                                                                className="h-7 px-2 text-xs"
+                                                                className="h-6 px-1.5 text-[11px]"
                                                                 onClick={() => setSelectedBillingRecord(b)}
                                                             >
                                                                 <Eye className="h-3.5 w-3.5 mr-1" /> View
@@ -1661,7 +1664,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                 <Button
                                                                     size="sm"
                                                                     variant="ghost"
-                                                                    className="h-7 px-2 text-xs"
+                                                                    className="h-6 px-1.5 text-[11px]"
                                                                     asChild
                                                                 >
                                                                     <Link href={`/dashboard/admin/audit-logs?entity_type=bill&entity_id=${b.id}`}>
@@ -1674,7 +1677,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                     <Button
                                                                         size="sm"
                                                                         variant="ghost"
-                                                                        className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                                                                        className="h-6 px-1.5 text-[11px] text-primary hover:bg-primary/10"
                                                                         onClick={() => setEditingBillingRecord(b)}
                                                                     >
                                                                         <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
@@ -1682,14 +1685,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                     <Button
                                                                         size="sm"
                                                                         variant="ghost"
-                                                                        className="h-7 px-2 text-xs text-amber-700 hover:bg-amber-50"
+                                                                        className="h-6 px-1.5 text-[11px] text-amber-700 hover:bg-amber-50"
                                                                         onClick={() => setReassignBillingTarget(b)}
                                                                         title="Move this bill to a different party"
                                                                     >
                                                                         <Building2 className="h-3.5 w-3.5 mr-1" /> Reassign
                                                                     </Button>
                                                                     <Button size="sm" variant="ghost"
-                                                                        className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
+                                                                        className="h-6 px-1.5 text-destructive hover:bg-destructive/10 text-[11px]"
                                                                         onClick={() => setCancelTarget({ type: 'billing', id: b.id })}>
                                                                         Cancel
                                                                     </Button>
@@ -1748,15 +1751,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
-                                            <TableHead className="font-bold text-xs py-2 w-[96px]">Date</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 w-[88px]">Mode</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 min-w-[360px] w-[42%]">Bills / Breakup</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 w-[110px]">Reference</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 w-[110px]">Bank</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 w-[140px]">Narration</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right w-[110px]">Settled</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 w-[80px]">Status</TableHead>
-                                            {isAdmin && <TableHead className="py-2 w-[220px]" />}
+                                            <TableHead className="font-bold w-[96px]">Date</TableHead>
+                                            <TableHead className="font-bold w-[88px]">Mode</TableHead>
+                                            <TableHead className="font-bold min-w-[360px] w-[42%]">Bills / Breakup</TableHead>
+                                            <TableHead className="font-bold w-[110px]">Reference</TableHead>
+                                            <TableHead className="font-bold w-[110px]">Bank</TableHead>
+                                            <TableHead className="font-bold w-[140px]">Narration</TableHead>
+                                            <TableHead className="font-bold text-right w-[110px]">Settled</TableHead>
+                                            <TableHead className="font-bold w-[80px]">Status</TableHead>
+                                            {isAdmin && <TableHead className="w-[220px]" />}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1768,21 +1771,21 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             </TableRow>
                                         ) : (
                                             data.payment_receipts.map(p => (
-                                                <TableRow key={p.id} className={`hover:bg-primary/5 transition-colors border-b last:border-0 ${p.status === 'REVERSED' ? 'opacity-50' : ''}`}>
+                                                <TableRow key={p.id} className={`transition-colors border-b last:border-0 ${p.status === 'REVERSED' ? 'opacity-50' : ''}`}>
                                                     <TableCell className="text-xs whitespace-nowrap">{fmtDate(p.receipt_date)}</TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className={`text-[9px] px-1.5 py-0 h-4 ${MODE_BADGE[p.payment_mode] || ''}`}>
                                                             {p.payment_mode}
                                                         </Badge>
                                                     </TableCell>
-                                                    <TableCell className="text-xs text-muted-foreground min-w-[360px] w-[42%] whitespace-normal align-top">
+                                                    <TableCell className="vgt-table-cell-wrap text-xs text-muted-foreground min-w-[360px] w-[42%]">
                                                         {(p.bill_allocations || []).length > 0 ? (
-                                                            <div className="space-y-2 py-1">
+                                                            <div className="space-y-1 py-0.5">
                                                                 {p.bill_allocations?.map((allocation) => {
                                                                     const bill = billingRecordMap.get(allocation.billing_record_id);
                                                                     const deductionTotal = (allocation.deduction_items || []).reduce((sum, item) => sum + parseMoney(item.amount), 0);
                                                                     return (
-                                                                        <div key={`${p.id}-${allocation.billing_record_id}`} className="rounded-md border bg-muted/10 px-2.5 py-2">
+                                                                        <div key={`${p.id}-${allocation.billing_record_id}`} className="rounded border bg-muted/10 px-1.5 py-0.5">
                                                                             <div className="font-mono text-[11px] font-bold text-primary">
                                                                                 {bill?.bill_ref_no || bill?.id.slice(0, 8).toUpperCase() || '—'}
                                                                             </div>
@@ -1819,7 +1822,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                     <TableCell className="font-mono text-xs text-muted-foreground max-w-[110px] truncate" title={p.reference_no || ''}>{p.reference_no || '—'}</TableCell>
                                                     <TableCell className="text-xs max-w-[110px] truncate" title={p.bank_name || ''}>{p.bank_name || '—'}</TableCell>
                                                     <TableCell className="text-xs max-w-[140px] truncate" title={p.narration || ''}>{p.narration || '—'}</TableCell>
-                                                    <TableCell className="text-right font-black text-sm text-indigo-700 font-mono">
+                                                    <TableCell className="text-right font-black text-xs text-indigo-700 font-mono">
                                                         <div>₹{fmt(p.amount)}</div>
                                                         <div className="text-[11px] font-semibold text-slate-600">
                                                             Rec ₹{fmt(parseMoney(p.actual_received_amount ?? p.amount))}
@@ -1837,7 +1840,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                 <Button
                                                                     size="sm"
                                                                     variant="ghost"
-                                                                    className="h-7 px-2 text-xs"
+                                                                    className="h-6 px-1.5 text-[11px]"
                                                                     asChild
                                                                 >
                                                                     <Link href={`/dashboard/admin/audit-logs?entity_type=payment&entity_id=${p.id}`}>
@@ -1849,7 +1852,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                 <Button
                                                                     size="sm"
                                                                     variant="ghost"
-                                                                    className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                                                                    className="h-6 px-1.5 text-[11px] text-primary hover:bg-primary/10"
                                                                     onClick={() => setEditingPaymentReceipt(p)}
                                                                 >
                                                                     <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
@@ -1857,14 +1860,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                 <Button
                                                                     size="sm"
                                                                     variant="ghost"
-                                                                    className="h-7 px-2 text-xs text-amber-700 hover:bg-amber-50"
+                                                                    className="h-6 px-1.5 text-[11px] text-amber-700 hover:bg-amber-50"
                                                                     onClick={() => setReassignPaymentTarget(p)}
                                                                     title="Move this payment to a different party"
                                                                 >
                                                                     <Building2 className="h-3.5 w-3.5 mr-1" /> Reassign
                                                                 </Button>
                                                                 <Button size="sm" variant="ghost"
-                                                                    className="h-7 px-2 text-destructive hover:bg-destructive/10 text-xs"
+                                                                    className="h-6 px-1.5 text-destructive hover:bg-destructive/10 text-[11px]"
                                                                     onClick={() => setCancelTarget({ type: 'payment', id: p.id })}>
                                                                     Reverse
                                                                 </Button>
@@ -1904,12 +1907,12 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
-                                            <TableHead className="font-bold text-xs py-2">Month</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-center">CNS Count</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">CNS Amount</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Billed</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Paid</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Unbilled</TableHead>
+                                            <TableHead className="font-bold">Month</TableHead>
+                                            <TableHead className="font-bold text-center">CNS Count</TableHead>
+                                            <TableHead className="font-bold text-right">CNS Amount</TableHead>
+                                            <TableHead className="font-bold text-right">Billed</TableHead>
+                                            <TableHead className="font-bold text-right">Paid</TableHead>
+                                            <TableHead className="font-bold text-right">Unbilled</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1921,7 +1924,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             </TableRow>
                                         ) : (
                                             monthlySummary.map(m => (
-                                                <TableRow key={m.month} className="hover:bg-primary/5 transition-colors border-b last:border-0">
+                                                <TableRow key={m.month} className="transition-colors border-b last:border-0">
                                                     <TableCell className="font-bold text-sm">
                                                         {m.month ? format(new Date(m.month + '-01'), 'MMMM yyyy') : '—'}
                                                     </TableCell>
@@ -1961,14 +1964,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                 <Table>
                                     <TableHeader className="bg-muted/30">
                                         <TableRow>
-                                            <TableHead className="font-bold text-xs py-2">Cancellation Date</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Vehicle No</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">From</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">To</TableHead>
-                                            <TableHead className="font-bold text-xs py-2 text-right">Charges</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Bill Ref</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Bill Date</TableHead>
-                                            <TableHead className="font-bold text-xs py-2">Status</TableHead>
+                                            <TableHead className="font-bold">Cancellation Date</TableHead>
+                                            <TableHead className="font-bold">Vehicle No</TableHead>
+                                            <TableHead className="font-bold">From</TableHead>
+                                            <TableHead className="font-bold">To</TableHead>
+                                            <TableHead className="font-bold text-right">Charges</TableHead>
+                                            <TableHead className="font-bold">Bill Ref</TableHead>
+                                            <TableHead className="font-bold">Bill Date</TableHead>
+                                            <TableHead className="font-bold">Status</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1980,7 +1983,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             </TableRow>
                                         ) : (
                                             vehicleCancellationRows.map((row) => (
-                                                <TableRow key={row.id} className="hover:bg-primary/5 transition-colors border-b last:border-0">
+                                                <TableRow key={row.id} className="transition-colors border-b last:border-0">
                                                     <TableCell className="text-xs">{fmtDate(row.cancellationDate)}</TableCell>
                                                     <TableCell className="font-mono text-xs font-bold text-primary">{row.vehicleNo}</TableCell>
                                                     <TableCell className="text-xs">{row.fromStation}</TableCell>

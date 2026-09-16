@@ -38,9 +38,11 @@ export default function CnsQueryPage() {
         >
             <QueryWorkbench
                 placeholder="Enter CNS number…"
-                helperText="Start typing a CN number — matching consignments appear as you type."
+                helperText="All rows stay on screen. Search a CN number to fill the placeholders."
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
+                keepLayout
+                emptyHint={<CnsResultSheet detail={null} reset={() => undefined} />}
                 renderResult={(detail, { reset }) => <CnsResultSheet detail={detail} reset={reset} />}
             />
         </QueryPageShell>

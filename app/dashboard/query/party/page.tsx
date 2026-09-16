@@ -38,9 +38,11 @@ export default function PartyQueryPage() {
         >
             <QueryWorkbench
                 placeholder="Enter party name, code, or GSTIN…"
-                helperText="Start typing a party name to see matches, then open the full ledger snapshot."
+                helperText="All rows stay on screen. Search a party to fill the placeholders."
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
+                keepLayout
+                emptyHint={<PartyResultSheet detail={null} reset={() => undefined} />}
                 renderResult={(detail, { reset }) => <PartyResultSheet detail={detail} reset={reset} />}
             />
         </QueryPageShell>
