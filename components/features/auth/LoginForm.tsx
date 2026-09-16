@@ -62,7 +62,7 @@ export function LoginForm() {
 
             toast.success(
                 values.remember_me
-                    ? 'Welcome back — you will stay signed in on this device.'
+                    ? 'Welcome back — you will stay signed in on this device for months.'
                     : 'Welcome back!',
             );
 

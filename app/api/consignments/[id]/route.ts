@@ -74,7 +74,7 @@ export async function PATCH(
 
         const { data: existing, error: existingError } = await supabase
             .from("consignments")
-            .select("id, booking_branch")
+            .select("id, booking_branch, cn_no")
             .eq("id", id)
             .single();
 
@@ -95,8 +95,31 @@ export async function PATCH(
             void forbiddenNew;
         }
 
+        const requestedCnRaw = body.cn_no !== undefined ? body.cn_no : existing.cn_no;
+        const parsedCnNo = parseInteger(requestedCnRaw, Number.NaN);
+        if (!Number.isFinite(parsedCnNo)) {
+            return NextResponse.json({ error: "CN number must be numeric." }, { status: 400 });
+        }
+        const canonicalCnNo = String(parsedCnNo);
+        const existingParsedCnNo = parseInteger(existing.cn_no, Number.NaN);
+        if (parsedCnNo !== existingParsedCnNo) {
+            const { data: cnAlreadyUsed, error: cnExistsError } = await supabase.rpc(
+                "live_consignment_cn_exists",
+                { p_cn: parsedCnNo },
+            );
+            if (cnExistsError) {
+                return NextResponse.json({ error: cnExistsError.message }, { status: 500 });
+            }
+            if (cnAlreadyUsed) {
+                return NextResponse.json(
+                    { error: `CN ${canonicalCnNo} is already used. Enter a different CN number.` },
+                    { status: 409 },
+                );
+            }
+        }
+
         const updateData: Record<string, unknown> = {
-            cn_no: body.cn_no,
+            cn_no: canonicalCnNo,
             bkg_date: normalizeDate(body.bkg_date),
             booking_branch: body.booking_branch,
             dest_branch: body.dest_branch,

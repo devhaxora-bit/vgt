@@ -107,14 +107,14 @@ export async function GET(
     const partyCnNos = allConsignments.map((record) => String(record.cn_no || '').trim()).filter(Boolean);
     const billedOnOtherParty = new Set<string>();
     if (partyCnNos.length > 0) {
-        const { data: foreignBills } = await supabase
-            .from('party_billing_records')
-            .select('covered_cn_nos, party_id')
-            .eq('status', 'ACTIVE')
-            .neq('party_id', partyId)
-            .overlaps('covered_cn_nos', partyCnNos);
+        // SECURITY DEFINER RPC — include ACTIVE bills from every branch/party.
+        const { data: coveringBills } = await supabase.rpc('find_active_bills_covering_cns', {
+            p_cn_nos: partyCnNos,
+            p_exclude_billing_record_id: null,
+        });
 
-        (foreignBills || []).forEach((bill) => {
+        (coveringBills || []).forEach((bill: { party_id?: string; covered_cn_nos?: string[] | null }) => {
+            if (bill.party_id === partyId) return;
             const covered = Array.isArray(bill.covered_cn_nos) ? bill.covered_cn_nos : [];
             covered.forEach((cnNo) => {
                 const normalized = String(cnNo || '').trim();

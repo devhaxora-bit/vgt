@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin';
+import { createAuthClient } from '@/utils/supabase/authClient';
 import type { LoginInput, LoginResponse, Result, UserWithAuth } from '../../types/user.types';
 import type { IUserRepository } from '../../repositories/UserRepository';
 
@@ -14,8 +15,6 @@ export class AuthService implements IAuthService {
 
     async login(credentials: LoginInput): Promise<Result<LoginResponse>> {
         try {
-            const supabase = await createClient();
-
             // Find user by employee code
             const user = await this.userRepository.findByEmployeeCode(
                 String(credentials.employee_code || '').trim().toUpperCase(),
@@ -47,8 +46,10 @@ export class AuthService implements IAuthService {
                 };
             }
 
+            // Ephemeral client: do not write cookies here — login route setSession owns that.
+            const authClient = createAuthClient();
             console.log('🔐 Attempting to sign in with email:', linkedAuth.user.email);
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            const { data: authData, error: authError } = await authClient.auth.signInWithPassword({
                 email: linkedAuth.user.email,
                 password: credentials.password,
             });
@@ -65,15 +66,14 @@ export class AuthService implements IAuthService {
                     profileId: user.id,
                     authId: authData.user.id,
                 });
-                await supabase.auth.signOut();
                 return {
                     success: false,
                     error: 'Account is misconfigured (auth/profile mismatch). Ask an admin to repair the account.',
                 };
             }
 
-            // Create session record
-            await supabase.from('user_sessions').insert({
+            // Audit row (service role — avoids depending on request cookies during login)
+            await adminClient.from('user_sessions').insert({
                 user_id: user.id,
                 login_at: new Date().toISOString(),
             });

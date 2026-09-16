@@ -262,17 +262,20 @@ const fetchOverlappingBills = async (
     normalizedCoveredCnNos: string[],
     excludeBillingRecordId?: string
 ) => {
-    const { data, error } = await supabase
-        .from('party_billing_records')
-        .select('id, bill_ref_no, party_id, covered_cn_nos')
-        .eq('status', 'ACTIVE')
-        .overlaps('covered_cn_nos', normalizedCoveredCnNos);
+    // SECURITY DEFINER RPC — must see ACTIVE bills on every branch (RLS would hide them).
+    const { data, error } = await supabase.rpc('find_active_bills_covering_cns', {
+        p_cn_nos: normalizedCoveredCnNos,
+        p_exclude_billing_record_id: excludeBillingRecordId || null,
+    });
 
     if (error) return { data: null, error: error.message };
 
-    const overlapping = (data || []).filter((record) => {
-        if (excludeBillingRecordId && record.id === excludeBillingRecordId) return false;
-
+    const overlapping = (data || []).filter((record: {
+        id: string;
+        bill_ref_no?: string | null;
+        party_id?: string;
+        covered_cn_nos?: string[] | null;
+    }) => {
         const existingCoveredCnNos = Array.isArray(record.covered_cn_nos)
             ? record.covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
             : [];
