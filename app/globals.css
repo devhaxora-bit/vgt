@@ -45,9 +45,9 @@
     --popover: hsl(0 0% 100%);
     --popover-foreground: hsl(222.2 84% 4.9%);
 
-    /* Professional Blue - Primary */
-    --primary: hsl(221.2 83.2% 53.3%);
-    --primary-foreground: hsl(210 40% 98%);
+    /* iTMS-style maroon — Primary (from CNS Tracking Query snapshot) */
+    --primary: hsl(0 72% 32%);
+    --primary-foreground: hsl(0 0% 100%);
 
     --secondary: hsl(210 40% 96.1%);
     --secondary-foreground: hsl(222.2 47.4% 11.2%);
@@ -63,7 +63,7 @@
 
     --border: hsl(214.3 31.8% 91.4%);
     --input: hsl(214.3 31.8% 91.4%);
-    --ring: hsl(221.2 83.2% 53.3%);
+    --ring: hsl(0 72% 32%);
 
     --radius: 0.5rem;
 
@@ -97,8 +97,8 @@
     --popover: hsl(222.2 84% 4.9%);
     --popover-foreground: hsl(210 40% 98%);
 
-    --primary: hsl(217.2 91.2% 59.8%);
-    --primary-foreground: hsl(222.2 47.4% 11.2%);
+    --primary: hsl(0 65% 48%);
+    --primary-foreground: hsl(0 0% 100%);
 
     --secondary: hsl(217.2 32.6% 17.5%);
     --secondary-foreground: hsl(210 40% 98%);
@@ -114,7 +114,7 @@
 
     --border: hsl(217.2 32.6% 17.5%);
     --input: hsl(217.2 32.6% 17.5%);
-    --ring: hsl(224.3 76.3% 48%);
+    --ring: hsl(0 65% 48%);
 
     --doc-line: #5b73c4;
     --doc-line-soft: rgba(91, 115, 196, 0.28);
