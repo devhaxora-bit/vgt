@@ -171,9 +171,14 @@ export async function proxy(request: NextRequest) {
             const forced = forceBranchQueryParams(request, branchCode)
             if (forced) {
                 const rewriteResponse = NextResponse.rewrite(forced)
-                // preserve auth cookies from supabaseResponse
+                // Preserve auth cookies WITH long-lived options.
+                // Setting name/value only drops Max-Age and becomes a session cookie → early logout.
                 supabaseResponse.cookies.getAll().forEach((cookie) => {
-                    rewriteResponse.cookies.set(cookie.name, cookie.value)
+                    rewriteResponse.cookies.set(
+                        cookie.name,
+                        cookie.value,
+                        withSessionCookieOptions({}, true),
+                    )
                 })
                 return withBranchHeaders(rewriteResponse, profile)
             }

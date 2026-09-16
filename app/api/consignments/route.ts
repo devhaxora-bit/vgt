@@ -278,10 +278,32 @@ export async function POST(request: Request) {
 
     const bookingBranchCode = insertData.booking_branch.toUpperCase();
     const submittedCnNo = parseCnInteger(insertData.cn_no);
+    if (submittedCnNo === null) {
+        return NextResponse.json({ error: 'CN number must be numeric.' }, { status: 400 });
+    }
+
+    // Canonical form so "0100" and "100" cannot both exist as live CNs.
+    insertData.cn_no = String(submittedCnNo);
+
     const branchCnContext = await getBranchCnContext(supabase, bookingBranchCode);
 
     if (branchCnContext.error) {
         return NextResponse.json({ error: branchCnContext.error }, { status: 400 });
+    }
+
+    // Global occupancy check (SECURITY DEFINER) — works across all branches.
+    const { data: cnAlreadyUsed, error: cnExistsError } = await supabase.rpc(
+        'live_consignment_cn_exists',
+        { p_cn: submittedCnNo },
+    );
+    if (cnExistsError) {
+        return NextResponse.json({ error: cnExistsError.message }, { status: 500 });
+    }
+    if (cnAlreadyUsed) {
+        return NextResponse.json(
+            { error: `CN ${submittedCnNo} is already used. Enter a different CN number.` },
+            { status: 409 },
+        );
     }
 
     if (branchCnContext.mode === 'range') {
@@ -293,13 +315,6 @@ export async function POST(request: Request) {
                 : `No active CN range is configured for branch ${bookingBranchCode}. Update Branch Management before creating more CNs.`;
 
             return NextResponse.json({ error: message }, { status: 409 });
-        }
-
-        if (submittedCnNo === null) {
-            return NextResponse.json(
-                { error: 'CN number must be numeric for range-managed branches.' },
-                { status: 400 },
-            );
         }
 
         const owningRange = assignedRanges.find(
@@ -341,10 +356,6 @@ export async function POST(request: Request) {
                 friendly = 'Please sign in again and retry.';
             }
             return NextResponse.json({ error: friendly }, { status: 409 });
-        }
-    } else {
-        if (submittedCnNo === null) {
-            return NextResponse.json({ error: 'CN number must be numeric.' }, { status: 400 });
         }
     }
 

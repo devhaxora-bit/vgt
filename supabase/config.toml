@@ -152,6 +152,7 @@ site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = ["https://127.0.0.1:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 # Longer JWT reduces forced re-auth when a refresh is briefly missed (tabs idle overnight).
+# NOTE: Hosted Supabase JWT expiry is set in Dashboard → Authentication → Sessions (not this file).
 jwt_expiry = 86400
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
 # jwt_issuer = ""
@@ -160,8 +161,9 @@ jwt_expiry = 86400
 # If disabled, the refresh token will never expire.
 enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.
+# Wider window reduces accidental full-session revocation when proxy + browser refresh together.
 # Requires enable_refresh_token_rotation = true.
-refresh_token_reuse_interval = 10
+refresh_token_reuse_interval = 60
 # Allow/disallow new user signups to your project.
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.

@@ -292,12 +292,14 @@ export default function PartiesPage() {
                                             <TableRow key={party.id} className="group hover:bg-slate-50/80 transition-colors">
                                                 <TableCell className="font-mono font-bold text-primary">{party.code}</TableCell>
                                                 <TableCell>
-                                                    <div className="font-medium text-[#101828]">{party.name}</div>
-                                                    {party.phone && (
-                                                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                            <Phone className="h-3 w-3" /> {party.phone}
-                                                        </div>
-                                                    )}
+                                                    <div className="flex min-w-0 items-center gap-1.5">
+                                                        <span className="truncate font-medium text-xs text-[#101828]">{party.name}</span>
+                                                        {party.phone && (
+                                                            <span className="shrink-0 text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+                                                                <Phone className="h-3 w-3" /> {party.phone}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     {party.branch_code ? (

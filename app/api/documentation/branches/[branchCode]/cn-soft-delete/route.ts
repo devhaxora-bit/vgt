@@ -103,19 +103,18 @@ export async function POST(
         return NextResponse.json({ error: 'Consignment not found (or already deleted)' }, { status: 404 });
     }
 
-    // Block if covered by an active party bill
-    const { data: bills, error: billError } = await auth.supabase
-        .from('party_billing_records')
-        .select('id, bill_ref_no, covered_cn_nos, status')
-        .eq('status', 'ACTIVE')
-        .contains('covered_cn_nos', [record.cn_no]);
+    // Block if covered by an active party bill (any branch — SECURITY DEFINER RPC)
+    const { data: bills, error: billError } = await auth.supabase.rpc('find_active_bills_covering_cns', {
+        p_cn_nos: [record.cn_no],
+        p_exclude_billing_record_id: null,
+    });
 
     if (billError) {
         return NextResponse.json({ error: billError.message }, { status: 500 });
     }
 
     if (bills && bills.length > 0) {
-        const refs = bills.map((b) => b.bill_ref_no || b.id.slice(0, 8)).join(', ');
+        const refs = bills.map((b: { bill_ref_no?: string | null; id: string }) => b.bill_ref_no || b.id.slice(0, 8)).join(', ');
         return NextResponse.json(
             {
                 error: `Cannot soft-delete CN ${record.cn_no}: it is covered by active bill(s): ${refs}. Cancel/adjust the bill first.`,

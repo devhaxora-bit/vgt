@@ -39,11 +39,12 @@ import {
 import { downloadOutstandingPdf } from '@/lib/outstandingPdf';
 import type { OutstandingPartyRow, OutstandingBill } from '@/app/api/outstanding/route';
 
-type PayStatusFilter = 'all' | 'due' | 'paid';
+type PayStatusFilter = 'all' | 'due' | 'partial' | 'paid';
 
 const PAY_STATUS_LABELS: Record<PayStatusFilter, string> = {
-    all: 'Billed (all)',
+    all: 'All',
     due: 'To be paid',
+    partial: 'Partial',
     paid: 'Paid',
 };
 
@@ -66,8 +67,7 @@ const fmtDateInput = (dateStr: string) => {
 
 const billMatchesStatus = (bill: OutstandingBill, status: PayStatusFilter) => {
     if (status === 'all') return true;
-    if (status === 'paid') return bill.pay_status === 'paid';
-    return bill.pay_status === 'due' || bill.pay_status === 'partial';
+    return bill.pay_status === status;
 };
 
 const filterPartyByStatus = (
@@ -543,8 +543,9 @@ export default function OutstandingPage() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Billed (all)</SelectItem>
+                                    <SelectItem value="all">All</SelectItem>
                                     <SelectItem value="due">To be paid</SelectItem>
+                                    <SelectItem value="partial">Partial</SelectItem>
                                     <SelectItem value="paid">Paid</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -678,9 +679,9 @@ export default function OutstandingPage() {
                                                                     {party.branch_name || party.branch_code}
                                                                 </Badge>
                                                             )}
-                                                            <span className="text-[10px] text-muted-foreground ml-1">
+                                                            <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono text-muted-foreground">
                                                                 {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
-                                                            </span>
+                                                            </Badge>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className=" text-muted-foreground text-[11px]">—</TableCell>
@@ -833,9 +834,11 @@ export default function OutstandingPage() {
                                                     <span className="font-mono font-bold text-primary text-[11px]">{party.party_code}</span>
                                                 </TableCell>
                                                 <TableCell className="">
-                                                    <div className="font-semibold text-xs leading-tight">{party.party_name}</div>
-                                                    <div className="text-[10px] text-muted-foreground font-mono">
-                                                        {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
+                                                    <div className="flex min-w-0 items-center gap-1.5">
+                                                        <span className="truncate font-semibold text-xs">{party.party_name}</span>
+                                                        <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono text-muted-foreground">
+                                                            {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
+                                                        </Badge>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="">
