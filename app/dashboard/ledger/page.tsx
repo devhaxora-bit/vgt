@@ -530,14 +530,14 @@ export default function LedgerPage() {
                                     <TableRow key={p.party_id} className="transition-colors border-b last:border-0 group">
                                         <TableCell><span className="font-mono font-bold text-primary text-xs">{p.party_code}</span></TableCell>
                                         <TableCell>
-                                            <div className="flex min-w-0 items-center gap-1.5">
-                                                <span className="truncate font-semibold text-xs" title={p.party_name}>{p.party_name}</span>
+                                            <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+                                                <span className="min-w-0 flex-1 truncate font-semibold text-xs" title={p.party_name}>{p.party_name}</span>
                                                 {p.phone && (
-                                                    <span className="shrink-0 text-[10px] text-muted-foreground">{p.phone}</span>
+                                                    <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">{p.phone}</span>
                                                 )}
-                                                <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono text-muted-foreground">
+                                                <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
                                                     {p.total_cns_count} CNS
-                                                </Badge>
+                                                </span>
                                             </div>
                                         </TableCell>
                                         <TableCell>

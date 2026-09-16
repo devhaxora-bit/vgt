@@ -669,19 +669,21 @@ export default function OutstandingPage() {
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="font-bold text-xs">{party.party_name}</span>
-                                                            <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-mono">
+                                                        <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+                                                            <span className="min-w-0 flex-1 truncate font-bold text-xs" title={party.party_name}>
+                                                                {party.party_name}
+                                                            </span>
+                                                            <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono">
                                                                 {party.party_code}
                                                             </Badge>
                                                             {party.branch_code && (
-                                                                <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+                                                                <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[9px]">
                                                                     {party.branch_name || party.branch_code}
                                                                 </Badge>
                                                             )}
-                                                            <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono text-muted-foreground">
+                                                            <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
                                                                 {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
-                                                            </Badge>
+                                                            </span>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className=" text-muted-foreground text-[11px]">—</TableCell>
@@ -834,11 +836,13 @@ export default function OutstandingPage() {
                                                     <span className="font-mono font-bold text-primary text-[11px]">{party.party_code}</span>
                                                 </TableCell>
                                                 <TableCell className="">
-                                                    <div className="flex min-w-0 items-center gap-1.5">
-                                                        <span className="truncate font-semibold text-xs">{party.party_name}</span>
-                                                        <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono text-muted-foreground">
+                                                    <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+                                                        <span className="min-w-0 flex-1 truncate font-semibold text-xs" title={party.party_name}>
+                                                            {party.party_name}
+                                                        </span>
+                                                        <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
                                                             {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
-                                                        </Badge>
+                                                        </span>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="">

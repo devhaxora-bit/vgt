@@ -80,11 +80,11 @@
     --table-head-bg: #d4d4d4;
     --table-head-fg: #1a1a1a;
     --table-cell-border: #c8c8c8;
-    --table-row-h: 26px;
-    --table-cell-py: 1px;
+    --table-row-h: 22px;
+    --table-cell-py: 0px;
     --table-cell-px: 8px;
     --table-font-size: 0.75rem;
-    --table-line-height: 1.25rem;
+    --table-line-height: 1.15rem;
   }
 
   .dark {
