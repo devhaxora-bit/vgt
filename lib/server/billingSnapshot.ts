@@ -256,6 +256,13 @@ const buildConsignmentSnapshot = (
     };
 };
 
+type OverlappingBillRecord = {
+    id: string;
+    bill_ref_no?: string | null;
+    party_id?: string;
+    covered_cn_nos?: string[] | null;
+};
+
 const fetchOverlappingBills = async (
     supabase: SupabaseLike,
     _partyId: string,
@@ -268,14 +275,9 @@ const fetchOverlappingBills = async (
         p_exclude_billing_record_id: excludeBillingRecordId || null,
     });
 
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null as OverlappingBillRecord[] | null, error: error.message };
 
-    const overlapping = (data || []).filter((record: {
-        id: string;
-        bill_ref_no?: string | null;
-        party_id?: string;
-        covered_cn_nos?: string[] | null;
-    }) => {
+    const overlapping = ((data || []) as OverlappingBillRecord[]).filter((record) => {
         const existingCoveredCnNos = Array.isArray(record.covered_cn_nos)
             ? record.covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
             : [];
@@ -370,7 +372,7 @@ export async function prepareBillingSnapshot(
 
     if ((overlappingBills || []).length > 0) {
         const overlappingCnNos = Array.from(new Set(
-            (overlappingBills || []).flatMap((record) => {
+            (overlappingBills || []).flatMap((record: OverlappingBillRecord) => {
                 const existingCoveredCnNos = Array.isArray(record.covered_cn_nos)
                     ? record.covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
                     : [];
