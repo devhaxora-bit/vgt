@@ -292,10 +292,12 @@ export default function PartiesPage() {
                                             <TableRow key={party.id} className="group hover:bg-slate-50/80 transition-colors">
                                                 <TableCell className="font-mono font-bold text-primary">{party.code}</TableCell>
                                                 <TableCell>
-                                                    <div className="flex min-w-0 items-center gap-1.5">
-                                                        <span className="truncate font-medium text-xs text-[#101828]">{party.name}</span>
+                                                    <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+                                                        <span className="min-w-0 flex-1 truncate font-medium text-xs text-[#101828]" title={party.name}>
+                                                            {party.name}
+                                                        </span>
                                                         {party.phone && (
-                                                            <span className="shrink-0 text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+                                                            <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
                                                                 <Phone className="h-3 w-3" /> {party.phone}
                                                             </span>
                                                         )}
@@ -313,15 +315,20 @@ export default function PartiesPage() {
                                                 </TableCell>
                                                 <TableCell className="font-mono text-xs">{party.gstin || <span className="text-muted-foreground/40">—</span>}</TableCell>
                                                 <TableCell>
-                                                    <div className="text-xs flex flex-col">
-                                                        {party.city && <span className="font-medium">{party.city}</span>}
-                                                        {party.pincode && (
-                                                            <span className="text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                                <MapPin className="h-3 w-3" /> {party.pincode}
-                                                            </span>
-                                                        )}
-                                                        {!party.city && !party.pincode && <span className="text-muted-foreground/40">—</span>}
-                                                    </div>
+                                                    {(party.city || party.pincode) ? (
+                                                        <div className="flex w-full min-w-0 flex-nowrap items-center gap-2 text-xs">
+                                                            {party.city && (
+                                                                <span className="min-w-0 flex-1 truncate font-medium" title={party.city}>{party.city}</span>
+                                                            )}
+                                                            {party.pincode && (
+                                                                <span className="shrink-0 whitespace-nowrap text-muted-foreground inline-flex items-center gap-0.5">
+                                                                    <MapPin className="h-3 w-3" /> {party.pincode}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground/40 text-xs">—</span>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell className="text-right sticky right-0 bg-white z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.02)] border-l group-hover:bg-slate-50/80 transition-colors">
                                                     {canManage ? (
