@@ -26,6 +26,14 @@ import {
     PopoverContent,
     PopoverTrigger
 } from "@/components/ui/popover";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,6 +163,12 @@ function NewConsignmentForm() {
     const userScope = useCurrentUserScope();
     const [isOwnersRisk, setIsOwnersRisk] = useState(true);
     const [isCancelCn, setIsCancelCn] = useState(false);
+    // Active-bill warning dialog (cancel CN or billing-party reassignment)
+    const [cancelBillWarning, setCancelBillWarning] = useState<{
+        reason: 'cancel' | 'reassign';
+        bills: Array<{ id: string; bill_ref_no: string | null; cn_count?: number }>;
+        pendingBody: Record<string, unknown>;
+    } | null>(null);
     const [loggedInUserName, setLoggedInUserName] = useState('');
     const [consignor, setConsignor] = useState<Party | null>(null);
     const [consignee, setConsignee] = useState<Party | null>(null);
@@ -945,6 +959,15 @@ function NewConsignmentForm() {
 
             if (!res.ok) {
                 const err = await res.json();
+                // CN is covered by an active bill — show confirmation dialog
+                if (res.status === 409 && err.error === 'CN_IN_ACTIVE_BILL') {
+                    setCancelBillWarning({
+                        reason: err.reason || 'cancel',
+                        bills: err.bills || [{ id: err.bill_id, bill_ref_no: err.bill_ref_no }],
+                        pendingBody: { ...body, force_remove_from_bills: true },
+                    });
+                    return; // don't throw — dialog takes over
+                }
                 // Supabase unique constraint violation on cn_no
                 const errMsg: string = err.error || '';
                 if (errMsg.includes('23505') || errMsg.toLowerCase().includes('unique') || errMsg.includes('cn_no')) {
@@ -2224,6 +2247,140 @@ function NewConsignmentForm() {
             </div>
 
             {/* Footer is handled by layout */}
+
+            {/* ── Cancel CN warning dialog ─────────────────────────────────── */}
+            {cancelBillWarning && (() => {
+                // Single-CN bill reassignment → offer "Move Entire Bill"
+                const singleCnBill = cancelBillWarning.reason === 'reassign'
+                    && cancelBillWarning.bills.length === 1
+                    && (cancelBillWarning.bills[0].cn_count ?? 0) === 1
+                    ? cancelBillWarning.bills[0]
+                    : null;
+
+                const handleConfirm = async (mode: 'remove' | 'move_bill') => {
+                    let body: Record<string, unknown>;
+                    if (mode === 'move_bill' && singleCnBill) {
+                        body = {
+                            ...cancelBillWarning.pendingBody,
+                            force_remove_from_bills: false,
+                            force_move_bill_to_new_party: true,
+                            bill_id_to_move: singleCnBill.id,
+                        };
+                    } else {
+                        body = cancelBillWarning.pendingBody; // already has force_remove_from_bills: true
+                    }
+                    setCancelBillWarning(null);
+                    setIsSaving(true);
+                    try {
+                        const res = await fetch(`/api/consignments/${editId}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body),
+                        });
+                        if (!res.ok) {
+                            const err = await res.json();
+                            throw new Error(err.error || 'Failed to save consignment');
+                        }
+                        if (mode === 'move_bill') {
+                            toast.success(`Bill ${singleCnBill?.bill_ref_no || ''} moved to new billing party.`);
+                        } else {
+                            toast.success(
+                                cancelBillWarning.reason === 'reassign'
+                                    ? 'Billing party updated — CN removed from old bill.'
+                                    : 'CN cancelled and removed from bill.'
+                            );
+                        }
+                        router.push('/dashboard/consignments');
+                        router.refresh();
+                    } catch (err: unknown) {
+                        toast.error((err as Error).message || 'Failed to save consignment');
+                    } finally {
+                        setIsSaving(false);
+                    }
+                };
+
+                return (
+                    <Dialog open onOpenChange={(open) => { if (!open) setCancelBillWarning(null); }}>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-destructive">
+                                    <AlertTriangle className="h-5 w-5" />
+                                    CN is Covered by an Active Bill
+                                </DialogTitle>
+                                <DialogDescription asChild>
+                                    <div className="pt-2 space-y-3 text-sm text-muted-foreground">
+                                        <p>
+                                            This CN is currently included in the following active bill{cancelBillWarning.bills.length > 1 ? 's' : ''}:
+                                        </p>
+                                        <ul className="space-y-1">
+                                            {cancelBillWarning.bills.map((bill) => (
+                                                <li key={bill.id} className="font-mono text-sm font-bold text-foreground bg-muted px-3 py-1.5 rounded flex items-center justify-between">
+                                                    <span>{bill.bill_ref_no || bill.id}</span>
+                                                    {(bill.cn_count ?? 0) > 0 && (
+                                                        <span className="text-[10px] font-normal text-muted-foreground ml-2">
+                                                            {bill.cn_count} CN{(bill.cn_count ?? 0) > 1 ? 's' : ''}
+                                                        </span>
+                                                    )}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                        {cancelBillWarning.reason === 'reassign' ? (
+                                            singleCnBill ? (
+                                                <div className="space-y-2">
+                                                    <p>
+                                                        This bill has <span className="font-bold text-foreground">only this one CN</span>. You have two options:
+                                                    </p>
+                                                    <div className="rounded-md border divide-y text-xs">
+                                                        <div className="px-3 py-2">
+                                                            <span className="font-semibold text-foreground">Option A — Remove CN from bill:</span>
+                                                            <span className="text-muted-foreground"> The old bill becomes empty (you can cancel it manually). This CN appears as unbilled in the new party.</span>
+                                                        </div>
+                                                        <div className="px-3 py-2">
+                                                            <span className="font-semibold text-foreground">Option B — Move entire bill to new party:</span>
+                                                            <span className="text-muted-foreground"> The bill (same bill number &amp; amount) is transferred to the new billing party along with this CN.</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <p>
+                                                    You are changing the <span className="font-semibold text-foreground">billing party</span> of this CN.
+                                                    It will be <span className="font-bold text-destructive">removed</span> from the bill{cancelBillWarning.bills.length > 1 ? 's' : ''} above.
+                                                    This CN will appear as <span className="font-semibold text-foreground">unbilled</span> in the new party&apos;s ledger.
+                                                </p>
+                                            )
+                                        ) : (
+                                            <p>
+                                                Cancelling this CN will <span className="font-bold text-destructive">remove</span> it from the bill{cancelBillWarning.bills.length > 1 ? 's' : ''} above.
+                                                The bill amount will remain unchanged — open the bill to adjust it if needed.
+                                            </p>
+                                        )}
+                                    </div>
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className={`gap-2 ${singleCnBill ? 'flex-col sm:flex-col' : ''}`}>
+                                <Button variant="outline" onClick={() => setCancelBillWarning(null)}>
+                                    Go Back
+                                </Button>
+                                {singleCnBill ? (
+                                    <>
+                                        <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" onClick={() => handleConfirm('remove')}>
+                                            Option A — Remove CN from Bill
+                                        </Button>
+                                        <Button onClick={() => handleConfirm('move_bill')}>
+                                            Option B — Move Entire Bill to New Party
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <Button variant="destructive" onClick={() => handleConfirm('remove')}>
+                                        {cancelBillWarning.reason === 'reassign' ? 'Reassign and Remove from Bill' : 'Continue and Cancel CN'}
+                                    </Button>
+                                )}
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                );
+            })()}
+            {/* ──────────────────────────────────────────────────────────────── */}
         </div >
     );
 }

@@ -74,7 +74,7 @@ export async function PATCH(
 
         const { data: existing, error: existingError } = await supabase
             .from("consignments")
-            .select("id, booking_branch, cn_no")
+            .select("id, booking_branch, cn_no, cancel_cn, billing_party_id")
             .eq("id", id)
             .single();
 
@@ -86,6 +86,56 @@ export async function PATCH(
         if (forbiddenExisting) return forbiddenExisting;
 
         const body = await request.json();
+
+        // ── Resolve new billing party ID early (needed for change detection) ─
+        const { billingPartyId: newBillingPartyId, error: billingPartyError } = await resolveBillingPartyId(supabase, body);
+        if (billingPartyError) {
+            return NextResponse.json({ error: billingPartyError }, { status: 400 });
+        }
+        const isBillingPartyChanging =
+            newBillingPartyId !== null &&
+            newBillingPartyId !== undefined &&
+            String(newBillingPartyId) !== String(existing.billing_party_id ?? '');
+
+        // Helper: fetch active bills covering this CN and return 409 if any found
+        const checkAndReturnBillConflict = async (reason: 'cancel' | 'reassign') => {
+            const { data: coveringBills, error: billCheckError } = await supabase.rpc(
+                'find_active_bills_covering_cns',
+                { p_cn_nos: [String(existing.cn_no)], p_exclude_billing_record_id: null },
+            );
+            if (billCheckError || !coveringBills || coveringBills.length === 0) return null;
+            const billList = (coveringBills as Array<{ id: string; bill_ref_no: string | null; covered_cn_nos: string[] | null }>)
+                .map((b) => ({
+                    id: b.id,
+                    bill_ref_no: b.bill_ref_no || null,
+                    // how many CNs are in this bill — if exactly 1, the whole bill can be moved
+                    cn_count: Array.isArray(b.covered_cn_nos) ? b.covered_cn_nos.length : 0,
+                }));
+            return NextResponse.json({
+                error: 'CN_IN_ACTIVE_BILL',
+                reason,
+                message: reason === 'cancel'
+                    ? `CN ${existing.cn_no} is covered by an active bill. Cancelling it will remove it from that bill.`
+                    : `CN ${existing.cn_no} is covered by an active bill for the current billing party. Reassigning the billing party will remove it from that bill.`,
+                bill_ref_no: billList[0].bill_ref_no,
+                bill_id: billList[0].id,
+                bills: billList,
+            }, { status: 409 });
+        };
+
+        // ── Bill-coverage check when cancelling a CN ─────────────────────────
+        const isCancelling = body.cancel_cn === true && !existing.cancel_cn;
+        if (isCancelling && !body.force_remove_from_bills) {
+            const conflict = await checkAndReturnBillConflict('cancel');
+            if (conflict) return conflict;
+        }
+
+        // ── Bill-coverage check when reassigning billing party ────────────────
+        if (isBillingPartyChanging && !body.force_remove_from_bills && !body.force_move_bill_to_new_party) {
+            const conflict = await checkAndReturnBillConflict('reassign');
+            if (conflict) return conflict;
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         if (auth.isBranchScoped) {
             body.booking_branch = auth.branchCode;
@@ -207,12 +257,7 @@ export async function PATCH(
             freight_included: body.freight_included ?? false,
         };
 
-        const { billingPartyId, error: billingPartyError } = await resolveBillingPartyId(supabase, body);
-        if (billingPartyError) {
-            return NextResponse.json({ error: billingPartyError }, { status: 400 });
-        }
-
-        updateData.billing_party_id = billingPartyId;
+        updateData.billing_party_id = newBillingPartyId;
 
         const { data, error } = await supabase
             .from("consignments")
@@ -224,6 +269,44 @@ export async function PATCH(
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 400 });
         }
+
+        // ── Move entire bill to new party (single-CN bill reassignment) ──────
+        // When the bill had only this one CN and the user chose to move the whole
+        // bill rather than just unlinking the CN, reassign the bill's party_id.
+        if (body.force_move_bill_to_new_party && body.bill_id_to_move && isBillingPartyChanging && existing.billing_party_id && newBillingPartyId) {
+            await supabase.rpc('fn_reassign_billing_record_party', {
+                p_bill_id: String(body.bill_id_to_move),
+                p_old_party_id: String(existing.billing_party_id),
+                p_new_party_id: String(newBillingPartyId),
+                p_confirm_move_payments: true,
+            });
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        // ── Remove CN from old active bills (cancel or billing-party change) ──
+        const shouldRemoveFromBills = body.force_remove_from_bills && (isCancelling || isBillingPartyChanging);
+        if (shouldRemoveFromBills) {
+            const { data: coveringBills } = await supabase.rpc(
+                'find_active_bills_covering_cns',
+                // NOTE: the CN has already been updated above, so we query BEFORE the
+                // new billing_party_id takes effect in the index. Use the old cn_no.
+                { p_cn_nos: [String(existing.cn_no)], p_exclude_billing_record_id: null },
+            ) as { data: Array<{ id: string; party_id: string; covered_cn_nos: string[] | null }> | null };
+
+            for (const bill of (coveringBills || [])) {
+                const current: string[] = Array.isArray(bill.covered_cn_nos) ? bill.covered_cn_nos : [];
+                const updated = current.filter(
+                    (cn) => String(cn).trim() !== String(existing.cn_no).trim(),
+                );
+                if (updated.length !== current.length) {
+                    await supabase
+                        .from('party_billing_records')
+                        .update({ covered_cn_nos: updated })
+                        .eq('id', bill.id);
+                }
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         return NextResponse.json(data);
     } catch (error) {

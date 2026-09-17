@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "seed:users": "tsx scripts/seed-users.ts",
-    "backup:database": "tsx scripts/backup-database.ts"
+    "backup:database": "tsx scripts/backup-database.ts",
+    "purge:fy-cutoff": "tsx scripts/purge-through-fy-cutoff.ts",
+    "purge:fy-cutoff:execute": "tsx scripts/purge-through-fy-cutoff.ts --execute --confirm=YES"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

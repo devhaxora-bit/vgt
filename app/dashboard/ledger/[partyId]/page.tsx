@@ -78,6 +78,9 @@ interface Consignment {
     traffic_challan_charges?: number;
     other_charges?: number; vehicle_no?: string; bkg_basis: string;
     goods_desc?: string; delivery_type?: string;
+    /** True when this CN is cancelled/deleted/reassigned but still referenced by a bill */
+    cancel_cn?: boolean;
+    _ghost?: boolean;
 }
 
 interface BillingExtraChargeItem {
@@ -492,6 +495,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         summary: Summary;
         consignments: Consignment[];
         all_consignments: Consignment[];
+        /** CNs that are covered by active bills of this party but are no longer in the live CN list (cancelled/deleted/reassigned). */
+        ghost_consignments: Consignment[];
         billing_records: BillingRecord[];
         payment_receipts: PaymentReceipt[];
         all_billing_records: BillingRecord[];
@@ -499,7 +504,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     }>({
         party: null, account: null,
         summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0, total_bills_count: 0 },
-        consignments: [], all_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
+        consignments: [], all_consignments: [], ghost_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -564,6 +569,10 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             const res = await fetch(`/api/ledger/${partyId}?${params.toString()}`);
             if (!res.ok) throw new Error('Failed to fetch');
             const json = await res.json();
+            // Mark ghost CNs so the UI can show a warning indicator on them
+            if (Array.isArray(json.ghost_consignments)) {
+                json.ghost_consignments = json.ghost_consignments.map((c: Consignment) => ({ ...c, _ghost: true }));
+            }
             setData(json);
         } catch (err) {
             console.error(err);
@@ -928,6 +937,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     // For editing a specific bill, the picker should show:
     //   • This bill's own covered CNs (so the user can add/remove them)
     //   • Any other unbilled party CNs (so the user can expand coverage)
+    //   • Ghost CNs: covered by this bill but no longer in the live CN list (cancelled/deleted/reassigned)
     // It must NOT show CNs already covered by a *different* active bill.
     const editableBillingConsignments = useMemo(() => {
         if (!editingBillingRecord) return data.all_consignments;
@@ -941,10 +951,23 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 if (normalized) otherBilledCnNos.add(normalized);
             });
         });
-        return data.all_consignments.filter(
+        const liveCns = data.all_consignments.filter(
             (consignment) => !otherBilledCnNos.has(String(consignment.cn_no || '').trim().toUpperCase()),
         );
-    }, [data.all_billing_records, data.all_consignments, editingBillingRecord]);
+
+        // Also include ghost CNs that are covered by this specific bill so the
+        // user can see and deselect them (they are cancelled/deleted/reassigned).
+        const editingCoveredCnNos = new Set(
+            (editingBillingRecord.covered_cn_nos || []).map((cn) => String(cn).trim().toUpperCase()),
+        );
+        const liveCnNoSet = new Set(liveCns.map((c) => String(c.cn_no || '').trim().toUpperCase()));
+        const relevantGhosts = data.ghost_consignments.filter(
+            (c) => editingCoveredCnNos.has(String(c.cn_no || '').trim().toUpperCase())
+                && !liveCnNoSet.has(String(c.cn_no || '').trim().toUpperCase()),
+        );
+
+        return relevantGhosts.length > 0 ? [...liveCns, ...relevantGhosts] : liveCns;
+    }, [data.all_billing_records, data.all_consignments, data.ghost_consignments, editingBillingRecord]);
 
     const consignmentBillingMap = useMemo(() => {
         const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();

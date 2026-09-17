@@ -256,6 +256,13 @@ const buildConsignmentSnapshot = (
     };
 };
 
+type OverlappingBillRecord = {
+    id: string;
+    bill_ref_no?: string | null;
+    party_id?: string;
+    covered_cn_nos?: string[] | null;
+};
+
 const fetchOverlappingBills = async (
     supabase: SupabaseLike,
     _partyId: string,
@@ -268,14 +275,9 @@ const fetchOverlappingBills = async (
         p_exclude_billing_record_id: excludeBillingRecordId || null,
     });
 
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null as OverlappingBillRecord[] | null, error: error.message };
 
-    const overlapping = (data || []).filter((record: {
-        id: string;
-        bill_ref_no?: string | null;
-        party_id?: string;
-        covered_cn_nos?: string[] | null;
-    }) => {
+    const overlapping = ((data || []) as OverlappingBillRecord[]).filter((record) => {
         const existingCoveredCnNos = Array.isArray(record.covered_cn_nos)
             ? record.covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
             : [];
@@ -286,39 +288,9 @@ const fetchOverlappingBills = async (
     return { data: overlapping, error: null };
 };
 
-export async function findDuplicateBillRefNo(
-    supabase: SupabaseLike,
-    {
-        partyId,
-        billRefNo,
-        excludeBillingRecordId,
-    }: {
-        partyId: string;
-        billRefNo: string | null;
-        excludeBillingRecordId?: string;
-    }
-) {
-    const normalizedBillRefNo = String(billRefNo || '').trim();
-    if (!normalizedBillRefNo) {
-        return { duplicateRecordId: null, error: null };
-    }
-
-    const { data, error } = await supabase
-        .from('party_billing_records')
-        .select('id')
-        .eq('party_id', partyId)
-        .eq('bill_ref_no', normalizedBillRefNo)
-        .limit(1);
-
-    if (error) return { duplicateRecordId: null, error: error.message };
-
-    const duplicateRecord = (data || []).find((record) => record.id !== excludeBillingRecordId);
-
-    return {
-        duplicateRecordId: duplicateRecord?.id || null,
-        error: null,
-    };
-}
+// NOTE: findDuplicateBillRefNo (per-party check) has been removed.
+// Use findDuplicateGlobalBillRefNo from lib/server/billRefDuplicates.ts
+// which checks across ALL party_billing_records and broker_challan_billing_records.
 
 export async function prepareBillingSnapshot(
     supabase: SupabaseLike,
@@ -370,7 +342,7 @@ export async function prepareBillingSnapshot(
 
     if ((overlappingBills || []).length > 0) {
         const overlappingCnNos = Array.from(new Set(
-            (overlappingBills || []).flatMap((record) => {
+            (overlappingBills || []).flatMap((record: OverlappingBillRecord) => {
                 const existingCoveredCnNos = Array.isArray(record.covered_cn_nos)
                     ? record.covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
                     : [];
