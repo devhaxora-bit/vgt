@@ -166,6 +166,37 @@ export async function GET(
         return true;
     });
 
+    // 5b. Ghost CNs: CNs covered by this party's active bills that are no longer
+    // in partyOwnedConsignments (because they were cancelled, soft-deleted, or
+    // reassigned to a different billing party after the bill was created).
+    // These must be surfaced on the edit-bill form so the user can deselect them.
+    const allActiveBillCnNos = new Set<string>();
+    (allBillingRecords || []).forEach((bill) => {
+        if (bill.status !== 'ACTIVE') return;
+        const rawCnNos = bill.covered_cn_nos;
+        const cnNos: string[] = Array.isArray(rawCnNos)
+            ? rawCnNos.map((cn: unknown) => String(cn).trim()).filter(Boolean)
+            : [];
+        cnNos.forEach((cn) => allActiveBillCnNos.add(cn));
+    });
+
+    const partyOwnedCnNoSet = new Set(partyOwnedConsignments.map((c) => String(c.cn_no || '').trim()));
+    const ghostCnNos = Array.from(allActiveBillCnNos).filter((cnNo) => !partyOwnedCnNoSet.has(cnNo));
+
+    let ghostConsignments: typeof partyOwnedConsignments = [];
+    if (ghostCnNos.length > 0) {
+        // Fetch without cancel_cn / deleted_at filters so we can find cancelled/deleted CNs
+        const { data: ghostRaw } = await supabase
+            .from('consignments')
+            .select('id, cn_no, invoice_no, bkg_date, booking_branch, loading_point, dest_branch, delivery_point, no_of_pkg, total_qty, is_loose, actual_weight, charged_weight, load_unit, total_freight, basic_freight, freight_rate, unload_charges, retention_charges, extra_km_charges, mhc_charges, door_coll_charges, door_del_charges, traffic_challan_charges, other_charges, vehicle_no, bkg_basis, cancel_cn, goods_desc, delivery_type, freight_included, parent_cn_id')
+            .in('cn_no', ghostCnNos);
+
+        ghostConsignments = (ghostRaw || []).map((record) => ({
+            ...record,
+            parent_cn_no: null,
+        }));
+    }
+
     // 6. When date filters are applied, expand the consignment set to include
     // CNs covered by active billing records in the date range.
     // This ensures Total CNS Amount − Total Billed = Unbilled Amount always holds.
@@ -224,6 +255,7 @@ export async function GET(
         summary,
         consignments: summaryConsignments || [],
         all_consignments: partyOwnedConsignments || [],
+        ghost_consignments: ghostConsignments,
         billing_records: billingRecords || [],
         payment_receipts: paymentReceipts || [],
         all_billing_records: allBillingRecords || [],

@@ -288,39 +288,9 @@ const fetchOverlappingBills = async (
     return { data: overlapping, error: null };
 };
 
-export async function findDuplicateBillRefNo(
-    supabase: SupabaseLike,
-    {
-        partyId,
-        billRefNo,
-        excludeBillingRecordId,
-    }: {
-        partyId: string;
-        billRefNo: string | null;
-        excludeBillingRecordId?: string;
-    }
-) {
-    const normalizedBillRefNo = String(billRefNo || '').trim();
-    if (!normalizedBillRefNo) {
-        return { duplicateRecordId: null, error: null };
-    }
-
-    const { data, error } = await supabase
-        .from('party_billing_records')
-        .select('id')
-        .eq('party_id', partyId)
-        .eq('bill_ref_no', normalizedBillRefNo)
-        .limit(1);
-
-    if (error) return { duplicateRecordId: null, error: error.message };
-
-    const duplicateRecord = (data || []).find((record) => record.id !== excludeBillingRecordId);
-
-    return {
-        duplicateRecordId: duplicateRecord?.id || null,
-        error: null,
-    };
-}
+// NOTE: findDuplicateBillRefNo (per-party check) has been removed.
+// Use findDuplicateGlobalBillRefNo from lib/server/billRefDuplicates.ts
+// which checks across ALL party_billing_records and broker_challan_billing_records.
 
 export async function prepareBillingSnapshot(
     supabase: SupabaseLike,

@@ -2,6 +2,16 @@ import { NextResponse } from 'next/server';
 
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
+/** Extract trailing serial number from bill refs like VZM/26-27/2152 → 2152 */
+const billSerialNumber = (billRefNo: string | null | undefined): number => {
+    const raw = String(billRefNo || '').trim();
+    if (!raw) return 0;
+    const match = raw.match(/(\d+)\s*$/);
+    if (!match) return 0;
+    const num = parseInt(match[1], 10);
+    return Number.isNaN(num) ? 0 : num;
+};
+
 // GET /api/ledger/bills
 // Global party billing records list (with party name)
 export async function GET(request: Request) {
@@ -43,7 +53,6 @@ export async function GET(request: Request) {
                 branch_code
             )
         `)
-        .order('billing_date', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -92,15 +101,24 @@ export async function GET(request: Request) {
         })
         : rows;
 
-    const totalAmount = filtered
+    // Serial order: highest bill number (latest) first, then newest created_at
+    const sorted = [...filtered].sort((a, b) => {
+        const serialDiff = billSerialNumber(b.bill_ref_no) - billSerialNumber(a.bill_ref_no);
+        if (serialDiff !== 0) return serialDiff;
+        const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bCreated - aCreated;
+    });
+
+    const totalAmount = sorted
         .filter((row) => row.status === 'ACTIVE')
         .reduce((sum, row) => sum + Number(row.amount || 0), 0);
 
     return NextResponse.json({
-        data: filtered,
+        data: sorted,
         summary: {
-            count: filtered.length,
-            active_count: filtered.filter((row) => row.status === 'ACTIVE').length,
+            count: sorted.length,
+            active_count: sorted.filter((row) => row.status === 'ACTIVE').length,
             total_amount: totalAmount,
         },
     });

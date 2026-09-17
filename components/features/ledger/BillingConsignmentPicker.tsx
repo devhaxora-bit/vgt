@@ -29,6 +29,9 @@ export interface BillingConsignmentOption {
     traffic_challan_charges?: number;
     other_charges?: number;
     vehicle_no?: string;
+    /** Ghost CNs are cancelled/deleted/reassigned but still referenced by this bill */
+    _ghost?: boolean;
+    cancel_cn?: boolean;
 }
 
 const fmt = (n: number) =>
@@ -160,12 +163,19 @@ export function BillingConsignmentPicker({
                                 </div>
                             ) : filteredConsignments.map((consignment) => {
                                 const checked = value.includes(consignment.cn_no);
+                                const isCancelled = Boolean(consignment.cancel_cn);
+                                const isReassigned = Boolean(consignment._ghost) && !isCancelled;
+                                const isGhost = isCancelled || isReassigned;
+                                const ghostLabel = isCancelled ? 'Cancelled' : 'Billing Party Changed';
+                                const ghostHint = isCancelled
+                                    ? 'This CN is cancelled — uncheck to remove from bill'
+                                    : 'This CN was moved to a different billing party — uncheck to remove from bill';
                                 return (
                                     <button
                                         key={consignment.id}
                                         type="button"
                                         onClick={() => toggleConsignment(consignment.cn_no)}
-                                        className="w-full rounded-md border px-3 py-2 text-left hover:bg-muted/40 transition-colors"
+                                        className={`w-full rounded-md border px-3 py-2 text-left hover:bg-muted/40 transition-colors ${isGhost ? 'border-red-200 bg-red-50/40' : ''}`}
                                     >
                                         <div className="flex items-start gap-3">
                                             <span
@@ -174,12 +184,24 @@ export function BillingConsignmentPicker({
                                             />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center justify-between gap-3">
-                                                    <div className="font-mono text-xs font-bold text-primary">{consignment.cn_no}</div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="font-mono text-xs font-bold text-primary">{consignment.cn_no}</div>
+                                                        {isGhost && (
+                                                            <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-red-100 text-red-700 border border-red-200">
+                                                                {ghostLabel}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     {checked && <Check className="h-4 w-4 text-primary shrink-0" />}
                                                 </div>
                                                 <div className="mt-1 text-[11px] text-muted-foreground">
                                                     {fmtDate(consignment.bkg_date)} • {(consignment.loading_point || consignment.booking_branch)} → {(consignment.delivery_point || consignment.dest_branch)}
                                                 </div>
+                                                {isGhost && (
+                                                    <div className="mt-1 text-[10px] text-red-600">
+                                                        {ghostHint}
+                                                    </div>
+                                                )}
                                                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
                                                     <span className="font-semibold text-emerald-700">Freight ₹{fmt(getConsignmentBaseFreight(consignment))}</span>
                                                     <span className="font-semibold text-amber-700">Detention ₹{fmt(Number(consignment.retention_charges || 0))}</span>
@@ -222,11 +244,22 @@ export function BillingConsignmentPicker({
                     <div className="divide-y">
                         {selectedConsignments.map((consignment) => {
                             const extraCharges = getConsignmentExtraCharges(consignment);
+                            const isCancelled = Boolean(consignment.cancel_cn);
+                            const isReassigned = Boolean(consignment._ghost) && !isCancelled;
+                            const isGhost = isCancelled || isReassigned;
+                            const ghostLabel = isCancelled ? 'Cancelled' : 'Billing Party Changed';
 
                             return (
-                                <div key={consignment.id} className="px-3 py-2 flex items-center justify-between gap-3">
+                                <div key={consignment.id} className={`px-3 py-2 flex items-center justify-between gap-3 ${isGhost ? 'bg-red-50/50' : ''}`}>
                                     <div className="min-w-0">
-                                        <div className="font-mono text-xs font-bold text-primary">{consignment.cn_no}</div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="font-mono text-xs font-bold text-primary">{consignment.cn_no}</div>
+                                            {isGhost && (
+                                                <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-red-100 text-red-700 border border-red-200">
+                                                    {ghostLabel}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="text-[11px] text-muted-foreground">
                                             {fmtDate(consignment.bkg_date)} • {(consignment.loading_point || consignment.booking_branch)} → {(consignment.delivery_point || consignment.dest_branch)}
                                         </div>
