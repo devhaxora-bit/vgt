@@ -368,11 +368,11 @@ export default function ChallanLedgerPage() {
                                     <TableRow key={b.broker_id} className="group">
                                         <TableCell><span className="font-mono font-bold text-primary text-xs">{b.broker_code}</span></TableCell>
                                         <TableCell>
-                                            <div className="flex min-w-0 items-center gap-1.5">
-                                                <span className="truncate font-semibold text-xs" title={b.broker_name}>{b.broker_name}</span>
-                                                <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono text-muted-foreground">
+                                            <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
+                                                <span className="min-w-0 flex-1 truncate font-semibold text-xs" title={b.broker_name}>{b.broker_name}</span>
+                                                <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
                                                     {b.total_challan_count} challan{b.total_challan_count !== 1 ? 's' : ''}
-                                                </Badge>
+                                                </span>
                                             </div>
                                         </TableCell>
                                         <TableCell>{b.primary_branch_code || '—'}</TableCell>
