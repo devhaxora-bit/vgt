@@ -24,6 +24,7 @@ import {
     type LedgerConsignment,
     type LedgerParty,
 } from '@/lib/ledgerUi';
+import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 type BillListRow = BillingRecord & {
     party_id: string;
@@ -125,19 +126,38 @@ export default function BillEntryPage() {
             setEditParty(json.party || null);
             const allBilling: BillingRecord[] = json.all_billing_records || [];
             const editingId = bill.id;
-            const otherBilled = new Set<string>();
-            allBilling.forEach((record) => {
-                if (record.status !== 'ACTIVE' || record.id === editingId) return;
-                (record.covered_cn_nos || []).forEach((cn) => {
-                    const n = String(cn || '').trim().toUpperCase();
-                    if (n) otherBilled.add(n);
+            const coverageCounts = new Map<string, number>(
+                Object.entries(json.global_cn_coverage_counts || {}).map(([cnNo, count]) => [
+                    normalizeCnKey(cnNo),
+                    Number(count) || 0,
+                ]),
+            );
+            if (!json.global_cn_coverage_counts) {
+                allBilling.forEach((record) => {
+                    if (record.status !== 'ACTIVE') return;
+                    new Set((record.covered_cn_nos || []).map(normalizeCnKey)).forEach((key) => {
+                        coverageCounts.set(key, (coverageCounts.get(key) || 0) + 1);
+                    });
                 });
+            }
+            const fresh = allBilling.find((record) => record.id === editingId);
+            ((fresh || bill).covered_cn_nos || []).forEach((cnNo) => {
+                const key = normalizeCnKey(cnNo);
+                coverageCounts.set(key, Math.max((coverageCounts.get(key) || 0) - 1, 0));
             });
             const allCns: LedgerConsignment[] = json.all_consignments || json.consignments || [];
-            setEditConsignments(
-                allCns.filter((cn) => !otherBilled.has(String(cn.cn_no || '').trim().toUpperCase())),
+            const availableCns = allCns.filter(
+                (cn) => (coverageCounts.get(normalizeCnKey(cn.cn_no)) || 0) === 0,
             );
-            const fresh = allBilling.find((b) => b.id === bill.id);
+            const editingCoveredCnKeys = new Set(
+                ((fresh || bill).covered_cn_nos || []).map(normalizeCnKey),
+            );
+            const availableCnKeys = new Set(availableCns.map((cn) => normalizeCnKey(cn.cn_no)));
+            const relevantGhosts: LedgerConsignment[] = (json.ghost_consignments || []).filter(
+                (cn: LedgerConsignment) => editingCoveredCnKeys.has(normalizeCnKey(cn.cn_no))
+                    && !availableCnKeys.has(normalizeCnKey(cn.cn_no)),
+            ).map((cn: LedgerConsignment) => ({ ...cn, _ghost: true }));
+            setEditConsignments([...availableCns, ...relevantGhosts]);
             if (fresh) {
                 setEditing({
                     ...bill,

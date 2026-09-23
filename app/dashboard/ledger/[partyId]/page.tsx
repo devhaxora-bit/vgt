@@ -39,6 +39,7 @@ import {
     normalizeVehicleCancelItems,
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
+import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -495,6 +496,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         summary: Summary;
         consignments: Consignment[];
         all_consignments: Consignment[];
+        /** Live CNs not covered by any active bill, including bills hidden by branch RLS. */
+        billable_consignments: Consignment[];
+        global_cn_coverage_counts?: Record<string, number>;
         /** CNs that are covered by active bills of this party but are no longer in the live CN list (cancelled/deleted/reassigned). */
         ghost_consignments: Consignment[];
         billing_records: BillingRecord[];
@@ -504,7 +508,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     }>({
         party: null, account: null,
         summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0, total_bills_count: 0 },
-        consignments: [], all_consignments: [], ghost_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
+        consignments: [], all_consignments: [], billable_consignments: [], ghost_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -576,6 +580,10 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             setData(json);
         } catch (err) {
             console.error(err);
+            // Do not leave a stale billable list available when global coverage
+            // verification fails. The database guard still blocks duplicates,
+            // but the create picker should also fail closed.
+            setData((current) => ({ ...current, billable_consignments: [] }));
             toast.error('Failed to load ledger data');
         } finally {
             setIsLoading(false);
@@ -738,7 +746,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
         data.all_billing_records.forEach((record) => {
             (record.covered_cn_nos || []).forEach((cnNo) => {
-                const normalizedCnNo = cnNo.trim();
+                const normalizedCnNo = normalizeCnKey(cnNo);
                 if (!normalizedCnNo) return;
 
                 if (record.status === 'ACTIVE') {
@@ -917,22 +925,27 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     }, [billingSearch, billingStatusFilter, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
 
     const billableConsignments = useMemo(() => {
+        if (Array.isArray(data.billable_consignments)) {
+            return data.billable_consignments;
+        }
+
+        // Compatibility fallback for an older API response.
         // Build the set of billed CN nos from ALL billing records (not date-filtered).
         // Normalize both sides to uppercase+trim to guard against any casing differences.
         const billedCnNos = new Set<string>();
         data.all_billing_records.forEach((record) => {
             if (record.status !== 'ACTIVE') return;
             (record.covered_cn_nos || []).forEach((cnNo) => {
-                const normalized = String(cnNo || '').trim().toUpperCase();
+                const normalized = normalizeCnKey(cnNo);
                 if (normalized) billedCnNos.add(normalized);
             });
         });
         // Use all_consignments (not the date-filtered list) so unbilled CNs from
         // any period are available for billing, regardless of the current date filter.
         return data.all_consignments.filter(
-            (consignment) => !billedCnNos.has(String(consignment.cn_no || '').trim().toUpperCase()),
+            (consignment) => !billedCnNos.has(normalizeCnKey(consignment.cn_no)),
         );
-    }, [data.all_billing_records, data.all_consignments]);
+    }, [data.all_billing_records, data.all_consignments, data.billable_consignments]);
 
     // For editing a specific bill, the picker should show:
     //   • This bill's own covered CNs (so the user can add/remove them)
@@ -942,32 +955,43 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const editableBillingConsignments = useMemo(() => {
         if (!editingBillingRecord) return data.all_consignments;
         const editingId = editingBillingRecord.id;
-        const otherBilledCnNos = new Set<string>();
-        data.all_billing_records.forEach((record) => {
-            if (record.status !== 'ACTIVE') return;
-            if (record.id === editingId) return; // skip the bill being edited
-            (record.covered_cn_nos || []).forEach((cnNo) => {
-                const normalized = String(cnNo || '').trim().toUpperCase();
-                if (normalized) otherBilledCnNos.add(normalized);
+        const coverageCounts = new Map(
+            Object.entries(data.global_cn_coverage_counts || {}).map(([cnNo, count]) => [
+                normalizeCnKey(cnNo),
+                Number(count) || 0,
+            ]),
+        );
+        if (!data.global_cn_coverage_counts) {
+            data.all_billing_records.forEach((record) => {
+                if (record.status !== 'ACTIVE') return;
+                new Set((record.covered_cn_nos || []).map(normalizeCnKey)).forEach((key) => {
+                    coverageCounts.set(key, (coverageCounts.get(key) || 0) + 1);
+                });
             });
+        }
+        const editingRecord = data.all_billing_records.find((record) => record.id === editingId)
+            || editingBillingRecord;
+        (editingRecord.covered_cn_nos || []).forEach((cnNo) => {
+            const key = normalizeCnKey(cnNo);
+            coverageCounts.set(key, Math.max((coverageCounts.get(key) || 0) - 1, 0));
         });
         const liveCns = data.all_consignments.filter(
-            (consignment) => !otherBilledCnNos.has(String(consignment.cn_no || '').trim().toUpperCase()),
+            (consignment) => (coverageCounts.get(normalizeCnKey(consignment.cn_no)) || 0) === 0,
         );
 
         // Also include ghost CNs that are covered by this specific bill so the
         // user can see and deselect them (they are cancelled/deleted/reassigned).
         const editingCoveredCnNos = new Set(
-            (editingBillingRecord.covered_cn_nos || []).map((cn) => String(cn).trim().toUpperCase()),
+            (editingBillingRecord.covered_cn_nos || []).map(normalizeCnKey),
         );
-        const liveCnNoSet = new Set(liveCns.map((c) => String(c.cn_no || '').trim().toUpperCase()));
+        const liveCnNoSet = new Set(liveCns.map((c) => normalizeCnKey(c.cn_no)));
         const relevantGhosts = data.ghost_consignments.filter(
-            (c) => editingCoveredCnNos.has(String(c.cn_no || '').trim().toUpperCase())
-                && !liveCnNoSet.has(String(c.cn_no || '').trim().toUpperCase()),
+            (c) => editingCoveredCnNos.has(normalizeCnKey(c.cn_no))
+                && !liveCnNoSet.has(normalizeCnKey(c.cn_no)),
         );
 
         return relevantGhosts.length > 0 ? [...liveCns, ...relevantGhosts] : liveCns;
-    }, [data.all_billing_records, data.all_consignments, data.ghost_consignments, editingBillingRecord]);
+    }, [data.all_billing_records, data.all_consignments, data.ghost_consignments, data.global_cn_coverage_counts, editingBillingRecord]);
 
     const consignmentBillingMap = useMemo(() => {
         const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();
@@ -986,22 +1010,34 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             });
         });
 
+        Object.entries(data.global_cn_coverage_counts || {}).forEach(([cnNo, count]) => {
+            const normalizedCnNo = normalizeCnKey(cnNo);
+            if (Number(count) > 0 && !recordsByCn.has(normalizedCnNo)) {
+                recordsByCn.set(normalizedCnNo, { status: 'BILLED', billRef: 'Active bill' });
+            }
+        });
+
         return recordsByCn;
-    }, [data.all_billing_records]);
+    }, [data.all_billing_records, data.global_cn_coverage_counts]);
 
     const filteredConsignments = useMemo(() => {
         const query = cnsSearch.trim().toLowerCase();
         let list = data.consignments;
 
         if (cnsBillFilter !== 'all') {
-            const billedCns = new Set<string>();
-            data.all_billing_records.forEach(r => {
-                if (r.status === 'ACTIVE') {
-                    (r.covered_cn_nos || []).forEach(cn => billedCns.add(cn.trim()));
-                }
-            });
-            if (cnsBillFilter === 'billed') list = list.filter(c => billedCns.has(c.cn_no));
-            if (cnsBillFilter === 'unbilled') list = list.filter(c => !billedCns.has(c.cn_no));
+            const billedCns = new Set(
+                Object.entries(data.global_cn_coverage_counts || {})
+                    .filter(([, count]) => Number(count) > 0)
+                    .map(([cnNo]) => normalizeCnKey(cnNo)),
+            );
+            if (!data.global_cn_coverage_counts) {
+                data.all_billing_records.forEach((record) => {
+                    if (record.status !== 'ACTIVE') return;
+                    (record.covered_cn_nos || []).forEach((cnNo) => billedCns.add(normalizeCnKey(cnNo)));
+                });
+            }
+            if (cnsBillFilter === 'billed') list = list.filter(c => billedCns.has(normalizeCnKey(c.cn_no)));
+            if (cnsBillFilter === 'unbilled') list = list.filter(c => !billedCns.has(normalizeCnKey(c.cn_no)));
         }
 
         if (query) {
@@ -1029,14 +1065,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             groupedList.push(c);
             processed.add(c.cn_no);
 
-            const billing = consignmentBillingMap.get(c.cn_no);
+            const billing = consignmentBillingMap.get(normalizeCnKey(c.cn_no));
             const isBilled = billing?.status === 'BILLED' && billing.billRef;
 
             if (isBilled) {
                 const billRef = billing.billRef;
                 sortedBase.forEach((item) => {
                     if (!processed.has(item.cn_no)) {
-                        const itemBilling = consignmentBillingMap.get(item.cn_no);
+                        const itemBilling = consignmentBillingMap.get(normalizeCnKey(item.cn_no));
                         if (itemBilling?.status === 'BILLED' && itemBilling.billRef === billRef) {
                             groupedList.push(item);
                             processed.add(item.cn_no);
@@ -1047,7 +1083,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         });
 
         return groupedList;
-    }, [cnsSearch, cnsBillFilter, data.consignments, data.all_billing_records, consignmentBillingMap]);
+    }, [cnsSearch, cnsBillFilter, data.consignments, data.all_billing_records, data.global_cn_coverage_counts, consignmentBillingMap]);
 
     const billCellMeta = useMemo(() => {
         const meta = filteredConsignments.map(() => ({ showMerged: true, rowSpan: 1 }));
@@ -1055,7 +1091,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
         while (index < filteredConsignments.length) {
             const current = filteredConsignments[index];
-            const billing = consignmentBillingMap.get(current.cn_no);
+            const billing = consignmentBillingMap.get(normalizeCnKey(current.cn_no));
             const isBilled = billing?.status === 'BILLED' && billing.billRef;
 
             if (!isBilled) {
@@ -1067,7 +1103,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             let end = index + 1;
             while (end < filteredConsignments.length) {
                 const next = filteredConsignments[end];
-                const nextBilling = consignmentBillingMap.get(next.cn_no);
+                const nextBilling = consignmentBillingMap.get(normalizeCnKey(next.cn_no));
                 if (nextBilling?.status === 'BILLED' && nextBilling.billRef === billRef) {
                     end += 1;
                 } else {
@@ -1470,7 +1506,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             </TableRow>
                                         ) : (
                                             filteredConsignments.map((c, idx) => {
-                                                const billing = consignmentBillingMap.get(c.cn_no);
+                                                const billing = consignmentBillingMap.get(normalizeCnKey(c.cn_no));
                                                 const meta = billCellMeta[idx];
 
                                                 return (
@@ -1535,9 +1571,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         <span className="text-xs text-muted-foreground">
                                             {data.consignments.length} entries
                                             {' | '}
-                                            {data.consignments.filter((record) => consignmentBillingMap.get(record.cn_no)?.status === 'BILLED').length} billed
+                                            {data.consignments.filter((record) => consignmentBillingMap.get(normalizeCnKey(record.cn_no))?.status === 'BILLED').length} billed
                                             {' | '}
-                                            {data.consignments.filter((record) => consignmentBillingMap.get(record.cn_no)?.status !== 'BILLED').length} unbilled
+                                            {data.consignments.filter((record) => consignmentBillingMap.get(normalizeCnKey(record.cn_no))?.status !== 'BILLED').length} unbilled
                                         </span>
                                         <span className="text-sm font-black text-primary font-mono">
                                             Total: ₹{fmt(data.consignments.reduce((s, c) => s + (parseFloat(String(c.total_freight)) || 0), 0))}

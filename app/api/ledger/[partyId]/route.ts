@@ -1,6 +1,6 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthz } from '@/lib/server/requireAuthz';
+import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 type SummaryConsignment = {
     total_freight: number | string | null;
@@ -105,20 +105,37 @@ export async function GET(
     }));
 
     const partyCnNos = allConsignments.map((record) => String(record.cn_no || '').trim()).filter(Boolean);
+    const partyCnKeys = new Set(partyCnNos.map(normalizeCnKey).filter(Boolean));
     const billedOnOtherParty = new Set<string>();
+    const globallyBilledCnNos = new Set<string>();
+    const globalCnCoverageCounts = new Map<string, number>();
     if (partyCnNos.length > 0) {
         // SECURITY DEFINER RPC — include ACTIVE bills from every branch/party.
-        const { data: coveringBills } = await supabase.rpc('find_active_bills_covering_cns', {
+        const { data: coveringBills, error: coveringBillsError } = await supabase.rpc('find_active_bills_covering_cns', {
             p_cn_nos: partyCnNos,
             p_exclude_billing_record_id: null,
         });
 
+        if (coveringBillsError) {
+            console.error('Failed to verify global bill coverage:', coveringBillsError);
+            return NextResponse.json(
+                { error: 'Failed to verify which CNs are already billed' },
+                { status: 500 },
+            );
+        }
+
         (coveringBills || []).forEach((bill: { party_id?: string; covered_cn_nos?: string[] | null }) => {
-            if (bill.party_id === partyId) return;
             const covered = Array.isArray(bill.covered_cn_nos) ? bill.covered_cn_nos : [];
-            covered.forEach((cnNo) => {
-                const normalized = String(cnNo || '').trim();
-                if (normalized && partyCnNos.includes(normalized)) {
+            const coveredByThisBill = new Set(covered.map(normalizeCnKey).filter(Boolean));
+            coveredByThisBill.forEach((normalized) => {
+                if (!partyCnKeys.has(normalized)) return;
+
+                globallyBilledCnNos.add(normalized);
+                globalCnCoverageCounts.set(
+                    normalized,
+                    (globalCnCoverageCounts.get(normalized) || 0) + 1,
+                );
+                if (bill.party_id !== partyId) {
                     billedOnOtherParty.add(normalized);
                 }
             });
@@ -126,7 +143,10 @@ export async function GET(
     }
 
     const partyOwnedConsignments = allConsignments.filter(
-        (record) => !billedOnOtherParty.has(String(record.cn_no || '').trim()),
+        (record) => !billedOnOtherParty.has(normalizeCnKey(record.cn_no)),
+    );
+    const billableConsignments = partyOwnedConsignments.filter(
+        (record) => !globallyBilledCnNos.has(normalizeCnKey(record.cn_no)),
     );
 
     const consignments = partyOwnedConsignments.filter((record) => {
@@ -255,6 +275,8 @@ export async function GET(
         summary,
         consignments: summaryConsignments || [],
         all_consignments: partyOwnedConsignments || [],
+        billable_consignments: billableConsignments,
+        global_cn_coverage_counts: Object.fromEntries(globalCnCoverageCounts),
         ghost_consignments: ghostConsignments,
         billing_records: billingRecords || [],
         payment_receipts: paymentReceipts || [],
