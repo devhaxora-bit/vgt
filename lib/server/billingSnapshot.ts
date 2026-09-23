@@ -8,6 +8,7 @@ import {
     sumVehicleCancelCharges,
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
+import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
@@ -160,7 +161,13 @@ const normalizeCoveredCnNos = (coveredCnNos: unknown) => {
         .map((value) => String(value).trim())
         .filter(Boolean);
 
-    return Array.from(new Set(normalized));
+    const seenKeys = new Set<string>();
+    return normalized.filter((cnNo) => {
+        const key = normalizeCnKey(cnNo);
+        if (!key || seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+    });
 };
 
 const buildConsignmentSnapshot = (
@@ -281,8 +288,9 @@ const fetchOverlappingBills = async (
         const existingCoveredCnNos = Array.isArray(record.covered_cn_nos)
             ? record.covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
             : [];
+        const requestedKeys = new Set(normalizedCoveredCnNos.map(normalizeCnKey));
 
-        return existingCoveredCnNos.some((cnNo) => normalizedCoveredCnNos.includes(cnNo));
+        return existingCoveredCnNos.some((cnNo) => requestedKeys.has(normalizeCnKey(cnNo)));
     });
 
     return { data: overlapping, error: null };
@@ -346,8 +354,13 @@ export async function prepareBillingSnapshot(
                 const existingCoveredCnNos = Array.isArray(record.covered_cn_nos)
                     ? record.covered_cn_nos.map((value) => String(value).trim()).filter(Boolean)
                     : [];
+                const requestedByKey = new Map(
+                    normalizedCoveredCnNos.map((cnNo) => [normalizeCnKey(cnNo), cnNo]),
+                );
 
-                return existingCoveredCnNos.filter((cnNo) => normalizedCoveredCnNos.includes(cnNo));
+                return existingCoveredCnNos
+                    .map((cnNo) => requestedByKey.get(normalizeCnKey(cnNo)))
+                    .filter((cnNo): cnNo is string => Boolean(cnNo));
             })
         ));
 
@@ -393,17 +406,18 @@ export async function prepareBillingSnapshot(
 
     const consignmentMap = new Map<string, BillingSnapshotConsignment>();
     (consignments || []).forEach((consignment) => {
-        const existing = consignmentMap.get(consignment.cn_no);
+        const cnKey = normalizeCnKey(consignment.cn_no);
+        const existing = consignmentMap.get(cnKey);
         if (existing) return;
 
         const parentCnId = consignment.parent_cn_id ? String(consignment.parent_cn_id) : null;
-        consignmentMap.set(consignment.cn_no, {
+        consignmentMap.set(cnKey, {
             ...(consignment as BillingSnapshotConsignment),
             parent_cn_no: parentCnId ? cnNoById.get(parentCnId) ?? null : null,
         });
     });
 
-    const missingCnNos = normalizedCoveredCnNos.filter((cnNo) => !consignmentMap.has(cnNo));
+    const missingCnNos = normalizedCoveredCnNos.filter((cnNo) => !consignmentMap.has(normalizeCnKey(cnNo)));
     if (missingCnNos.length > 0) {
         return {
             data: null,
@@ -412,7 +426,7 @@ export async function prepareBillingSnapshot(
     }
 
     const orderedConsignments = normalizedCoveredCnNos
-        .map((cnNo) => consignmentMap.get(cnNo))
+        .map((cnNo) => consignmentMap.get(normalizeCnKey(cnNo)))
         .filter((consignment): consignment is BillingSnapshotConsignment => Boolean(consignment));
 
     const { rows, cnTotalAmount } = buildConsignmentSnapshot(

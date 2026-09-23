@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Party } from '@/lib/types/party.types';
 import { type LedgerConsignment } from '@/lib/ledgerUi';
+import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 export default function CreateBillPage() {
     const router = useRouter();
@@ -36,6 +37,14 @@ export default function CreateBillPage() {
                 return;
             }
 
+            if (Array.isArray(json.billable_consignments)) {
+                setConsignments(json.billable_consignments);
+                setRelatedChallanNos([]);
+                setCoveredCnNosWatch([]);
+                return;
+            }
+
+            // Compatibility fallback for an older API response.
             const allBilling: { status?: string; covered_cn_nos?: string[] }[] =
                 Array.isArray(json.all_billing_records) ? json.all_billing_records
                     : Array.isArray(json.billing_records) ? json.billing_records
@@ -44,7 +53,7 @@ export default function CreateBillPage() {
             allBilling.forEach((record) => {
                 if (record.status !== 'ACTIVE') return;
                 (record.covered_cn_nos || []).forEach((cn) => {
-                    const normalized = String(cn || '').trim().toUpperCase();
+                    const normalized = normalizeCnKey(cn);
                     if (normalized) billedCnNos.add(normalized);
                 });
             });
@@ -53,7 +62,7 @@ export default function CreateBillPage() {
                     ? json.all_consignments
                     : Array.isArray(json.consignments) ? json.consignments : [];
             setConsignments(
-                allCns.filter((cn) => !billedCnNos.has(String(cn.cn_no || '').trim().toUpperCase())),
+                allCns.filter((cn) => !billedCnNos.has(normalizeCnKey(cn.cn_no))),
             );
             setRelatedChallanNos([]);
             setCoveredCnNosWatch([]);
