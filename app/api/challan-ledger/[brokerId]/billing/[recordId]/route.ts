@@ -24,7 +24,13 @@ export async function PATCH(
         narration,
         covered_challan_nos,
         added_other_charges_amount,
+        change_reason,
     } = body;
+
+    const editReason = String(change_reason || '').trim();
+    if (!editReason) {
+        return NextResponse.json({ error: 'change_reason is required for challan bill edits' }, { status: 400 });
+    }
 
     if (!billing_date) {
         return NextResponse.json({ error: 'billing_date is required' }, { status: 400 });
@@ -90,6 +96,7 @@ export async function PATCH(
             added_other_charges_amount: snapshotData.addedOtherChargesAmount,
             challan_snapshot: snapshotData.challanSnapshot,
             extra_charge_items: [],
+            change_reason: editReason,
         })
         .eq('id', recordId)
         .eq('broker_id', brokerId)

@@ -346,6 +346,7 @@ function NewConsignmentForm() {
     const [transportMode, setTransportMode] = useState("road");
     const [docPreparedBy, setDocPreparedBy] = useState("");
     const [remarks, setRemarks] = useState("");
+    const [changeReason, setChangeReason] = useState("");
     const [otherPrivateMark, setOtherPrivateMark] = useState("");
 
     // Advance
@@ -629,6 +630,7 @@ function NewConsignmentForm() {
                 }
 
                 setRemarks(data.remarks || "");
+                setChangeReason("");
                 setLoadingPoint(data.loading_point || "");
                 setDeliveryPoint(data.delivery_point || "");
                 setVehicleNo(data.vehicle_no || "");
@@ -946,10 +948,16 @@ function NewConsignmentForm() {
                 transport_mode: transportMode === 'road' ? 'BY ROAD' : transportMode,
                 doc_prepared_by: docPreparedBy,
                 remarks: remarks,
+                ...(isEditMode ? { change_reason: changeReason.trim() } : {}),
             };
 
             const endpoint = isEditMode ? `/api/consignments/${editId}` : '/api/consignments';
             const method = isEditMode ? 'PATCH' : 'POST';
+
+            if (isEditMode && !changeReason.trim()) {
+                toast.error('Enter a reason for this consignment edit');
+                return;
+            }
 
             const res = await fetch(endpoint, {
                 method,
@@ -1968,6 +1976,20 @@ function NewConsignmentForm() {
                                                             placeholder="Add remarks"
                                                         />
                                                     </div>
+                                                    {isEditMode && (
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[10px] font-bold text-muted-foreground">
+                                                                Edit reason (required)
+                                                            </Label>
+                                                            <Input
+                                                                className="h-8 text-xs"
+                                                                value={changeReason}
+                                                                onChange={(e) => setChangeReason(e.target.value)}
+                                                                placeholder="Why is this CN being changed?"
+                                                                required
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </CardContent>
                                         </Card>

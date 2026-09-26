@@ -671,6 +671,7 @@ export function EditBillingDialog({
         amount: '',
         bill_ref_no: '',
         narration: '',
+        change_reason: '',
         covered_cn_nos: [] as string[],
         vehicle_cancel_items: [] as BillingVehicleCancelDraftItem[],
     });
@@ -686,6 +687,7 @@ export function EditBillingDialog({
             amount: Math.abs(savedAddedOtherCharges) < 0.01 ? '' : savedAddedOtherCharges.toFixed(2),
             bill_ref_no: splitBillRefSuffix(record.bill_ref_no, record.billing_date),
             narration: record.narration || '',
+            change_reason: '',
             covered_cn_nos: record.covered_cn_nos || [],
             vehicle_cancel_items: vehicleCancelItemsToDrafts(record.vehicle_cancel_items || []),
         });
@@ -725,6 +727,10 @@ export function EditBillingDialog({
             toast.error('Bill amount must be greater than zero');
             return;
         }
+        if (!form.change_reason.trim()) {
+            toast.error('Enter a reason for this edit');
+            return;
+        }
         setSaving(true);
         try {
             const res = await fetch(`/api/ledger/${partyId}/billing/${record.id}`, {
@@ -737,6 +743,7 @@ export function EditBillingDialog({
                     bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no) || null,
                     narration: form.narration.trim(),
                     covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
+                    change_reason: form.change_reason.trim(),
                 }),
             });
 
@@ -815,6 +822,18 @@ export function EditBillingDialog({
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Description</Label>
                                 <Input value={form.narration} onChange={(e) => setForm((f) => ({ ...f, narration: e.target.value }))} className="h-9" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs font-bold uppercase text-muted-foreground">
+                                    Edit reason (required)
+                                </Label>
+                                <Input
+                                    value={form.change_reason}
+                                    onChange={(e) => setForm((f) => ({ ...f, change_reason: e.target.value }))}
+                                    placeholder="Why is this bill being changed?"
+                                    className="h-9"
+                                    required
+                                />
                             </div>
 
                             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 flex flex-col gap-2">
@@ -935,7 +954,7 @@ export function EditBillingDialog({
             currentPartyId={partyId}
             recordKind="bill"
             previewUrl={record ? `/api/ledger/${partyId}/billing/${record.id}/reassign-party` : undefined}
-            onConfirm={async (newPartyId, newPartyName, confirmMovePayments) => {
+            onConfirm={async (newPartyId, newPartyName, confirmMovePayments, reason) => {
                 if (!record) return;
                 const res = await fetch(`/api/ledger/${partyId}/billing/${record.id}/reassign-party`, {
                     method: 'POST',
@@ -943,6 +962,7 @@ export function EditBillingDialog({
                     body: JSON.stringify({
                         new_party_id: newPartyId,
                         confirm_move_payments: confirmMovePayments,
+                        reason,
                     }),
                 });
                 const json = await res.json() as { error?: string; moved_payment_count?: number; moved_cn_count?: number };

@@ -87,6 +87,11 @@ export async function PATCH(
 
         const body = await request.json();
 
+        const changeReason = String(body.change_reason || '').trim();
+        if (!changeReason) {
+            return NextResponse.json({ error: 'change_reason is required for consignment edits' }, { status: 400 });
+        }
+
         // ── Resolve new billing party ID early (needed for change detection) ─
         const { billingPartyId: newBillingPartyId, error: billingPartyError } = await resolveBillingPartyId(supabase, body);
         if (billingPartyError) {
@@ -251,6 +256,7 @@ export async function PATCH(
             vehicle_no: body.vehicle_no,
             remarks: body.remarks,
             amount_in_words: body.amount_in_words,
+            change_reason: changeReason,
 
             // Parent-child freight include
             parent_cn_id: body.parent_cn_id || null,
@@ -279,6 +285,7 @@ export async function PATCH(
                 p_old_party_id: String(existing.billing_party_id),
                 p_new_party_id: String(newBillingPartyId),
                 p_confirm_move_payments: true,
+                p_reason: changeReason,
             });
         }
         // ─────────────────────────────────────────────────────────────────────

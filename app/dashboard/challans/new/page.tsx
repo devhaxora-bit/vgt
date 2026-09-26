@@ -141,6 +141,7 @@ function NewChallanPageContent() {
 
     // Other Info
     const [remarks, setRemarks] = useState('');
+    const [changeReason, setChangeReason] = useState('');
     const [tripTracking, setTripTracking] = useState(false);
 
     // Financial state for Hire Details computed fields
@@ -288,6 +289,7 @@ function NewChallanPageContent() {
         setItdsFinYear(data.itds_financial_year || '2025-2026');
 
         setRemarks(data.remarks || '');
+        setChangeReason('');
         setTripTracking(data.trip_tracking_consent || false);
 
         const totalHire = Number(data.total_hire_amount) || 0;
@@ -382,6 +384,7 @@ function NewChallanPageContent() {
         setPolicyNo(''); setPolicyValidity(''); setInsCompany(''); setInsCity(''); setFinanceDetail('');
         setItdsRefBranch(''); setItdsDeclareDate(''); setItdsFinYear('2025-2026');
         setRemarks(''); setTripTracking(false);
+        setChangeReason('');
         setChallanDate(new Date().toISOString().split('T')[0]);
         setChallanTime(new Date().toTimeString().slice(0, 5));
         setHireDetails({
@@ -642,6 +645,11 @@ function NewChallanPageContent() {
             return;
         }
 
+        if (isEditMode && !changeReason.trim()) {
+            toast.error('Enter a reason for this challan edit');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const body = {
@@ -719,7 +727,8 @@ function NewChallanPageContent() {
 
                 // Others
                 remarks,
-                linked_cn_nos: sortedLinkedConsignments.map((item) => item.cn_no)
+                linked_cn_nos: sortedLinkedConsignments.map((item) => item.cn_no),
+                ...(isEditMode ? { change_reason: changeReason.trim() } : {}),
             };
 
             const method = isEditMode ? 'PUT' : 'POST';
@@ -1431,6 +1440,18 @@ function NewChallanPageContent() {
                                         <div className="space-y-1">
                                             <Label className={labelCls}>Remarks</Label>
                                             <Input className={inputCls} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Remarks" />
+                                            {isEditMode && (
+                                                <div className="space-y-1.5 pt-2">
+                                                    <Label className={labelCls}>Edit reason (required)</Label>
+                                                    <Input
+                                                        className={inputCls}
+                                                        value={changeReason}
+                                                        onChange={(e) => setChangeReason(e.target.value)}
+                                                        placeholder="Why is this challan being changed?"
+                                                        required
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </CardContent>

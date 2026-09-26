@@ -2108,7 +2108,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 currentPartyId={partyId}
                 recordKind="bill"
                 previewUrl={reassignBillingTarget ? `/api/ledger/${partyId}/billing/${reassignBillingTarget.id}/reassign-party` : undefined}
-                onConfirm={async (newPartyId, newPartyName, confirmMovePayments) => {
+                onConfirm={async (newPartyId, newPartyName, confirmMovePayments, reason) => {
                     if (!reassignBillingTarget) return;
                     const res = await fetch(
                         `/api/ledger/${partyId}/billing/${reassignBillingTarget.id}/reassign-party`,
@@ -2118,6 +2118,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                             body: JSON.stringify({
                                 new_party_id: newPartyId,
                                 confirm_move_payments: confirmMovePayments,
+                                reason,
                             }),
                         }
                     );
@@ -2141,11 +2142,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 description="Move this payment receipt to a different party's ledger. All linked bills must already belong to the new party."
                 currentPartyId={partyId}
                 recordKind="payment"
-                onConfirm={async (newPartyId, newPartyName) => {
+                onConfirm={async (newPartyId, newPartyName, _confirmMovePayments, reason) => {
                     if (!reassignPaymentTarget) return;
                     const res = await fetch(
                         `/api/ledger/${partyId}/payments/${reassignPaymentTarget.id}/reassign-party`,
-                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_party_id: newPartyId }) }
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ new_party_id: newPartyId, reason }),
+                        }
                     );
                     const json = await res.json() as { error?: string };
                     if (!res.ok) { toast.error(json.error || 'Failed to reassign'); throw new Error(json.error); }
