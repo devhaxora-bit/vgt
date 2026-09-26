@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Users, MapPin, Activity, Shield, Plus, ArrowRight, Building, History } from 'lucide-react';
+import { Users, MapPin, Activity, Shield, Plus, ArrowRight, Building, History, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -67,9 +67,16 @@ export default function AdminDashboardPage() {
         },
         {
             title: 'Audit Logs',
-            description: 'Review who created, edited, cancelled, or reassigned bills, payments, CNs, and challans.',
+            description: 'Review who created, edited, cancelled, or reassigned financial and master-data records.',
             icon: History,
             href: '/dashboard/admin/audit-logs',
+            action: '',
+        },
+        {
+            title: 'Login Attempts',
+            description: 'Proof of successful and failed logins with IP and failure reason.',
+            icon: KeyRound,
+            href: '/dashboard/admin/login-attempts',
             action: '',
         },
     ];

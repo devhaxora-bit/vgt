@@ -1022,12 +1022,12 @@ export function BillingRecordViewDialog({
     const issuingBranch = billDetailRows[0]?.booking_branch || party?.branch_code || '—';
 
     const handlePrint = async (mode: 'print' | 'download') => {
+        if (!party || !record) return;
+
         if (record.status === 'CANCELLED') {
             toast.error('Cancelled bills are excluded from PDF export');
             return;
         }
-
-        if (!party || !record) return;
 
         const logoUrl = logoBase64 || `${window.location.origin}${VGT_LOGO_PATH}`;
         const displayTotal = roundMoney(parseMoney(record.amount));

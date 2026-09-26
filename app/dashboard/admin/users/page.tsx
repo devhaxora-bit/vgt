@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, User, Mail, Shield, MoreHorizontal, Building2, Pencil, KeyRound, Ban } from 'lucide-react';
+import { Plus, Search, User, Mail, Shield, MoreHorizontal, Building2, Pencil, KeyRound, Ban, History } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -773,6 +774,12 @@ export default function UserManagementPage() {
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
                                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                <DropdownMenuItem asChild>
+                                                    <Link href={`/dashboard/admin/audit-logs?entity_type=user&entity_id=${user.id}`}>
+                                                        <History className="mr-2 h-4 w-4" />
+                                                        View History
+                                                    </Link>
+                                                </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => openEditModel(user)}>
                                                     <Pencil className="mr-2 h-4 w-4" />
                                                     Edit Details

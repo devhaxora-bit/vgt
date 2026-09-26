@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, Truck, Loader2, RefreshCw, Building2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Truck, Loader2, RefreshCw, Building2, History } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -58,6 +59,7 @@ const inputCls = 'h-9 text-sm';
 export default function VehiclesAdminPage() {
     const userScope = useCurrentUserScope();
     const canManage = canManageMasterData({ role: userScope.role, branch_access: userScope.branchAccess });
+    const canViewAudit = userScope.hasFullAccess && userScope.role === 'admin';
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [branches, setBranches] = useState<BranchOption[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -283,18 +285,27 @@ export default function VehiclesAdminPage() {
                                             <Badge variant={v.is_active ? 'default' : 'secondary'}>{v.is_active ? 'Active' : 'Inactive'}</Badge>
                                         </TableCell>
                                         <TableCell className="text-right sticky right-0 bg-white border-l">
-                                            {canManage ? (
                                             <div className="flex justify-end gap-2">
-                                                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:bg-blue-50 border-blue-200" onClick={() => openEdit(v)}>
-                                                    <Edit className="h-3.5 w-3.5" /> Edit
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => handleDelete(v)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                {canViewAudit && (
+                                                    <Button variant="ghost" size="sm" className="h-8 gap-1 text-muted-foreground" asChild>
+                                                        <Link href={`/dashboard/admin/audit-logs?entity_type=vehicle&entity_id=${v.id}`}>
+                                                            <History className="h-3.5 w-3.5" /> History
+                                                        </Link>
+                                                    </Button>
+                                                )}
+                                                {canManage ? (
+                                                    <>
+                                                        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-blue-600 hover:bg-blue-50 border-blue-200" onClick={() => openEdit(v)}>
+                                                            <Edit className="h-3.5 w-3.5" /> Edit
+                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => handleDelete(v)}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </>
+                                                ) : !canViewAudit ? (
+                                                    <span className="text-xs text-muted-foreground">View only</span>
+                                                ) : null}
                                             </div>
-                                            ) : (
-                                                <span className="text-xs text-muted-foreground">View only</span>
-                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}

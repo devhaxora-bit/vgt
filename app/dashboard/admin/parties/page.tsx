@@ -14,7 +14,9 @@ import {
     RefreshCw,
     Loader2,
     Building2,
+    History,
 } from 'lucide-react';
+import Link from 'next/link';
 import { AddPartyDialog } from '@/components/AddPartyDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +53,7 @@ type SortDir = 'asc' | 'desc';
 export default function PartiesPage() {
     const userScope = useCurrentUserScope();
     const canManage = canManageMasterData({ role: userScope.role, branch_access: userScope.branchAccess });
+    const canViewAudit = userScope.hasFullAccess && userScope.role === 'admin';
     const [searchTerm, setSearchTerm] = useState('');
     
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -331,29 +334,57 @@ export default function PartiesPage() {
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-right sticky right-0 bg-white z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.02)] border-l group-hover:bg-slate-50/80 transition-colors">
-                                                    {canManage ? (
                                                     <div className="flex justify-end gap-2">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
-                                                            onClick={() => handleEdit(party)}
-                                                        >
-                                                            <Edit className="h-3.5 w-3.5" />
-                                                            Edit
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                            onClick={() => handleDelete(party.id, party.name)}
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
+                                                        {canViewAudit && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-8 gap-1 text-muted-foreground"
+                                                                asChild
+                                                            >
+                                                                <Link href={`/dashboard/admin/audit-logs?entity_type=party&entity_id=${party.id}`}>
+                                                                    <History className="h-3.5 w-3.5" />
+                                                                    History
+                                                                </Link>
+                                                            </Button>
+                                                        )}
+                                                        {canViewAudit && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-8 gap-1 text-muted-foreground"
+                                                                asChild
+                                                            >
+                                                                <Link href={`/dashboard/admin/audit-logs?entity_type=party_branch&party_id=${party.id}`}>
+                                                                    <History className="h-3.5 w-3.5" />
+                                                                    Tags
+                                                                </Link>
+                                                            </Button>
+                                                        )}
+                                                        {canManage ? (
+                                                            <>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="h-8 gap-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                                                    onClick={() => handleEdit(party)}
+                                                                >
+                                                                    <Edit className="h-3.5 w-3.5" />
+                                                                    Edit
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                    onClick={() => handleDelete(party.id, party.name)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </>
+                                                        ) : !canViewAudit ? (
+                                                            <span className="text-xs text-muted-foreground">View only</span>
+                                                        ) : null}
                                                     </div>
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground">View only</span>
-                                                    )}
                                                 </TableCell>
                                             </TableRow>
                                         ))

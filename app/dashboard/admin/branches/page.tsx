@@ -5,6 +5,7 @@ import {
     AlertTriangle,
     Building2,
     Crown,
+    History,
     MoreHorizontal,
     Pencil,
     Plus,
@@ -13,6 +14,7 @@ import {
     ShieldAlert,
     Trash2,
 } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -561,6 +563,20 @@ export default function BranchManagementPage() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
+                                                <DropdownMenuItem asChild>
+                                                    <Link href={`/dashboard/admin/audit-logs?entity_type=branch&entity_id=${branch.id}`}>
+                                                        <History className="mr-2 h-4 w-4" />
+                                                        Branch History
+                                                    </Link>
+                                                </DropdownMenuItem>
+                                                {branch.active_cn_range?.id && (
+                                                    <DropdownMenuItem asChild>
+                                                        <Link href={`/dashboard/admin/audit-logs?entity_type=cn_range&entity_id=${branch.active_cn_range.id}`}>
+                                                            <History className="mr-2 h-4 w-4" />
+                                                            CN Range History
+                                                        </Link>
+                                                    </DropdownMenuItem>
+                                                )}
                                                 <DropdownMenuItem onClick={() => handleEditBranch(branch)}>
                                                     <Pencil className="mr-2 h-4 w-4" />
                                                     Edit Branch

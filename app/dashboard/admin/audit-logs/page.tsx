@@ -2,7 +2,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { History, Loader2, RefreshCw, Search } from 'lucide-react';
+import { Download, History, Loader2, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,13 @@ const ENTITY_LABELS: Record<LedgerAuditEntityType, string> = {
     challan: 'Challan',
     challan_bill: 'Challan bill',
     challan_payment: 'Challan payment',
+    party: 'Party',
+    broker: 'Broker',
+    vehicle: 'Vehicle',
+    user: 'User',
+    branch: 'Branch',
+    cn_range: 'CN range',
+    party_branch: 'Party branch',
 };
 
 const ACTION_LABELS: Record<LedgerAuditAction, string> = {
@@ -106,13 +113,20 @@ function AuditLogsPageInner() {
     const entityId = searchParams.get('entity_id') || '';
     const txid = searchParams.get('txid') || '';
     const partyId = searchParams.get('party_id') || '';
+    const from = searchParams.get('from') || '';
+    const to = searchParams.get('to') || '';
     const limit = searchParams.get('limit') || '50';
 
     const [searchDraft, setSearchDraft] = useState(q);
+    const [fromDraft, setFromDraft] = useState(from);
+    const [toDraft, setToDraft] = useState(to);
+    const [isExporting, setIsExporting] = useState(false);
 
     useEffect(() => {
         setSearchDraft(q);
-    }, [q]);
+        setFromDraft(from);
+        setToDraft(to);
+    }, [q, from, to]);
 
     const replaceParams = useCallback(
         (updates: Record<string, string | null>) => {
@@ -127,9 +141,8 @@ function AuditLogsPageInner() {
         [pathname, router, searchParams],
     );
 
-    const fetchLogs = useCallback(async () => {
-        setIsLoading(true);
-        try {
+    const buildAuditParams = useCallback(
+        (overrides?: { format?: string; limit?: string }) => {
             const params = new URLSearchParams();
             if (entityType !== 'all') params.set('entity_type', entityType);
             if (action !== 'all') params.set('action', action);
@@ -137,8 +150,19 @@ function AuditLogsPageInner() {
             if (entityId) params.set('entity_id', entityId);
             if (txid) params.set('txid', txid);
             if (partyId) params.set('party_id', partyId);
-            params.set('limit', limit);
+            if (from) params.set('from', from);
+            if (to) params.set('to', to);
+            params.set('limit', overrides?.limit || limit);
+            if (overrides?.format) params.set('format', overrides.format);
+            return params;
+        },
+        [action, entityId, entityType, from, limit, partyId, q, to, txid],
+    );
 
+    const fetchLogs = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const params = buildAuditParams();
             const res = await fetch(`/api/ledger/audit-logs?${params.toString()}`);
             const json = await res.json();
             if (!res.ok || json.success === false) {
@@ -151,7 +175,33 @@ function AuditLogsPageInner() {
         } finally {
             setIsLoading(false);
         }
-    }, [action, entityId, entityType, limit, partyId, q, txid]);
+    }, [buildAuditParams]);
+
+    const exportCsv = useCallback(async () => {
+        setIsExporting(true);
+        try {
+            const params = buildAuditParams({ format: 'csv', limit: '5000' });
+            const res = await fetch(`/api/ledger/audit-logs?${params.toString()}`);
+            if (!res.ok) {
+                const json = await res.json().catch(() => ({}));
+                throw new Error(json.error || 'Failed to export audit logs');
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            toast.success('Audit CSV downloaded');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to export audit logs');
+        } finally {
+            setIsExporting(false);
+        }
+    }, [buildAuditParams]);
 
     useEffect(() => {
         void fetchLogs();
@@ -213,23 +263,33 @@ function AuditLogsPageInner() {
                 <div>
                     <h2 className="text-xl font-bold text-[#101828]">Audit Logs</h2>
                     <p className="text-sm text-muted-foreground">
-                        Who changed bills, payments, consignments, and challans — including party reassignments grouped by transaction.
+                        Append-only proof of edits across financial, master, and config records — export CSV for client evidence.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => void fetchLogs()} disabled={isLoading}>
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    Refresh
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => void exportCsv()} disabled={isExporting || isLoading}>
+                        {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                        Export CSV
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void fetchLogs()} disabled={isLoading}>
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        Refresh
+                    </Button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                 <div className="lg:col-span-2 space-y-1.5">
                     <Label htmlFor="audit-search">Reference</Label>
                     <form
                         className="flex gap-2"
                         onSubmit={(event) => {
                             event.preventDefault();
-                            replaceParams({ q: searchDraft.trim() || null });
+                            replaceParams({
+                                q: searchDraft.trim() || null,
+                                from: fromDraft || null,
+                                to: toDraft || null,
+                            });
                         }}
                     >
                         <div className="relative flex-1">
@@ -237,7 +297,7 @@ function AuditLogsPageInner() {
                             <Input
                                 id="audit-search"
                                 className="pl-8"
-                                placeholder="Bill no, CN no, challan, payment ref"
+                                placeholder="Bill, CN, party code, vehicle, employee, range"
                                 value={searchDraft}
                                 onChange={(event) => setSearchDraft(event.target.value)}
                             />
@@ -280,6 +340,29 @@ function AuditLogsPageInner() {
                     </Select>
                 </div>
                 <div className="space-y-1.5">
+                    <Label htmlFor="audit-from">From</Label>
+                    <Input
+                        id="audit-from"
+                        type="date"
+                        value={fromDraft}
+                        onChange={(event) => setFromDraft(event.target.value)}
+                        onBlur={() => replaceParams({ from: fromDraft || null })}
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <Label htmlFor="audit-to">To</Label>
+                    <Input
+                        id="audit-to"
+                        type="date"
+                        value={toDraft}
+                        onChange={(event) => setToDraft(event.target.value)}
+                        onBlur={() => replaceParams({ to: toDraft || null })}
+                    />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
                     <Label>Limit</Label>
                     <Select value={limit} onValueChange={(value) => replaceParams({ limit: value })}>
                         <SelectTrigger>
@@ -294,18 +377,28 @@ function AuditLogsPageInner() {
                 </div>
             </div>
 
-            {(entityId || txid || partyId) && (
+            {(entityId || txid || partyId || from || to) && (
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                     {entityId && (
                         <Badge variant="outline">Record {entityId.slice(0, 8)}…</Badge>
                     )}
                     {txid && <Badge variant="outline">Transaction {txid}</Badge>}
                     {partyId && <Badge variant="outline">Party filter</Badge>}
+                    {from && <Badge variant="outline">From {from}</Badge>}
+                    {to && <Badge variant="outline">To {to}</Badge>}
                     <Button
                         variant="ghost"
                         size="sm"
                         className="h-7 text-xs"
-                        onClick={() => replaceParams({ entity_id: null, txid: null, party_id: null })}
+                        onClick={() =>
+                            replaceParams({
+                                entity_id: null,
+                                txid: null,
+                                party_id: null,
+                                from: null,
+                                to: null,
+                            })
+                        }
                     >
                         Clear record filters
                     </Button>
