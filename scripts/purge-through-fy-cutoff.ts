@@ -300,6 +300,13 @@ async function deleteWhereLte(
     return deleteByIds(supabase, table, ids);
 }
 
+async function purgeAuditLogIds(supabase: SupabaseClient, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const { data, error } = await supabase.rpc('fn_purge_audit_log_ids', { p_ids: ids });
+    if (error) throw new Error(`fn_purge_audit_log_ids failed: ${error.message}`);
+    return typeof data === 'number' ? data : ids.length;
+}
+
 async function deleteAuditLogs(
     supabase: SupabaseClient,
     entityIds: string[],
@@ -307,15 +314,17 @@ async function deleteAuditLogs(
 ): Promise<number> {
     let deleted = 0;
 
-    // By entity id (purged records)
+    // By entity id (purged records) — select then purge via RPC (append-only bypass)
     for (let i = 0; i < entityIds.length; i += PAGE) {
         const chunk = entityIds.slice(i, i + PAGE);
-        const { error, count } = await supabase
+        const { data, error } = await supabase
             .from('ledger_audit_logs')
-            .delete({ count: 'exact' })
-            .in('entity_id', chunk);
-        if (error) throw new Error(`ledger_audit_logs (entity) delete failed: ${error.message}`);
-        deleted += count ?? 0;
+            .select('id')
+            .in('entity_id', chunk)
+            .limit(PAGE * 20);
+        if (error) throw new Error(`ledger_audit_logs (entity) select failed: ${error.message}`);
+        const ids = (data || []).map((r) => String(r.id));
+        deleted += await purgeAuditLogIds(supabase, ids);
     }
 
     // By time window through cutoff end-of-day
@@ -332,12 +341,7 @@ async function deleteAuditLogs(
         if (rows.length === 0) break;
 
         const ids = rows.map((r) => String(r.id));
-        const { error: delErr, count } = await supabase
-            .from('ledger_audit_logs')
-            .delete({ count: 'exact' })
-            .in('id', ids);
-        if (delErr) throw new Error(`ledger_audit_logs (time) delete failed: ${delErr.message}`);
-        deleted += count ?? ids.length;
+        deleted += await purgeAuditLogIds(supabase, ids);
         if (rows.length < PAGE) break;
     }
 

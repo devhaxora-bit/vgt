@@ -24,7 +24,16 @@ export async function POST(request: NextRequest) {
         }
 
         const rememberMe = validation.data.remember_me !== false;
-        const result = await authService.login(validation.data);
+        const forwardedFor = request.headers.get('x-forwarded-for');
+        const ipAddress =
+            (forwardedFor ? forwardedFor.split(',')[0]?.trim() : null)
+            || request.headers.get('x-real-ip')
+            || null;
+        const userAgent = request.headers.get('user-agent');
+        const result = await authService.login(validation.data, {
+            ipAddress,
+            userAgent,
+        });
 
         if (!result.success) {
             return NextResponse.json(

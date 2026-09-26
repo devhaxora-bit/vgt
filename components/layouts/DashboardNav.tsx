@@ -233,6 +233,7 @@ export default function DashboardNav() {
                         { title: 'Vehicle Management', href: '/dashboard/admin/vehicles' },
                         { title: 'Role Configuration', href: '#' },
                         { title: 'Audit Logs', href: '/dashboard/admin/audit-logs' },
+                        { title: 'Login Attempts', href: '/dashboard/admin/login-attempts' },
                     ]
                 }
             ]

@@ -343,7 +343,7 @@ export async function POST(req: NextRequest) {
     await createAdminClient()
         .from('party_branches')
         .upsert(
-            { party_id: data.id, branch_code: branchCode },
+            { party_id: data.id, branch_code: branchCode, created_by: auth.user.id },
             { onConflict: 'party_id,branch_code' },
         );
 

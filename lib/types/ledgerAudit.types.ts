@@ -5,6 +5,13 @@ export const LEDGER_AUDIT_ENTITY_TYPES = [
     'challan',
     'challan_bill',
     'challan_payment',
+    'party',
+    'broker',
+    'vehicle',
+    'user',
+    'branch',
+    'cn_range',
+    'party_branch',
 ] as const;
 
 export type LedgerAuditEntityType = (typeof LEDGER_AUDIT_ENTITY_TYPES)[number];
