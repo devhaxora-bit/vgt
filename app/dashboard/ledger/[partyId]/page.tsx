@@ -39,6 +39,7 @@ import {
     normalizeVehicleCancelItems,
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
+import { compareBillsBySerialDesc } from '@/lib/ledgerUi';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -523,7 +524,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const [reportQuarter, setReportQuarter] = useState(currentDate.getMonth() >= 3 ? Math.floor((currentDate.getMonth() - 3) / 3) + 1 : 4);
     const [cnsSearch, setCnsSearch] = useState('');
     const [billingSearch, setBillingSearch] = useState('');
-    const [billingStatusFilter, setBillingStatusFilter] = useState<'all' | 'ACTIVE' | 'CANCELLED'>('all');
     const [billingDateFrom, setBillingDateFrom] = useState('');
     const [billingDateTo, setBillingDateTo] = useState('');
     const [isDownloadingReport, setIsDownloadingReport] = useState(false);
@@ -677,9 +677,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 body: JSON.stringify({ reversal_reason: reason }),
             });
             if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
-            toast.success('Payment receipt reversed');
+            toast.success('Payment soft-deleted. Excluded from ledger totals.');
             fetchData();
-        } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Failed to reverse payment receipt'); }
+        } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Failed to delete payment'); }
         setCancelTarget(null);
     };
 
@@ -694,14 +694,14 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             map[m].cns_amount += parseFloat(String(c.total_freight)) || 0;
         });
 
-        data.billing_records.filter(b => b.status === 'ACTIVE').forEach(b => {
+        data.billing_records.forEach(b => {
             const m = b.billing_date?.slice(0, 7) || 'unknown';
             if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].billed += parseFloat(String(b.amount)) || 0;
             map[m].cn_billed += parseFloat(String(b.cn_total_amount ?? b.amount)) || 0;
         });
 
-        data.payment_receipts.filter(p => p.status === 'ACTIVE').forEach(p => {
+        data.payment_receipts.forEach(p => {
             const m = p.receipt_date?.slice(0, 7) || 'unknown';
             if (!map[m]) map[m] = { month: m, cns_count: 0, cns_amount: 0, billed: 0, cn_billed: 0, paid: 0 };
             map[m].paid += parseFloat(String(p.amount)) || 0;
@@ -739,27 +739,27 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
         const totalCnsAmount = roundMoney(reportConsignments.reduce((sum, record) => sum + parseMoney(record.total_freight), 0));
         const openingBalance = roundMoney(parseMoney(data.account?.opening_balance));
-        const billingLookup = new Map(data.all_billing_records.map((record) => [record.id, record]));
-        const settledBillAmountMap = buildSettledBillAmountMap(data.all_payment_receipts);
+        const billingLookup = new Map(
+            data.all_billing_records
+                .filter((record) => record.status === 'ACTIVE')
+                .map((record) => [record.id, record])
+        );
+        const settledBillAmountMap = buildSettledBillAmountMap(
+            data.all_payment_receipts.filter((record) => record.status === 'ACTIVE')
+        );
         const activeBillByCn = new Map<string, BillingRecord>();
-        const cancelledBillByCn = new Map<string, BillingRecord>();
 
         data.all_billing_records.forEach((record) => {
+            if (record.status !== 'ACTIVE') return;
             (record.covered_cn_nos || []).forEach((cnNo) => {
                 const normalizedCnNo = normalizeCnKey(cnNo);
                 if (!normalizedCnNo) return;
-
-                if (record.status === 'ACTIVE') {
-                    activeBillByCn.set(normalizedCnNo, record);
-                } else if (!cancelledBillByCn.has(normalizedCnNo)) {
-                    cancelledBillByCn.set(normalizedCnNo, record);
-                }
+                activeBillByCn.set(normalizedCnNo, record);
             });
         });
 
         const cnsRows = reportConsignments.map((record) => {
-            const activeBill = activeBillByCn.get(record.cn_no);
-            const cancelledBill = cancelledBillByCn.get(record.cn_no);
+            const activeBill = activeBillByCn.get(normalizeCnKey(record.cn_no));
             const billPaidAmount = roundMoney(activeBill ? settledBillAmountMap.get(activeBill.id) || 0 : 0);
             const billAmount = roundMoney(parseMoney(activeBill?.amount));
             const charges = getConsignmentChargeBreakdown(record);
@@ -785,9 +785,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 trafficChallan: roundMoney(charges.trafficChallan),
                 otherCharges: roundMoney(charges.other + charges.doorCollection + charges.doorDelivery),
                 totalAmount: roundMoney(charges.total),
-                billedOnBill: activeBill?.bill_ref_no || cancelledBill?.bill_ref_no || null,
-                billDateIso: (activeBill?.billing_date || cancelledBill?.billing_date || '').slice(0, 10) || undefined,
-                billStatus: activeBill ? 'BILLED' as const : cancelledBill ? 'CANCELLED' as const : 'UNBILLED' as const,
+                billedOnBill: activeBill?.bill_ref_no || null,
+                billDateIso: (activeBill?.billing_date || '').slice(0, 10) || undefined,
+                billStatus: activeBill ? 'BILLED' as const : 'UNBILLED' as const,
                 billAmount,
                 billPaidAmount,
                 billBalance: roundMoney(Math.max(billAmount - billPaidAmount, 0)),
@@ -890,10 +890,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     const filteredBillingRecords = useMemo(() => {
         const query = billingSearch.trim().toLowerCase();
         return data.billing_records.filter((record) => {
-            if (billingStatusFilter !== 'all' && record.status !== billingStatusFilter) {
-                return false;
-            }
-
             const billingDate = record.billing_date?.slice(0, 10) || '';
             if (billingDateFrom && billingDate < billingDateFrom) {
                 return false;
@@ -913,16 +909,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             ].join(' ').toLowerCase();
 
             return haystack.includes(query);
-        }).sort((left, right) => {
-            const billingDateCompare = String(right.billing_date || '').localeCompare(String(left.billing_date || ''));
-            if (billingDateCompare !== 0) return billingDateCompare;
-
-            const createdAtCompare = String(right.created_at || '').localeCompare(String(left.created_at || ''));
-            if (createdAtCompare !== 0) return createdAtCompare;
-
-            return String(right.bill_ref_no || right.id).localeCompare(String(left.bill_ref_no || left.id));
-        });
-    }, [billingSearch, billingStatusFilter, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
+        }).sort(compareBillsBySerialDesc);
+    }, [billingSearch, billingDateFrom, billingDateTo, data.billing_records, data.party?.code, data.party?.name]);
 
     const billableConsignments = useMemo(() => {
         if (Array.isArray(data.billable_consignments)) {
@@ -994,19 +982,16 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     }, [data.all_billing_records, data.all_consignments, data.ghost_consignments, data.global_cn_coverage_counts, editingBillingRecord]);
 
     const consignmentBillingMap = useMemo(() => {
-        const recordsByCn = new Map<string, { status: 'BILLED' | 'CANCELLED'; billRef: string }>();
+        const recordsByCn = new Map<string, { status: 'BILLED'; billRef: string }>();
 
         data.all_billing_records.forEach((record) => {
+            if (record.status !== 'ACTIVE') return;
             (record.covered_cn_nos || []).forEach((cnNo) => {
-                const normalizedCnNo = cnNo.trim();
+                const normalizedCnNo = normalizeCnKey(cnNo);
                 if (!normalizedCnNo) return;
 
                 const billRef = record.bill_ref_no || record.id.slice(0, 8).toUpperCase();
-                if (record.status === 'ACTIVE') {
-                    recordsByCn.set(normalizedCnNo, { status: 'BILLED', billRef });
-                } else if (!recordsByCn.has(normalizedCnNo)) {
-                    recordsByCn.set(normalizedCnNo, { status: 'CANCELLED', billRef });
-                }
+                recordsByCn.set(normalizedCnNo, { status: 'BILLED', billRef });
             });
         });
 
@@ -1124,7 +1109,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
     }, [filteredConsignments, consignmentBillingMap]);
 
     const billingSettledAmountMap = useMemo(
-        () => buildSettledBillAmountMap(data.all_payment_receipts),
+        () => buildSettledBillAmountMap(
+            data.all_payment_receipts.filter((record) => record.status === 'ACTIVE')
+        ),
         [data.all_payment_receipts]
     );
 
@@ -1547,9 +1534,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                 className={`text-[9px] px-1.5 py-0 h-4 ${
                                                                     billing?.status === 'BILLED'
                                                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                        : billing?.status === 'CANCELLED'
-                                                                            ? 'bg-red-50 text-red-700 border-red-200'
-                                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                        : 'bg-amber-50 text-amber-700 border-amber-200'
                                                                 }`}>
                                                                 {billing?.status || 'UNBILLED'}
                                                             </Badge>
@@ -1609,19 +1594,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                 onChange={(e) => setBillingSearch(e.target.value)}
                                             />
                                         </div>
-                                        <Select
-                                            value={billingStatusFilter}
-                                            onValueChange={(value: 'all' | 'ACTIVE' | 'CANCELLED') => setBillingStatusFilter(value)}
-                                        >
-                                            <SelectTrigger className="h-8 w-[160px] text-xs">
-                                                <SelectValue placeholder="All Status" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">All Status</SelectItem>
-                                                <SelectItem value="ACTIVE">Active</SelectItem>
-                                                <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                                            </SelectContent>
-                                        </Select>
                                         <Input
                                             type="date"
                                             value={billingDateFrom}
@@ -1634,14 +1606,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             onChange={(e) => setBillingDateTo(e.target.value)}
                                             className="h-8 w-[150px] text-xs"
                                         />
-                                        {(billingSearch || billingStatusFilter !== 'all' || billingDateFrom || billingDateTo) && (
+                                        {(billingSearch || billingDateFrom || billingDateTo) && (
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
                                                 className="h-8 gap-1 text-xs"
                                                 onClick={() => {
                                                     setBillingSearch('');
-                                                    setBillingStatusFilter('all');
                                                     setBillingDateFrom('');
                                                     setBillingDateTo('');
                                                 }}
@@ -1675,13 +1646,11 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             </TableRow>
                                         ) : (
                                             filteredBillingRecords.map(b => {
-                                                const paidAmount = b.status === 'ACTIVE' ? parseMoney(billingSettledAmountMap.get(b.id)) : 0;
-                                                const balanceAmount = b.status === 'ACTIVE'
-                                                    ? roundMoney(Math.max(parseMoney(b.amount) - paidAmount, 0))
-                                                    : 0;
+                                                const paidAmount = parseMoney(billingSettledAmountMap.get(b.id));
+                                                const balanceAmount = roundMoney(Math.max(parseMoney(b.amount) - paidAmount, 0));
 
                                                 return (
-                                                <TableRow key={b.id} className={`transition-colors border-b last:border-0 ${b.status === 'CANCELLED' ? 'opacity-50' : ''}`}>
+                                                <TableRow key={b.id} className="transition-colors border-b last:border-0">
                                                     <TableCell className="font-mono text-xs text-primary font-bold">{b.bill_ref_no || '—'}</TableCell>
                                                     <TableCell className="text-xs">{fmtDate(b.billing_date)}</TableCell>
                                                     <TableCell className="text-xs text-muted-foreground">
@@ -1698,15 +1667,15 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                         ₹{fmt(b.amount)}
                                                     </TableCell>
                                                     <TableCell className="text-right text-xs font-bold text-indigo-700 font-mono">
-                                                        {b.status === 'ACTIVE' ? `₹${fmt(paidAmount)}` : '—'}
+                                                        ₹{fmt(paidAmount)}
                                                     </TableCell>
                                                     <TableCell className="text-right text-xs font-bold text-red-700 font-mono">
-                                                        {b.status === 'ACTIVE' ? `₹${fmt(balanceAmount)}` : '—'}
+                                                        ₹{fmt(balanceAmount)}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Badge variant={b.status === 'ACTIVE' ? 'default' : 'outline'}
-                                                            className={`text-[9px] px-1.5 py-0 h-4 ${b.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                                            {b.status}
+                                                        <Badge variant="default"
+                                                            className="text-[9px] px-1.5 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200">
+                                                            ACTIVE
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right">
@@ -1731,7 +1700,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                     </Link>
                                                                 </Button>
                                                             )}
-                                                            {isAdmin && b.status === 'ACTIVE' && (
+                                                            {isAdmin && (
                                                                 <>
                                                                     <Button
                                                                         size="sm"
@@ -1772,13 +1741,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         </span>
                                         <div className="flex flex-wrap items-center gap-4 text-sm font-black font-mono">
                                             <span className="text-emerald-700">
-                                                Billed: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + parseMoney(b.amount), 0))}
+                                                Billed: ₹{fmt(filteredBillingRecords.reduce((s, b) => s + parseMoney(b.amount), 0))}
                                             </span>
                                             <span className="text-indigo-700">
-                                                Paid: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => s + parseMoney(billingSettledAmountMap.get(b.id)), 0))}
+                                                Paid: ₹{fmt(filteredBillingRecords.reduce((s, b) => s + parseMoney(billingSettledAmountMap.get(b.id)), 0))}
                                             </span>
                                             <span className="text-red-700">
-                                                Balance: ₹{fmt(filteredBillingRecords.filter(b => b.status === 'ACTIVE').reduce((s, b) => {
+                                                Balance: ₹{fmt(filteredBillingRecords.reduce((s, b) => {
                                                     const paidAmount = parseMoney(billingSettledAmountMap.get(b.id));
                                                     return s + Math.max(parseMoney(b.amount) - paidAmount, 0);
                                                 }, 0))}
@@ -1830,7 +1799,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                             </TableRow>
                                         ) : (
                                             data.payment_receipts.map(p => (
-                                                <TableRow key={p.id} className={`transition-colors border-b last:border-0 ${p.status === 'REVERSED' ? 'opacity-50' : ''}`}>
+                                                <TableRow key={p.id} className="transition-colors border-b last:border-0">
                                                     <TableCell className="text-xs whitespace-nowrap">{fmtDate(p.receipt_date)}</TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className={`text-[9px] px-1.5 py-0 h-4 ${MODE_BADGE[p.payment_mode] || ''}`}>
@@ -1888,9 +1857,9 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Badge variant={p.status === 'ACTIVE' ? 'default' : 'outline'}
-                                                            className={`text-[9px] px-1.5 py-0 h-4 ${p.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                                            {p.status}
+                                                        <Badge variant="default"
+                                                            className="text-[9px] px-1.5 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200">
+                                                            ACTIVE
                                                         </Badge>
                                                     </TableCell>
                                                     {isAdmin && (
@@ -1906,8 +1875,6 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                         <History className="h-3.5 w-3.5 mr-1" /> History
                                                                     </Link>
                                                                 </Button>
-                                                                {p.status === 'ACTIVE' && (
-                                                                    <>
                                                                 <Button
                                                                     size="sm"
                                                                     variant="ghost"
@@ -1928,10 +1895,8 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                                                 <Button size="sm" variant="ghost"
                                                                     className="h-6 px-1.5 text-destructive hover:bg-destructive/10 text-[11px]"
                                                                     onClick={() => setCancelTarget({ type: 'payment', id: p.id })}>
-                                                                    Reverse
+                                                                    Delete
                                                                 </Button>
-                                                                    </>
-                                                                )}
                                                             </div>
                                                         </TableCell>
                                                     )}
@@ -1940,13 +1905,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                                         )}
                                     </TableBody>
                                 </Table>
-                                {data.payment_receipts.filter(p => p.status === 'ACTIVE').length > 0 && (
+                                {data.payment_receipts.length > 0 && (
                                     <div className="px-6 py-3 border-t bg-muted/10 flex justify-between items-center">
                                         <span className="text-xs text-muted-foreground">
-                                            Active: {data.payment_receipts.filter(p => p.status === 'ACTIVE').length} receipts
+                                            {data.payment_receipts.length} receipts
                                         </span>
                                         <span className="text-sm font-black text-indigo-700 font-mono">
-                                            Total: ₹{fmt(data.payment_receipts.filter(p => p.status === 'ACTIVE').reduce((s, p) => s + (parseFloat(String(p.amount)) || 0), 0))}
+                                            Total: ₹{fmt(data.payment_receipts.reduce((s, p) => s + (parseFloat(String(p.amount)) || 0), 0))}
                                         </span>
                                     </div>
                                 )}
@@ -2102,7 +2067,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 partyId={partyId}
                 onSuccess={fetchData}
                 billingRecords={data.all_billing_records}
-                paymentReceipts={data.all_payment_receipts}
+                paymentReceipts={data.all_payment_receipts.filter((receipt) => receipt.status === 'ACTIVE')}
                 record={editingPaymentReceipt}
             />
             <BillingRecordViewDialog
@@ -2122,7 +2087,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 <CancelDialog
                     open={true}
                     onClose={() => setCancelTarget(null)}
-                    title={cancelTarget.type === 'billing' ? 'Cancel Billing Record' : 'Reverse Payment Receipt'}
+                    title={cancelTarget.type === 'billing' ? 'Cancel Billing Record' : 'Soft Delete Payment'}
                     onConfirm={cancelTarget.type === 'billing' ? handleCancelBilling : handleReversePayment}
                 />
             )}

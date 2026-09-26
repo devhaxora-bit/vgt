@@ -1022,6 +1022,11 @@ export function BillingRecordViewDialog({
     const issuingBranch = billDetailRows[0]?.booking_branch || party?.branch_code || '—';
 
     const handlePrint = async (mode: 'print' | 'download') => {
+        if (record.status === 'CANCELLED') {
+            toast.error('Cancelled bills are excluded from PDF export');
+            return;
+        }
+
         if (!party || !record) return;
 
         const logoUrl = logoBase64 || `${window.location.origin}${VGT_LOGO_PATH}`;
@@ -1167,6 +1172,8 @@ export function BillingRecordViewDialog({
                         </DialogDescription>
                     </div>
                     <div className="flex flex-wrap gap-2 justify-end">
+                        {record.status === 'ACTIVE' && (
+                            <>
                         <Button
                             variant="outline"
                             className="gap-2 border-white/50 bg-white text-primary hover:bg-white/90 hover:text-primary"
@@ -1181,6 +1188,8 @@ export function BillingRecordViewDialog({
                         >
                             <Download className="h-4 w-4" /> Download PDF
                         </Button>
+                            </>
+                        )}
                         {isAdmin && record.status === 'ACTIVE' && (
                             <Button
                                 className="gap-2 bg-white text-primary hover:bg-white/90"

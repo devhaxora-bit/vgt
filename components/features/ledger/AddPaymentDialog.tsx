@@ -55,6 +55,16 @@ export function AddPaymentDialog({
         billing_record_id: string;
         settled_amount: string;
         deduction_items: BillingExtraChargeDraftItem[];
+        adjustment_remark: string;
+    }
+
+    interface AmountEditState {
+        billing_record_id: string;
+        bill_label: string;
+        amount: string;
+        remark: string;
+        previous_amount: number;
+        max_amount: number;
     }
 
     const [form, setForm] = useState({
@@ -64,6 +74,7 @@ export function AddPaymentDialog({
         bill_allocations: [] as PaymentBillAllocationDraft[],
     });
     const [saving, setSaving] = useState(false);
+    const [amountEdit, setAmountEdit] = useState<AmountEditState | null>(null);
     const isEditing = Boolean(record?.id);
 
     const emptyForm = {
@@ -82,6 +93,7 @@ export function AddPaymentDialog({
 
         if (!record) {
             setForm(emptyForm);
+            setAmountEdit(null);
             return;
         }
 
@@ -98,6 +110,7 @@ export function AddPaymentDialog({
                     label: item.label,
                     amount: parseMoney(item.amount) > 0 ? parseMoney(item.amount).toFixed(2) : '',
                 })),
+                adjustment_remark: '',
             }))
             : relatedIds.map((billId) => ({
                 billing_record_id: billId,
@@ -105,6 +118,7 @@ export function AddPaymentDialog({
                     ? parseMoney(record.amount).toFixed(2)
                     : '',
                 deduction_items: [] as BillingExtraChargeDraftItem[],
+                adjustment_remark: '',
             }));
 
         setForm({
@@ -117,6 +131,7 @@ export function AddPaymentDialog({
             related_billing_record_ids: relatedIds,
             bill_allocations: allocationDrafts,
         });
+        setAmountEdit(null);
     }, [open, record]);
 
     const settledBillAmountMap = useMemo(
@@ -124,28 +139,67 @@ export function AddPaymentDialog({
         [paymentReceipts, record?.id]
     );
 
-    const payableBillingRecords = useMemo(
-        () => billingRecords
-            .filter((record) => record.status === 'ACTIVE')
-            .map((record) => {
-                const settledAmount = settledBillAmountMap.get(record.id) || 0;
-                const remainingAmount = Math.max(roundMoney(parseMoney(record.amount) - settledAmount), 0);
-
-                return {
-                    ...record,
-                    settled_amount: settledAmount,
-                    remaining_amount: remainingAmount,
-                };
-            })
-            .filter((bill) => (
-                parseMoney(bill.remaining_amount) > 0.009
-                || form.related_billing_record_ids.includes(bill.id)
-            )),
-        [billingRecords, settledBillAmountMap, form.related_billing_record_ids]
+    const billingRecordById = useMemo(
+        () => new Map(billingRecords.map((bill) => [bill.id, bill])),
+        [billingRecords]
     );
 
+    const payableBillingRecords = useMemo(() => {
+        const linkedIds = new Set(form.related_billing_record_ids);
+        const rows = new Map<string, BillingRecord & { settled_amount: number; remaining_amount: number }>();
+
+        billingRecords.forEach((bill) => {
+            // New links: only active bills. Already-linked bills always stay visible for edit.
+            if (bill.status !== 'ACTIVE' && !linkedIds.has(bill.id)) return;
+
+            const settledAmount = settledBillAmountMap.get(bill.id) || 0;
+            const remainingAmount = Math.max(roundMoney(parseMoney(bill.amount) - settledAmount), 0);
+            if (remainingAmount <= 0.009 && !linkedIds.has(bill.id)) return;
+
+            rows.set(bill.id, {
+                ...bill,
+                settled_amount: settledAmount,
+                remaining_amount: remainingAmount,
+            });
+        });
+
+        // If a linked bill is missing from the loaded list (reassigned / filtered), keep an editable stub.
+        form.related_billing_record_ids.forEach((billId) => {
+            if (rows.has(billId)) return;
+
+            const draft = form.bill_allocations.find((allocation) => allocation.billing_record_id === billId);
+            const settledOnThisReceipt = roundMoney(parseMoney(draft?.settled_amount || record?.amount));
+            const knownBill = billingRecordById.get(billId);
+            const billAmount = Math.max(parseMoney(knownBill?.amount), settledOnThisReceipt);
+            const settledByOthers = settledBillAmountMap.get(billId) || 0;
+            const remainingAmount = Math.max(roundMoney(billAmount - settledByOthers), settledOnThisReceipt);
+
+            rows.set(billId, {
+                id: billId,
+                billing_date: knownBill?.billing_date || record?.receipt_date || new Date().toISOString().slice(0, 10),
+                amount: billAmount,
+                bill_ref_no: knownBill?.bill_ref_no || billId.slice(0, 8).toUpperCase(),
+                narration: knownBill?.narration || 'Linked bill on this payment',
+                covered_cn_nos: knownBill?.covered_cn_nos || [],
+                status: knownBill?.status || 'ACTIVE',
+                settled_amount: settledByOthers,
+                remaining_amount: remainingAmount,
+            });
+        });
+
+        return Array.from(rows.values());
+    }, [
+        billingRecordById,
+        billingRecords,
+        form.bill_allocations,
+        form.related_billing_record_ids,
+        record?.amount,
+        record?.receipt_date,
+        settledBillAmountMap,
+    ]);
+
     const payableBillingRecordMap = useMemo(
-        () => new Map(payableBillingRecords.map((record) => [record.id, record])),
+        () => new Map(payableBillingRecords.map((bill) => [bill.id, bill])),
         [payableBillingRecords]
     );
 
@@ -163,9 +217,90 @@ export function AddPaymentDialog({
                 billing_record_id: billId,
                 settled_amount: defaultSettledAmount > 0 ? defaultSettledAmount.toFixed(2) : '',
                 deduction_items: [],
+                adjustment_remark: '',
             };
         });
     }, [payableBillingRecordMap]);
+
+    // Keep bill allocation drafts in sync with selected bill ids (covers edit reopen / missing allocations).
+    useEffect(() => {
+        if (!open) return;
+        if (form.related_billing_record_ids.length === 0) return;
+
+        const missingDraft = form.related_billing_record_ids.some(
+            (billId) => !form.bill_allocations.some((allocation) => allocation.billing_record_id === billId)
+        );
+        if (!missingDraft) return;
+
+        setForm((current) => ({
+            ...current,
+            bill_allocations: syncBillAllocationDrafts(current.related_billing_record_ids, current.bill_allocations),
+        }));
+    }, [open, form.related_billing_record_ids, form.bill_allocations, syncBillAllocationDrafts]);
+
+    const openAmountEdit = (bill: BillingRecord & { remaining_amount?: number; settled_amount?: number }, draft: PaymentBillAllocationDraft) => {
+        const remainingBeforeReceipt = parseMoney(bill.remaining_amount ?? bill.amount);
+        const previousAmount = roundMoney(parseMoney(draft.settled_amount));
+        setAmountEdit({
+            billing_record_id: draft.billing_record_id,
+            bill_label: bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase(),
+            amount: previousAmount > 0 ? previousAmount.toFixed(2) : (remainingBeforeReceipt > 0 ? remainingBeforeReceipt.toFixed(2) : ''),
+            remark: draft.adjustment_remark || '',
+            previous_amount: previousAmount,
+            max_amount: remainingBeforeReceipt,
+        });
+    };
+
+    const applyAmountEdit = () => {
+        if (!amountEdit) return;
+
+        const newAmount = roundMoney(parseMoney(amountEdit.amount));
+        const remark = amountEdit.remark.trim();
+        const delta = roundMoney(newAmount - amountEdit.previous_amount);
+
+        if (newAmount <= 0) {
+            toast.error('Enter a positive payment amount for this bill');
+            return;
+        }
+
+        if (newAmount > amountEdit.max_amount + 0.009) {
+            toast.error(`Amount cannot exceed the remaining balance of ₹${fmt(amountEdit.max_amount)}`);
+            return;
+        }
+
+        if (Math.abs(delta) > 0.009 && !remark) {
+            toast.error('Remark is required when changing the amount — explain the deduction or addition');
+            return;
+        }
+
+        const note = Math.abs(delta) > 0.009 && remark
+            ? `${amountEdit.bill_label}: ${delta < 0 ? 'Deduction' : 'Addition'} ₹${fmt(Math.abs(delta))} — ${remark}`
+            : '';
+
+        setForm((current) => {
+            const existingNarration = (current.narration || '').trim();
+            const nextNarration = note && !existingNarration.includes(note)
+                ? (existingNarration ? `${existingNarration} | ${note}` : note)
+                : existingNarration;
+
+            return {
+                ...current,
+                narration: nextNarration,
+                bill_allocations: current.bill_allocations.map((allocation) => (
+                    allocation.billing_record_id === amountEdit.billing_record_id
+                        ? {
+                            ...allocation,
+                            settled_amount: newAmount.toFixed(2),
+                            adjustment_remark: remark,
+                        }
+                        : allocation
+                )),
+            };
+        });
+
+        setAmountEdit(null);
+        toast.success('Bill payment amount updated');
+    };
 
     const normalizedBillAllocations = useMemo(
         () => form.bill_allocations
@@ -205,9 +340,23 @@ export function AddPaymentDialog({
     );
 
     const selectedAllocationDrafts = useMemo(
-        () => form.related_billing_record_ids.reduce<Array<{ bill: BillingRecord; draft: PaymentBillAllocationDraft }>>((entries, billId) => {
+        () => form.related_billing_record_ids.reduce<Array<{
+            bill: BillingRecord & { settled_amount?: number; remaining_amount?: number };
+            draft: PaymentBillAllocationDraft;
+        }>>((entries, billId) => {
             const bill = payableBillingRecordMap.get(billId);
-            const draft = form.bill_allocations.find((allocation) => allocation.billing_record_id === billId);
+            let draft = form.bill_allocations.find((allocation) => allocation.billing_record_id === billId);
+
+            // Keep the editor visible even if draft sync lagged behind the selected bill ids.
+            if (!draft && bill) {
+                const defaultSettled = Math.max(parseMoney(bill.remaining_amount ?? bill.amount), 0);
+                draft = {
+                    billing_record_id: billId,
+                    settled_amount: defaultSettled > 0 ? defaultSettled.toFixed(2) : '',
+                    deduction_items: [],
+                    adjustment_remark: '',
+                };
+            }
 
             if (!bill || !draft) return entries;
 
@@ -265,6 +414,10 @@ export function AddPaymentDialog({
 
         setSaving(true);
         try {
+            if (isEditing && !record?.id) {
+                throw new Error('Cannot update payment: missing payment id');
+            }
+
             const endpoint = isEditing
                 ? `/api/ledger/${partyId}/payments/${record?.id}`
                 : `/api/ledger/${partyId}/payments`;
@@ -280,8 +433,12 @@ export function AddPaymentDialog({
                 }),
             });
             if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error || (isEditing ? 'Failed to update payment' : 'Failed to record payment'));
+                const err = await res.json().catch(() => ({}));
+                const message = String(err.error || (isEditing ? 'Failed to update payment' : 'Failed to record payment'));
+                if (/already exist/i.test(message) && isEditing) {
+                    throw new Error('Could not save edits on this payment. The current payment id is allowed — please retry. If it keeps failing, refresh and open Edit again.');
+                }
+                throw new Error(message);
             }
             toast.success(isEditing ? 'Payment receipt updated' : 'Payment receipt recorded successfully');
             onSuccess();
@@ -311,6 +468,78 @@ export function AddPaymentDialog({
     const description = isEditing
         ? 'Update receipt details, linked bills, settled amounts, and deduction breakup.'
         : 'Select the party, link unpaid bills, and record the receipt.';
+
+    const amountEditDelta = amountEdit
+        ? roundMoney(parseMoney(amountEdit.amount) - amountEdit.previous_amount)
+        : 0;
+
+    const amountEditDialog = (
+        <Dialog open={Boolean(amountEdit)} onOpenChange={(nextOpen) => { if (!nextOpen) setAmountEdit(null); }}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Pencil className="h-4 w-4 text-primary" /> Edit Bill Payment Amount
+                    </DialogTitle>
+                    <DialogDescription>
+                        Adjust the amount for {amountEdit?.bill_label || 'this bill'}. If you change it, enter a remark explaining the deduction or addition.
+                    </DialogDescription>
+                </DialogHeader>
+                {amountEdit && (
+                    <div className="space-y-4">
+                        <div className="rounded-md border bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+                            <div className="flex justify-between gap-2">
+                                <span>Current settled</span>
+                                <span className="font-mono font-semibold text-foreground">₹{fmt(amountEdit.previous_amount)}</span>
+                            </div>
+                            <div className="mt-1 flex justify-between gap-2">
+                                <span>Max remaining</span>
+                                <span className="font-mono font-semibold text-foreground">₹{fmt(amountEdit.max_amount)}</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold uppercase text-muted-foreground">New Amount (₹) *</Label>
+                            <Input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                max={amountEdit.max_amount > 0 ? amountEdit.max_amount : undefined}
+                                value={amountEdit.amount}
+                                onChange={(e) => setAmountEdit((current) => current ? { ...current, amount: e.target.value } : current)}
+                                className="h-9 font-mono"
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold uppercase text-muted-foreground">
+                                Remark {Math.abs(amountEditDelta) > 0.009 ? '(required)' : ''}
+                            </Label>
+                            <Input
+                                value={amountEdit.remark}
+                                onChange={(e) => setAmountEdit((current) => current ? { ...current, remark: e.target.value } : current)}
+                                placeholder="Why is there a deduction or addition?"
+                                className="h-9"
+                            />
+                        </div>
+
+                        {Math.abs(amountEditDelta) > 0.009 && (
+                            <div className={`rounded-md border px-3 py-2 text-xs ${amountEditDelta < 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
+                                {amountEditDelta < 0
+                                    ? `Deduction of ₹${fmt(Math.abs(amountEditDelta))} from previous settled amount.`
+                                    : `Addition of ₹${fmt(amountEditDelta)} over previous settled amount.`}
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button type="button" variant="outline" onClick={() => setAmountEdit(null)}>Cancel</Button>
+                            <Button type="button" onClick={applyAmountEdit}>Update Amount</Button>
+                        </div>
+                    </div>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
 
     const formBody = (
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -350,9 +579,24 @@ export function AddPaymentDialog({
                                 </div>
                             ) : (
                                 <div className="rounded-lg border bg-muted/10">
-                                    <div className="border-b px-4 py-3">
-                                        <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Receipt Summary</div>
-                                        <div className="text-xs text-muted-foreground">Main ledger impact uses the settled amount. Actual received is calculated after subtracting deduction breakup.</div>
+                                    <div className="border-b px-4 py-3 flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Receipt Summary</div>
+                                            <div className="text-xs text-muted-foreground">
+                                                Use Edit Amount on each bill (right side) to change settled amount and add a deduction/addition remark.
+                                            </div>
+                                        </div>
+                                        {selectedAllocationDrafts[0] && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 shrink-0 gap-1.5"
+                                                onClick={() => openAmountEdit(selectedAllocationDrafts[0].bill, selectedAllocationDrafts[0].draft)}
+                                            >
+                                                <Pencil className="h-3.5 w-3.5" /> Edit Amount
+                                            </Button>
+                                        )}
                                     </div>
                                     <div className="space-y-2 p-4 text-sm">
                                         <div className="flex items-center justify-between">
@@ -455,26 +699,28 @@ export function AddPaymentDialog({
 
                                         <div className="space-y-4 p-4">
                                             <div className="space-y-1.5">
-                                                <Label className="text-xs font-bold uppercase text-muted-foreground">Settled For This Bill (₹)</Label>
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    max={remainingBeforeReceipt > 0 ? remainingBeforeReceipt : undefined}
-                                                    value={draft.settled_amount}
-                                                    onChange={(e) => setForm((current) => ({
-                                                        ...current,
-                                                        bill_allocations: current.bill_allocations.map((allocation) => (
-                                                            allocation.billing_record_id === draft.billing_record_id
-                                                                ? { ...allocation, settled_amount: e.target.value }
-                                                                : allocation
-                                                        )),
-                                                    }))}
-                                                    className="h-9 font-mono"
-                                                    placeholder="0.00"
-                                                />
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <Label className="text-xs font-bold uppercase text-muted-foreground">Settled For This Bill (₹)</Label>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 gap-1.5"
+                                                        onClick={() => openAmountEdit(bill, draft)}
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5" /> Edit Amount
+                                                    </Button>
+                                                </div>
+                                                <div className="flex h-9 items-center justify-between rounded-md border bg-muted/10 px-3 font-mono text-sm">
+                                                    <span className="font-semibold text-indigo-700">₹{fmt(settledAmount)}</span>
+                                                    {draft.adjustment_remark ? (
+                                                        <span className="max-w-[55%] truncate text-[11px] text-muted-foreground" title={draft.adjustment_remark}>
+                                                            {draft.adjustment_remark}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
                                                 <div className="text-[11px] text-muted-foreground">
-                                                    Max allowed for this bill: ₹{fmt(remainingBeforeReceipt)}
+                                                    Max allowed for this bill: ₹{fmt(remainingBeforeReceipt)}. Use Edit Amount to change it and enter a remark for any deduction or addition.
                                                 </div>
                                             </div>
 
@@ -549,6 +795,7 @@ export function AddPaymentDialog({
 
     if (variant === 'inline') {
         return (
+            <>
             <Card className="overflow-hidden border shadow-sm">
                 <CardHeader className="border-b bg-slate-50">
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -559,10 +806,13 @@ export function AddPaymentDialog({
                 </CardHeader>
                 <CardContent className="p-0">{formBody}</CardContent>
             </Card>
+            {amountEditDialog}
+            </>
         );
     }
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onClose}>
             <DialogContent className="max-w-[92vw] w-[92vw] sm:max-w-5xl max-h-[95vh] p-0 overflow-hidden border-none shadow-2xl flex flex-col">
                 <DialogHeader className="px-6 py-4 border-b bg-slate-50">
@@ -575,6 +825,8 @@ export function AddPaymentDialog({
                 {formBody}
             </DialogContent>
         </Dialog>
+        {amountEditDialog}
+        </>
     );
 }
 

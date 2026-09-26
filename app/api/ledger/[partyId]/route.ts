@@ -166,6 +166,7 @@ export async function GET(
         .order('created_at', { ascending: false });
 
     const billingRecords = (allBillingRecords || []).filter((record) => {
+        if (record.status !== 'ACTIVE') return false;
         const billingDate = record.billing_date?.slice(0, 10) || '';
         if (dateFrom && billingDate < dateFrom) return false;
         if (dateTo && billingDate > dateTo) return false;
@@ -180,6 +181,7 @@ export async function GET(
         .order('receipt_date', { ascending: false });
 
     const paymentReceipts = (allPaymentReceipts || []).filter((record) => {
+        if (record.status !== 'ACTIVE') return false;
         const receiptDate = record.receipt_date?.slice(0, 10) || '';
         if (dateFrom && receiptDate < dateFrom) return false;
         if (dateTo && receiptDate > dateTo) return false;
@@ -245,8 +247,9 @@ export async function GET(
 
     // 7. Compute summary from raw data
     const allCns = summaryConsignments as SummaryConsignment[];
-    const allBills = ((billingRecords || []) as SummaryBillingRecord[]).filter((b) => b.status === 'ACTIVE');
-    const allPayments = ((paymentReceipts || []) as SummaryPaymentReceipt[]).filter((p) => p.status === 'ACTIVE');
+    // Summary uses ACTIVE-only bill/payment arrays (cancelled/reversed excluded).
+    const allBills = (billingRecords || []) as SummaryBillingRecord[];
+    const allPayments = (paymentReceipts || []) as SummaryPaymentReceipt[];
 
     const totalCnsAmount = allCns.reduce((sum, c) => sum + (parseFloat(String(c.total_freight || 0)) || 0), 0);
     const totalBilled = allBills.reduce((sum, b) => sum + (parseFloat(String(b.amount || 0)) || 0), 0);
@@ -278,8 +281,10 @@ export async function GET(
         billable_consignments: billableConsignments,
         global_cn_coverage_counts: Object.fromEntries(globalCnCoverageCounts),
         ghost_consignments: ghostConsignments,
+        // Ledger tabs + metrics: ACTIVE only. Cancelled/reversed stay out of lists and totals.
         billing_records: billingRecords || [],
         payment_receipts: paymentReceipts || [],
+        // Full history kept for edit/reassign lookups; UI must not use these for ledger metrics.
         all_billing_records: allBillingRecords || [],
         all_payment_receipts: allPaymentReceipts || [],
     });

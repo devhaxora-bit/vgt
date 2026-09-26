@@ -329,7 +329,9 @@ const preparePdfPayload = (payload: PartyLedgerReportPayload): PartyLedgerReport
     return {
         ...payload,
         cnsRows,
-        billRows: payload.billRows.filter((row) => row.status !== 'CANCELLED'),
+        // Soft-deleted records stay in the app UI, but never in printable PDFs.
+        billRows: payload.billRows.filter((row) => String(row.status || '').toUpperCase() === 'ACTIVE'),
+        paymentRows: payload.paymentRows.filter((row) => String(row.status || '').toUpperCase() === 'ACTIVE'),
         summary: {
             ...payload.summary,
             openingBalance,

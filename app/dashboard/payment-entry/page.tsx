@@ -3,13 +3,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Banknote, Loader2, Pencil, Plus, RotateCcw, Search } from 'lucide-react';
+import { Banknote, Loader2, Pencil, Plus, RotateCcw, Search, Trash2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { AddPaymentDialog } from '@/components/features/ledger/AddPaymentDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -43,6 +46,11 @@ const fmtDate = (d?: string | null) => {
     try { return format(new Date(d), 'dd/MM/yyyy'); } catch { return d; }
 };
 
+const paymentStatusLabel = (status: string) => {
+    if (status === 'REVERSED') return 'Deleted';
+    return status;
+};
+
 export default function PaymentEntryPage() {
     const [payments, setPayments] = useState<PaymentListRow[]>([]);
     const [summary, setSummary] = useState<ListSummary>({
@@ -53,11 +61,16 @@ export default function PaymentEntryPage() {
     const [status, setStatus] = useState('ALL');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [isAdmin, setIsAdmin] = useState(false);
 
     const [editing, setEditing] = useState<PaymentListRow | null>(null);
     const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]);
     const [paymentReceipts, setPaymentReceipts] = useState<PaymentReceipt[]>([]);
     const [editLoading, setEditLoading] = useState(false);
+
+    const [deleteTarget, setDeleteTarget] = useState<PaymentListRow | null>(null);
+    const [deleteReason, setDeleteReason] = useState('');
+    const [deleting, setDeleting] = useState(false);
 
     const loadPayments = useCallback(async () => {
         setLoading(true);
@@ -83,6 +96,13 @@ export default function PaymentEntryPage() {
     useEffect(() => {
         void loadPayments();
     }, [loadPayments]);
+
+    useEffect(() => {
+        fetch('/api/auth/me')
+            .then((r) => r.json())
+            .then((r) => setIsAdmin(r?.data?.role === 'admin'))
+            .catch(console.error);
+    }, []);
 
     const openEdit = async (payment: PaymentListRow) => {
         if (payment.status !== 'ACTIVE') {
@@ -113,6 +133,33 @@ export default function PaymentEntryPage() {
         }
     };
 
+    const handleSoftDelete = async () => {
+        if (!deleteTarget) return;
+        if (!deleteReason.trim()) {
+            toast.error('Delete reason is required');
+            return;
+        }
+
+        setDeleting(true);
+        try {
+            const res = await fetch(`/api/ledger/${deleteTarget.party_id}/payments/${deleteTarget.id}/reverse`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reversal_reason: deleteReason.trim() }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Failed to delete payment');
+            toast.success('Payment soft-deleted. It stays visible but is excluded from ledger totals.');
+            setDeleteTarget(null);
+            setDeleteReason('');
+            void loadPayments();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to delete payment');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
     const clearFilters = () => {
         setSearch('');
         setStatus('ALL');
@@ -128,7 +175,7 @@ export default function PaymentEntryPage() {
                         <Banknote className="h-6 w-6 text-primary" /> Payment Entry
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Search and filter all receipts. Create a new payment or edit an existing one.
+                        Search and filter all receipts. Soft-deleted payments stay listed but are excluded from ledger totals.
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -194,7 +241,7 @@ export default function PaymentEntryPage() {
                             <SelectContent>
                                 <SelectItem value="ALL">All</SelectItem>
                                 <SelectItem value="ACTIVE">Active</SelectItem>
-                                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                                <SelectItem value="REVERSED">Deleted</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -232,7 +279,7 @@ export default function PaymentEntryPage() {
                                     <TableHead className="w-[120px] text-right">Settled</TableHead>
                                     <TableHead className="w-[120px] text-right">Received</TableHead>
                                     <TableHead className="w-[100px]">Status</TableHead>
-                                    <TableHead className="w-[160px] text-right">Actions</TableHead>
+                                    <TableHead className="w-[220px] text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -248,8 +295,13 @@ export default function PaymentEntryPage() {
                                             No payments found. Create a payment to get started.
                                         </TableCell>
                                     </TableRow>
-                                ) : payments.map((payment) => (
-                                    <TableRow key={payment.id}>
+                                ) : payments.map((payment) => {
+                                    const isDeleted = payment.status === 'REVERSED';
+                                    return (
+                                    <TableRow
+                                        key={payment.id}
+                                        className={isDeleted ? 'opacity-60 bg-muted/20' : undefined}
+                                    >
                                         <TableCell className="whitespace-nowrap">{fmtDate(payment.receipt_date)}</TableCell>
                                         <TableCell className="vgt-table-cell-wrap min-w-0 overflow-hidden">
                                             <div className="font-medium truncate" title={payment.party_name}>{payment.party_name}</div>
@@ -267,6 +319,11 @@ export default function PaymentEntryPage() {
                                                     {payment.bank_name}
                                                 </div>
                                             ) : null}
+                                            {isDeleted && payment.reversal_reason ? (
+                                                <div className="text-[11px] text-destructive truncate" title={payment.reversal_reason}>
+                                                    Reason: {payment.reversal_reason}
+                                                </div>
+                                            ) : null}
                                         </TableCell>
                                         <TableCell className="text-right font-mono font-semibold whitespace-nowrap">
                                             ₹{fmtMoney(payment.amount)}
@@ -275,21 +332,37 @@ export default function PaymentEntryPage() {
                                             ₹{fmtMoney(payment.actual_received_amount ?? payment.amount)}
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap">
-                                            <Badge variant={payment.status === 'ACTIVE' ? 'default' : 'secondary'}>
-                                                {payment.status}
+                                            <Badge
+                                                variant={payment.status === 'ACTIVE' ? 'default' : 'outline'}
+                                                className={isDeleted ? 'border-red-200 bg-red-50 text-red-700' : undefined}
+                                            >
+                                                {paymentStatusLabel(payment.status)}
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-right whitespace-nowrap">
                                             <div className="flex justify-end gap-1">
-                                                {payment.status === 'ACTIVE' && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        disabled={editLoading}
-                                                        onClick={() => void openEdit(payment)}
-                                                    >
-                                                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-                                                    </Button>
+                                                {isAdmin && payment.status === 'ACTIVE' && (
+                                                    <>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={editLoading}
+                                                            onClick={() => void openEdit(payment)}
+                                                        >
+                                                            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-destructive hover:bg-destructive/10"
+                                                            onClick={() => {
+                                                                setDeleteTarget(payment);
+                                                                setDeleteReason('');
+                                                            }}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                                                        </Button>
+                                                    </>
                                                 )}
                                                 <Button variant="ghost" size="sm" asChild>
                                                     <Link href={`/dashboard/ledger/${payment.party_id}`}>Ledger</Link>
@@ -297,7 +370,8 @@ export default function PaymentEntryPage() {
                                             </div>
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </div>
@@ -317,6 +391,59 @@ export default function PaymentEntryPage() {
                     void loadPayments();
                 }}
             />
+
+            <Dialog
+                open={!!deleteTarget}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setDeleteTarget(null);
+                        setDeleteReason('');
+                    }
+                }}
+            >
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="text-destructive flex items-center gap-2">
+                            <XCircle className="h-4 w-4" /> Soft Delete Payment
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 mt-2">
+                        <p className="text-sm text-muted-foreground">
+                            This marks the receipt as deleted. It remains visible in Payment Entry, but is excluded from party ledger paid totals and outstanding.
+                        </p>
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold uppercase text-muted-foreground">Reason *</Label>
+                            <Input
+                                placeholder="Enter reason..."
+                                value={deleteReason}
+                                onChange={(e) => setDeleteReason(e.target.value)}
+                                className="h-9"
+                            />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setDeleteTarget(null);
+                                    setDeleteReason('');
+                                }}
+                                disabled={deleting}
+                            >
+                                Back
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={() => void handleSoftDelete()}
+                                disabled={deleting || !deleteReason.trim()}
+                                className="gap-2"
+                            >
+                                {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                                Confirm Delete
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
