@@ -120,6 +120,28 @@ export const parseMoney = (value: unknown) => {
 
 export const roundMoney = (value: number) => Number(value.toFixed(2));
 
+/** Trailing serial from refs like VZM/26-27/2152 → 2152 */
+export const billSerialNumber = (billRefNo: string | null | undefined): number => {
+    const raw = String(billRefNo || '').trim();
+    if (!raw) return 0;
+    const match = raw.match(/(\d+)\s*$/);
+    if (!match) return 0;
+    const num = parseInt(match[1], 10);
+    return Number.isNaN(num) ? 0 : num;
+};
+
+/** Highest bill serial first; then newest created_at. */
+export const compareBillsBySerialDesc = (
+    left: { bill_ref_no?: string | null; created_at?: string | null },
+    right: { bill_ref_no?: string | null; created_at?: string | null },
+): number => {
+    const serialDiff = billSerialNumber(right.bill_ref_no) - billSerialNumber(left.bill_ref_no);
+    if (serialDiff !== 0) return serialDiff;
+    const leftCreated = left.created_at ? new Date(left.created_at).getTime() : 0;
+    const rightCreated = right.created_at ? new Date(right.created_at).getTime() : 0;
+    return rightCreated - leftCreated;
+};
+
 export const normalizeExtraChargeDraftItems = (items: BillingExtraChargeDraftItem[]) =>
     items
         .map((item) => ({

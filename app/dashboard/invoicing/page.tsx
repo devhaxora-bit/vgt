@@ -24,6 +24,7 @@ import {
     type LedgerConsignment,
     type LedgerParty,
 } from '@/lib/ledgerUi';
+import { compareBillsBySerialDesc } from '@/lib/ledgerUi';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 type BillListRow = BillingRecord & {
@@ -71,7 +72,7 @@ export default function BillEntryPage() {
             const res = await fetch(`/api/ledger/bills?${params.toString()}`);
             if (!res.ok) throw new Error('Failed to load bills');
             const json = await res.json();
-            setBills(Array.isArray(json.data) ? json.data : []);
+            setBills((Array.isArray(json.data) ? json.data : []).slice().sort(compareBillsBySerialDesc));
             setSummary(json.summary || { count: 0, active_count: 0, total_amount: 0 });
         } catch (err) {
             console.error(err);

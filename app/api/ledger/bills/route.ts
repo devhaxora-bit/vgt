@@ -1,16 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { compareBillsBySerialDesc } from '@/lib/ledgerUi';
 import { requireAuthz } from '@/lib/server/requireAuthz';
-
-/** Extract trailing serial number from bill refs like VZM/26-27/2152 → 2152 */
-const billSerialNumber = (billRefNo: string | null | undefined): number => {
-    const raw = String(billRefNo || '').trim();
-    if (!raw) return 0;
-    const match = raw.match(/(\d+)\s*$/);
-    if (!match) return 0;
-    const num = parseInt(match[1], 10);
-    return Number.isNaN(num) ? 0 : num;
-};
 
 // GET /api/ledger/bills
 // Global party billing records list (with party name)
@@ -102,13 +93,7 @@ export async function GET(request: Request) {
         : rows;
 
     // Serial order: highest bill number (latest) first, then newest created_at
-    const sorted = [...filtered].sort((a, b) => {
-        const serialDiff = billSerialNumber(b.bill_ref_no) - billSerialNumber(a.bill_ref_no);
-        if (serialDiff !== 0) return serialDiff;
-        const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return bCreated - aCreated;
-    });
+    const sorted = [...filtered].sort(compareBillsBySerialDesc);
 
     const totalAmount = sorted
         .filter((row) => row.status === 'ACTIVE')

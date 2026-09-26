@@ -10,6 +10,18 @@ import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuth
 const roundMoney = (value: number) => Number(value.toFixed(2));
 const VALID_MODES = ['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'ADJUSTMENT'] as const;
 
+const mapPaymentUpdateError = (message: string) => {
+    const raw = String(message || '');
+    if (/immutable/i.test(raw)) {
+        return 'Payment amount edits are blocked by the database trigger. Apply the allow-payment-receipt-edits migration, then retry.';
+    }
+    if (/duplicate key|unique constraint|already exists/i.test(raw)) {
+        // Editing the same receipt must be allowed — surface a clearer message if something else collided.
+        return 'Could not save this payment because a conflicting record already exists. If you are editing an existing receipt, retry — the current payment id is accepted.';
+    }
+    return raw || 'Failed to update payment receipt';
+};
+
 // PATCH /api/ledger/[partyId]/payments/[receiptId]
 export async function PATCH(
     request: NextRequest,
@@ -37,7 +49,7 @@ export async function PATCH(
 
     const { data: receipt, error: receiptError } = await supabase
         .from('party_payment_receipts')
-        .select('id, status, branch_code')
+        .select('id, status, branch_code, amount, actual_received_amount, bill_allocations, related_billing_record_ids')
         .eq('id', receiptId)
         .eq('party_id', partyId)
         .single();
@@ -104,6 +116,7 @@ export async function PATCH(
                 return NextResponse.json({ error: existingReceiptsError.message }, { status: 400 });
             }
 
+            // Always exclude the receipt being edited so its own prior settlement does not block the save.
             const alreadySettledMap = buildSettledBillAmountMap(existingReceipts || [], receiptId);
             const billAmountMap = new Map(
                 billingRecords.map((record) => [record.id, Number(record.amount || 0)])
@@ -120,12 +133,10 @@ export async function PATCH(
                 const alreadySettledAmount = alreadySettledMap.get(allocation.billing_record_id) || 0;
                 const remainingBillAmount = roundMoney(Math.max(billAmount - alreadySettledAmount, 0));
 
-                if (remainingBillAmount <= 0.009) {
-                    return NextResponse.json({ error: 'One or more selected bills are already fully settled' }, { status: 400 });
-                }
-
                 if (allocation.settled_amount > remainingBillAmount + 0.009) {
-                    return NextResponse.json({ error: 'Settled amount cannot exceed the remaining balance for the selected bill' }, { status: 400 });
+                    return NextResponse.json({
+                        error: `Settled amount cannot exceed the remaining balance (₹${remainingBillAmount.toFixed(2)}) for the selected bill. Current payment is excluded from that remaining calculation.`,
+                    }, { status: 400 });
                 }
             }
         }
@@ -161,7 +172,7 @@ export async function PATCH(
 
     if (error) {
         console.error('Failed to update payment receipt:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: mapPaymentUpdateError(error.message) }, { status: 500 });
     }
 
     return NextResponse.json(data);
