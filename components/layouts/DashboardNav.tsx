@@ -193,6 +193,7 @@ export default function DashboardNav() {
                         { title: 'Party Outstanding', href: '/dashboard/outstanding' },
                         { title: 'Bill Entry', href: '/dashboard/invoicing' },
                         { title: 'Payment Entry', href: '/dashboard/payment-entry' },
+                        { title: 'Booking Register', href: '/dashboard/reports/booking-register' },
                     ]
                 },
                 {
@@ -209,6 +210,12 @@ export default function DashboardNav() {
             title: 'Reports',
             icon: BarChart3,
             content: [
+                {
+                    title: 'Registers',
+                    items: [
+                        { title: 'Booking Register', href: '/dashboard/reports/booking-register' },
+                    ]
+                },
                 {
                     title: 'Analytics',
                     items: [

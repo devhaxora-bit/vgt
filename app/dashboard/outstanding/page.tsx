@@ -148,13 +148,12 @@ export default function OutstandingPage() {
             if (dateTo) params.set('date_to', dateTo);
 
             const res = await fetch(`/api/outstanding?${params.toString()}`);
-            if (res.status === 401) {
-                window.location.href = '/login';
-                return;
-            }
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error((errBody as { error?: string }).error ?? 'Failed to fetch outstanding data');
+                throw new Error(
+                    (errBody as { error?: string }).error
+                        ?? (res.status === 401 ? 'Session expired — refresh the page or sign in again' : 'Failed to fetch outstanding data'),
+                );
             }
             const json: OutstandingPartyRow[] = await res.json();
             setAllParties(json);
