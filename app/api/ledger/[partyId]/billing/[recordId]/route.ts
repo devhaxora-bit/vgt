@@ -27,7 +27,13 @@ export async function PATCH(
         covered_cn_nos,
         added_other_charges_amount,
         vehicle_cancel_items,
+        change_reason,
     } = body;
+
+    const editReason = String(change_reason || '').trim();
+    if (!editReason) {
+        return NextResponse.json({ error: 'change_reason is required for bill edits' }, { status: 400 });
+    }
 
     if (!billing_date) {
         return NextResponse.json({ error: 'billing_date is required' }, { status: 400 });
@@ -96,6 +102,7 @@ export async function PATCH(
             vehicle_cancel_charges_total: snapshotData.vehicleCancelChargesTotal,
             consignment_snapshot: snapshotData.consignmentSnapshot,
             extra_charge_items: [],
+            change_reason: editReason,
         })
         .eq('id', recordId)
         .eq('party_id', partyId)

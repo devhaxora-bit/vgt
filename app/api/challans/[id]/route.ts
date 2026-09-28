@@ -59,6 +59,11 @@ export async function PUT(
 
     const body = await request.json();
 
+    const changeReason = String(body.change_reason || '').trim();
+    if (!changeReason) {
+        return NextResponse.json({ error: 'change_reason is required for challan edits' }, { status: 400 });
+    }
+
     if (auth.isBranchScoped) {
         body.origin_branch_code = auth.branchCode;
     }
@@ -152,6 +157,7 @@ export async function PUT(
         less_tds: body.less_tds || 0,
         remarks: body.remarks,
         linked_cn_nos: Array.isArray(body.linked_cn_nos) ? body.linked_cn_nos : [],
+        change_reason: changeReason,
         updated_at: new Date().toISOString(),
     };
 

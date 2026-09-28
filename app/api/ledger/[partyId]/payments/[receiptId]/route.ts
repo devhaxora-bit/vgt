@@ -45,7 +45,13 @@ export async function PATCH(
         related_billing_record_ids?: string[] | null;
         actual_received_amount?: number | string | null;
         bill_allocations?: unknown;
+        change_reason?: string | null;
     };
+
+    const editReason = String(body.change_reason || '').trim();
+    if (!editReason) {
+        return NextResponse.json({ error: 'change_reason is required for payment edits' }, { status: 400 });
+    }
 
     const { data: receipt, error: receiptError } = await supabase
         .from('party_payment_receipts')
@@ -164,6 +170,7 @@ export async function PATCH(
             narration: body.narration || null,
             related_billing_record_ids: normalizedBillingRecordIds.length > 0 ? normalizedBillingRecordIds : null,
             bill_allocations: normalizedBillAllocations,
+            change_reason: editReason,
         })
         .eq('id', receiptId)
         .eq('party_id', partyId)

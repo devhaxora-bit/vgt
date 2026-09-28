@@ -70,6 +70,7 @@ export function AddPaymentDialog({
     const [form, setForm] = useState({
         receipt_date: new Date().toISOString().split('T')[0],
         amount: '', payment_mode: 'NEFT', reference_no: '', bank_name: '', narration: '',
+        change_reason: '',
         related_billing_record_ids: [] as string[],
         bill_allocations: [] as PaymentBillAllocationDraft[],
     });
@@ -84,6 +85,7 @@ export function AddPaymentDialog({
         reference_no: '',
         bank_name: '',
         narration: '',
+        change_reason: '',
         related_billing_record_ids: [] as string[],
         bill_allocations: [] as PaymentBillAllocationDraft[],
     };
@@ -128,6 +130,7 @@ export function AddPaymentDialog({
             reference_no: record.reference_no || '',
             bank_name: record.bank_name || '',
             narration: record.narration || '',
+            change_reason: '',
             related_billing_record_ids: relatedIds,
             bill_allocations: allocationDrafts,
         });
@@ -418,6 +421,11 @@ export function AddPaymentDialog({
                 throw new Error('Cannot update payment: missing payment id');
             }
 
+            if (isEditing && !form.change_reason.trim()) {
+                toast.error('Enter a reason for this payment edit');
+                return;
+            }
+
             const endpoint = isEditing
                 ? `/api/ledger/${partyId}/payments/${record?.id}`
                 : `/api/ledger/${partyId}/payments`;
@@ -430,6 +438,7 @@ export function AddPaymentDialog({
                     actual_received_amount: usingBillAllocations ? selectedBillActualReceivedTotal : parseMoney(form.amount),
                     related_billing_record_ids: form.related_billing_record_ids.length > 0 ? form.related_billing_record_ids : null,
                     bill_allocations: usingBillAllocations ? normalizedBillAllocations : [],
+                    ...(isEditing ? { change_reason: form.change_reason.trim() } : {}),
                 }),
             });
             if (!res.ok) {
@@ -450,6 +459,7 @@ export function AddPaymentDialog({
                 reference_no: '',
                 bank_name: '',
                 narration: '',
+                change_reason: '',
                 related_billing_record_ids: [],
                 bill_allocations: [],
             });
@@ -635,6 +645,20 @@ export function AddPaymentDialog({
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-bold uppercase text-muted-foreground">Narration</Label>
                                 <Input placeholder="Payment remarks / against bills" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))} className="h-9" />
+                                {isEditing && (
+                                    <div className="space-y-1.5 pt-2">
+                                        <Label className="text-xs font-bold uppercase text-muted-foreground">
+                                            Edit reason (required)
+                                        </Label>
+                                        <Input
+                                            placeholder="Why is this payment being changed?"
+                                            value={form.change_reason}
+                                            onChange={(e) => setForm((f) => ({ ...f, change_reason: e.target.value }))}
+                                            className="h-9"
+                                            required
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-1.5">

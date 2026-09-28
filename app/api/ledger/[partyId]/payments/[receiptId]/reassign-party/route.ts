@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+
 import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
 
 type ReassignResult = {
@@ -7,7 +9,13 @@ type ReassignResult = {
     old_party_id: string;
     new_party_id: string;
     new_party_name: string;
+    reason?: string;
 };
+
+const reassignBodySchema = z.object({
+    new_party_id: z.string().min(1, 'new_party_id is required'),
+    reason: z.string().trim().min(1, 'reason is required'),
+});
 
 const mapRpcError = (message: string, code?: string) => {
     if (code === 'P0409' || /still belong to the old party/i.test(message)) {
@@ -34,12 +42,13 @@ export async function POST(
     const partyAccess = await requirePartyBranchAccess(auth, partyId);
     if (!partyAccess.ok) return partyAccess.response;
 
-    const body = await request.json() as { new_party_id?: string };
-    const newPartyId = (body.new_party_id || '').trim();
-
-    if (!newPartyId) {
-        return NextResponse.json({ error: 'new_party_id is required' }, { status: 400 });
+    const parsed = reassignBodySchema.safeParse(await request.json());
+    if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid request' }, { status: 400 });
     }
+
+    const newPartyId = parsed.data.new_party_id.trim();
+    const reason = parsed.data.reason.trim();
 
     if (newPartyId === partyId) {
         return NextResponse.json({ error: 'New party is the same as the current party' }, { status: 400 });
@@ -52,6 +61,7 @@ export async function POST(
         p_receipt_id: receiptId,
         p_old_party_id: partyId,
         p_new_party_id: newPartyId,
+        p_reason: reason,
     });
 
     if (error) {

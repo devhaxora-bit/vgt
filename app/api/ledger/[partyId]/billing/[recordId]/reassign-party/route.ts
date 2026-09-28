@@ -25,6 +25,7 @@ type PaymentRow = {
 const reassignBodySchema = z.object({
     new_party_id: z.string().min(1, 'new_party_id is required'),
     confirm_move_payments: z.boolean().optional().default(false),
+    reason: z.string().trim().min(1, 'reason is required'),
 });
 
 const linkedBillIds = (receipt: PaymentRow): string[] => {
@@ -125,6 +126,7 @@ export async function POST(
 
     const newPartyId = parsed.data.new_party_id.trim();
     const confirmMovePayments = parsed.data.confirm_move_payments;
+    const reason = parsed.data.reason.trim();
 
     if (newPartyId === partyId) {
         return NextResponse.json({ error: 'New party is the same as the current party' }, { status: 400 });
@@ -138,6 +140,7 @@ export async function POST(
         p_old_party_id: partyId,
         p_new_party_id: newPartyId,
         p_confirm_move_payments: confirmMovePayments,
+        p_reason: reason,
     });
 
     if (error) {

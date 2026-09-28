@@ -49,4 +49,6 @@ export type LedgerAuditLog = {
     changed_fields: string[];
     old_data: Record<string, unknown> | null;
     new_data: Record<string, unknown> | null;
+    reason: string | null;
+    movement_summary: string | null;
 };

@@ -86,6 +86,8 @@ const enrichedToCsv = (rows: LedgerAuditLog[]): string => {
         'entity_ref',
         'entity_id',
         'action',
+        'reason',
+        'movement_summary',
         'changed_fields',
         'old_party_name',
         'new_party_name',
@@ -106,6 +108,8 @@ const enrichedToCsv = (rows: LedgerAuditLog[]): string => {
                 row.entity_ref,
                 row.entity_id,
                 row.action,
+                row.reason,
+                row.movement_summary,
                 row.changed_fields.join('|'),
                 row.old_party_name,
                 row.new_party_name,
@@ -150,7 +154,7 @@ export async function GET(request: NextRequest) {
 
     let query = auth.supabase
         .from('ledger_audit_logs')
-        .select('id, occurred_at, txid, actor_id, entity_type, entity_id, entity_ref, action, old_party_id, new_party_id, old_broker_id, new_broker_id, changed_fields, old_data, new_data')
+        .select('id, occurred_at, txid, actor_id, entity_type, entity_id, entity_ref, action, old_party_id, new_party_id, old_broker_id, new_broker_id, changed_fields, old_data, new_data, reason, movement_summary')
         .order('occurred_at', { ascending: false })
         .limit(exportLimit);
 
@@ -221,6 +225,8 @@ export async function GET(request: NextRequest) {
             changed_fields: Array.isArray(row.changed_fields) ? row.changed_fields : [],
             old_data: asRecord(row.old_data),
             new_data: asRecord(row.new_data),
+            reason: row.reason ?? null,
+            movement_summary: row.movement_summary ?? null,
         };
     });
 

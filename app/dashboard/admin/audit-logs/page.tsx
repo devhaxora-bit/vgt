@@ -413,21 +413,22 @@ function AuditLogsPageInner() {
                             <TableHead>Type</TableHead>
                             <TableHead>Action</TableHead>
                             <TableHead>Reference</TableHead>
-                            <TableHead>Changed</TableHead>
+                            <TableHead>Reason</TableHead>
+                            <TableHead>Movement</TableHead>
                             <TableHead>Who</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                                     <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
                                     Loading logs…
                                 </TableCell>
                             </TableRow>
                         ) : logs.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                                     No audit events match these filters. Apply the database migration first if this is a new environment.
                                 </TableCell>
                             </TableRow>
@@ -446,9 +447,11 @@ function AuditLogsPageInner() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">{log.entity_ref || '—'}</TableCell>
-                                    <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
-                                        {log.changed_fields.slice(0, 4).join(', ') || '—'}
-                                        {log.changed_fields.length > 4 ? ` +${log.changed_fields.length - 4}` : ''}
+                                    <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate" title={log.reason || undefined}>
+                                        {log.reason || '—'}
+                                    </TableCell>
+                                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate" title={log.movement_summary || undefined}>
+                                        {log.movement_summary || '—'}
                                     </TableCell>
                                     <TableCell className="text-xs">
                                         {log.actor_name || 'System'}
@@ -493,12 +496,24 @@ function AuditLogsPageInner() {
                                         <p className="text-xs text-muted-foreground">Transaction</p>
                                         <p className="font-mono text-xs">{selected.txid}</p>
                                     </div>
+                                    <div className="sm:col-span-2">
+                                        <p className="text-xs text-muted-foreground">Reason</p>
+                                        <p>{selected.reason || '—'}</p>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <p className="text-xs text-muted-foreground">Movement</p>
+                                        <p>{selected.movement_summary || partyMove || '—'}</p>
+                                    </div>
                                     {partyMove && (
                                         <div className="sm:col-span-2">
-                                            <p className="text-xs text-muted-foreground">Party</p>
+                                            <p className="text-xs text-muted-foreground">Party names</p>
                                             <p>{partyMove}</p>
                                         </div>
                                     )}
+                                </div>
+
+                                <div>
+                                    <p className="text-xs font-medium mb-2">Field changes (before → after)</p>
                                 </div>
 
                                 <div className="rounded-md border">
