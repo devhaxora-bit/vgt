@@ -56,6 +56,14 @@ const fmtDate = (value: string | null) => {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+/** First day of the current calendar month (e.g. 2026-10-01). */
+const currentMonthStartIso = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
+};
+
 const csvEscape = (value: unknown): string => {
     const raw = value === null || value === undefined ? '' : String(value);
     if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
@@ -67,8 +75,8 @@ export default function BookingRegisterPage() {
 
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
     const [branchFilter, setBranchFilter] = useState<string | null>(null);
-    const [dateFrom, setDateFrom] = useState(todayIso());
-    const [dateTo, setDateTo] = useState(todayIso());
+    const [dateFrom, setDateFrom] = useState(currentMonthStartIso);
+    const [dateTo, setDateTo] = useState(todayIso);
     const [basisFilter, setBasisFilter] = useState('all');
     const [billStatus, setBillStatus] = useState<BillStatusFilter>('all');
     const [partyQ, setPartyQ] = useState('');
@@ -118,9 +126,8 @@ export default function BookingRegisterPage() {
     };
 
     const resetFilters = () => {
-        const today = todayIso();
-        setDateFrom(today);
-        setDateTo(today);
+        setDateFrom(currentMonthStartIso());
+        setDateTo(todayIso());
         setBasisFilter('all');
         setBillStatus('all');
         setPartyQ('');
