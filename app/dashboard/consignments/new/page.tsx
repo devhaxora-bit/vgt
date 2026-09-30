@@ -629,7 +629,6 @@ function NewConsignmentForm() {
                 }
 
                 setRemarks(data.remarks || "");
-                setChangeReason("");
                 setLoadingPoint(data.loading_point || "");
                 setDeliveryPoint(data.delivery_point || "");
                 setVehicleNo(data.vehicle_no || "");
