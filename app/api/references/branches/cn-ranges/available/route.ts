@@ -1,12 +1,11 @@
 import { createClient } from '@/utils/supabase/server';
+import { getSessionUser } from '@/lib/auth/serverSession';
 import { NextResponse } from 'next/server';
 
 /** POST — list free vs used CN numbers inside a numeric block (live consignments only). */
 export async function POST(request: Request) {
     const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser();
 
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

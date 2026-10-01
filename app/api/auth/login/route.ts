@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
 
-import { withSessionCookieOptions } from '@/lib/auth/sessionCookie';
 import { AuthServiceFactory } from '@/lib/services/auth/AuthServiceFactory';
+import { APP_SESSION_COOKIE, appSessionCookieOptions, createAppSession } from '@/lib/auth/appSession';
 import { loginSchema } from '@/lib/schemas/user.schema';
+import { createAdminClient } from '@/utils/supabase/admin';
+import { clientIpFromHeaders } from '@/lib/utils/requestMeta';
 
 const authService = AuthServiceFactory.create();
 
@@ -24,11 +25,7 @@ export async function POST(request: NextRequest) {
         }
 
         const rememberMe = validation.data.remember_me !== false;
-        const forwardedFor = request.headers.get('x-forwarded-for');
-        const ipAddress =
-            (forwardedFor ? forwardedFor.split(',')[0]?.trim() : null)
-            || request.headers.get('x-real-ip')
-            || null;
+        const ipAddress = clientIpFromHeaders(request.headers);
         const userAgent = request.headers.get('user-agent');
         const result = await authService.login(validation.data, {
             ipAddress,
@@ -42,6 +39,20 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const { token, maxAgeSec } = await createAppSession({
+            userId: result.data.user.id,
+            rememberMe,
+            ipAddress,
+            userAgent,
+        });
+
+        // Password was verified via Supabase Auth; that session is not used by the app.
+        try {
+            await createAdminClient().auth.admin.signOut(result.data.session.access_token, 'local');
+        } catch (error) {
+            console.warn('Failed to discard Supabase auth session after login:', error);
+        }
+
         const response = NextResponse.json({
             success: true,
             data: {
@@ -51,41 +62,16 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        // Persist the session on this response so cookies survive the JSON reply.
-        // AuthService already authenticated; setSession writes the SSR cookie jar.
-        const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                cookies: {
-                    getAll() {
-                        return request.cookies.getAll();
-                    },
-                    setAll(cookiesToSet) {
-                        cookiesToSet.forEach(({ name, value, options }) => {
-                            response.cookies.set(
-                                name,
-                                value,
-                                withSessionCookieOptions(options, rememberMe),
-                            );
-                        });
-                    },
-                },
-            },
+        response.cookies.set(
+            APP_SESSION_COOKIE,
+            token,
+            appSessionCookieOptions(rememberMe ? maxAgeSec : undefined),
         );
 
-        const { error: sessionError } = await supabase.auth.setSession({
-            access_token: result.data.session.access_token,
-            refresh_token: result.data.session.refresh_token,
-        });
-
-        if (sessionError) {
-            console.error('Login session cookie write failed:', sessionError.message);
-            return NextResponse.json(
-                { success: false, error: 'Login succeeded but session could not be saved. Please try again.' },
-                { status: 500 },
-            );
-        }
+        // Drop leftover cookies from the previous Supabase-session login.
+        request.cookies.getAll()
+            .filter((cookie) => cookie.name.startsWith('sb-'))
+            .forEach((cookie) => response.cookies.set(cookie.name, '', { path: '/', maxAge: 0 }));
 
         return response;
     } catch (error) {

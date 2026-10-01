@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronRight, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { createClient } from '@/utils/supabase/client';
+import { fetchCurrentUser } from '@/lib/auth/clientAuth';
 import { CnAssigningPanel } from '@/components/features/documentation/CnAssigningPanel';
 import { toast } from 'sonner';
 
@@ -19,19 +19,11 @@ export default function CnAssigningPage() {
     useEffect(() => {
         const checkAdminAndLoad = async () => {
             try {
-                const supabase = createClient();
-                const { data: { user } } = await supabase.auth.getUser();
+                const auth = await fetchCurrentUser();
 
-                if (!user) {
-                    router.replace('/login');
-                    return;
-                }
+                if (auth.status === 'signed_out') return;
 
-                const { data: profile } = await supabase
-                    .from('users')
-                    .select('role')
-                    .eq('id', user.id)
-                    .single();
+                const profile = auth.status === 'signed_in' ? auth.user : null;
 
                 if (profile?.role !== 'admin') {
                     toast.error('Admin privileges required for CN Assigning');

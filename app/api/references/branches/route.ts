@@ -1,9 +1,10 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { hasFullBranchAccess } from '@/lib/branchAccess';
+import { getSessionUser } from '@/lib/auth/serverSession';
 
 async function requireFullAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const authUser = await getSessionUser();
     if (!authUser) {
         return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
     }

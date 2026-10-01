@@ -63,7 +63,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { PartyAutocomplete } from "@/components/PartyAutocomplete";
 import { AddPartyDialog } from "@/components/AddPartyDialog";
 import { Party } from "@/lib/types/party.types";
-import { createClient as createSupabaseClient } from "@/utils/supabase/client";
+import { fetchCurrentUser } from "@/lib/auth/clientAuth";
 import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
 
 interface PackageItem {
@@ -254,17 +254,10 @@ function NewConsignmentForm() {
         // Load logged-in user on mount
         const loadLoggedInUser = async () => {
             try {
-                const supabase = createSupabaseClient();
-                const { data: { user: authUser } } = await supabase.auth.getUser();
-                if (!authUser) return;
+                const auth = await fetchCurrentUser();
+                if (auth.status !== 'signed_in') return;
 
-                const { data: profile } = await supabase
-                    .from('users')
-                    .select('full_name')
-                    .eq('id', authUser.id)
-                    .single();
-
-                const name = profile?.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || '';
+                const name = auth.user.full_name || '';
                 if (name) {
                     setLoggedInUserName(name);
                     setDocPreparedBy(name);
@@ -474,19 +467,7 @@ function NewConsignmentForm() {
             if (!editId) return;
 
             try {
-                const supabase = createSupabaseClient();
-                const { data: { user: authUser } } = await supabase.auth.getUser();
-
-                if (!authUser) {
-                    router.replace('/login');
-                    return;
-                }
-
                 const response = await fetch(`/api/consignments/${editId}`);
-                if (response.status === 401) {
-                    router.replace('/login');
-                    return;
-                }
                 if (!response.ok) {
                     throw new Error('Failed to load consignment');
                 }

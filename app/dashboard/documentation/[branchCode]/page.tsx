@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { createClient } from '@/utils/supabase/client';
+import { fetchCurrentUser } from '@/lib/auth/clientAuth';
 import { hasFullBranchAccess } from '@/lib/branchAccess';
 import { toast } from 'sonner';
 
@@ -46,15 +46,10 @@ export default function BranchDocumentationPage() {
         const load = async () => {
             setLoading(true);
             try {
-                const supabase = createClient();
-                const { data: { user } } = await supabase.auth.getUser();
+                const auth = await fetchCurrentUser();
 
-                if (user) {
-                    const { data: profile } = await supabase
-                        .from('users')
-                        .select('role, branch_access')
-                        .eq('id', user.id)
-                        .single();
+                if (auth.status === 'signed_in') {
+                    const profile = auth.user;
                     setIsAdmin(profile?.role === 'admin');
                     setIsFullAccessAdmin(
                         profile?.role === 'admin' && hasFullBranchAccess(profile),
