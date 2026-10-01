@@ -76,8 +76,15 @@ export async function POST(request: NextRequest) {
         return response;
     } catch (error) {
         console.error('Login error:', error);
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        const missingTable = /app_sessions|relation .* does not exist/i.test(message);
         return NextResponse.json(
-            { success: false, error: 'Internal server error' },
+            {
+                success: false,
+                error: missingTable
+                    ? 'Session table is missing. Apply migration 20261001120000_app_sessions.sql, then try again.'
+                    : message,
+            },
             { status: 500 },
         );
     }

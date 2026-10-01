@@ -248,7 +248,23 @@ export async function requireAuthz(
         };
     }
 
-    const supabase = await createClient();
+    let supabase;
+    try {
+        supabase = await createClient();
+    } catch (error) {
+        console.error('requireAuthz createClient failed:', error);
+        return {
+            ok: false,
+            response: NextResponse.json(
+                {
+                    error: error instanceof Error
+                        ? error.message
+                        : 'Could not open a database session. Check SUPABASE_JWT_SECRET.',
+                },
+                { status: 503 },
+            ),
+        };
+    }
     const profile = { id: sessionLookup.session.userId, ...sessionLookup.session.profile };
 
     if (options.adminOnly && String(profile.role).toLowerCase() !== 'admin') {
