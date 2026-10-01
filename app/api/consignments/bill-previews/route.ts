@@ -27,7 +27,7 @@ export async function GET() {
 
     const { data: parties, error: partiesError } = await auth.supabase
         .from('parties')
-        .select('id, name, code, type, phone, gstin, address, branch_code')
+        .select('id, name, code, phone, gstin, address, branch_code')
         .in('id', partyIds);
 
     if (partiesError) {
