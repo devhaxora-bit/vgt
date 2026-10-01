@@ -1,7 +1,9 @@
-import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin';
 import { createAuthClient } from '@/utils/supabase/authClient';
-import type { LoginInput, LoginResponse, Result, UserWithAuth } from '../../types/user.types';
+import { lookupAppSession, revokeAppSession } from '@/lib/auth/appSession';
+import { getSessionUser } from '@/lib/auth/serverSession';
+import { normalizeIp, normalizeUserAgent } from '@/lib/utils/requestMeta';
+import type { LoginInput, LoginResponse, Result, User } from '../../types/user.types';
 import type { IUserRepository } from '../../repositories/UserRepository';
 
 export type LoginRequestMeta = {
@@ -9,25 +11,10 @@ export type LoginRequestMeta = {
     userAgent?: string | null;
 };
 
-const normalizeIp = (value: string | null | undefined): string | null => {
-    const trimmed = String(value || '').trim();
-    if (!trimmed) return null;
-    // Accept IPv4 or IPv6-ish values only; drop garbage to avoid inet cast failures.
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(trimmed)) return trimmed;
-    if (trimmed.includes(':') && /^[0-9a-fA-F:.]+$/.test(trimmed)) return trimmed;
-    return null;
-};
-
-const normalizeUserAgent = (value: string | null | undefined): string | null => {
-    const trimmed = String(value || '').trim();
-    if (!trimmed) return null;
-    return trimmed.slice(0, 500);
-};
-
 export interface IAuthService {
     login(credentials: LoginInput, meta?: LoginRequestMeta): Promise<Result<LoginResponse>>;
-    logout(): Promise<Result<void>>;
-    getCurrentUser(): Promise<Result<UserWithAuth | null>>;
+    logout(sessionToken: string | null): Promise<Result<void>>;
+    getCurrentUser(): Promise<Result<User | null>>;
 }
 
 export class AuthService implements IAuthService {
@@ -213,21 +200,23 @@ export class AuthService implements IAuthService {
         }
     }
 
-    async logout(): Promise<Result<void>> {
+    /** Revokes only this browser's session; other devices stay signed in. */
+    async logout(sessionToken: string | null): Promise<Result<void>> {
         try {
-            const supabase = await createClient();
-            const { data: { user } } = await supabase.auth.getUser();
+            if (!sessionToken) return { success: true, data: undefined };
 
-            if (user) {
-                // Update session record
-                await supabase
+            const lookup = await lookupAppSession(sessionToken);
+            await revokeAppSession(sessionToken);
+
+            if (lookup.status === 'valid') {
+                const { error } = await createAdminClient()
                     .from('user_sessions')
                     .update({ logout_at: new Date().toISOString() })
-                    .eq('user_id', user.id)
+                    .eq('user_id', lookup.session.userId)
                     .is('logout_at', null);
+                if (error) console.warn('Failed to close user_sessions row:', error.message);
             }
 
-            await supabase.auth.signOut();
             return { success: true, data: undefined };
         } catch (error) {
             return {
@@ -237,28 +226,15 @@ export class AuthService implements IAuthService {
         }
     }
 
-    async getCurrentUser(): Promise<Result<UserWithAuth | null>> {
+    async getCurrentUser(): Promise<Result<User | null>> {
         try {
-            const supabase = await createClient();
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-
-            if (!authUser) {
+            const sessionUser = await getSessionUser();
+            if (!sessionUser) {
                 return { success: true, data: null };
             }
 
-            const user = await this.userRepository.findById(authUser.id);
-
-            if (!user) {
-                return { success: true, data: null };
-            }
-
-            return {
-                success: true,
-                data: {
-                    ...user,
-                    email: authUser.email || '',
-                },
-            };
+            const user = await this.userRepository.findById(sessionUser.id);
+            return { success: true, data: user };
         } catch (error) {
             return {
                 success: false,

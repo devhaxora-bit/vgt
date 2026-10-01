@@ -27,7 +27,6 @@ import {
 import { compareCnNo } from '@/lib/sortLinkedConsignments';
 import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
 import { Button } from "@/components/ui/button";
-import { createClient as createSupabaseClient } from "@/utils/supabase/client";
 import { Input } from "@/components/ui/input";
 import {
     Table,
@@ -142,32 +141,15 @@ export default function ConsignmentsPage() {
     // Fetch active billing records on mount
     const fetchBillingRecords = async () => {
         try {
-            const supabase = createSupabaseClient();
-            const { data, error: err } = await supabase
-                .from('party_billing_records')
-                .select('*')
-                .eq('status', 'ACTIVE');
-            if (err || !data) return;
+            const res = await fetch('/api/consignments/bill-previews');
+            if (!res.ok) return;
+            const json = await res.json() as { records: BillRecordPreview[]; parties: BillPartyPreview[] };
 
-            setBillingRecords(data as BillRecordPreview[]);
-
-            const partyIds = Array.from(
-                new Set(data.map((record) => record.party_id).filter(Boolean))
-            ) as string[];
-
-            if (partyIds.length === 0) {
-                setPartiesById({});
-                return;
-            }
-
-            const { data: parties } = await supabase
-                .from('parties')
-                .select('id, name, code, type, phone, gstin, address, branch_code')
-                .in('id', partyIds);
+            setBillingRecords(json.records || []);
 
             const nextParties: Record<string, BillPartyPreview> = {};
-            (parties || []).forEach((party) => {
-                nextParties[party.id] = party as BillPartyPreview;
+            (json.parties || []).forEach((party) => {
+                nextParties[party.id] = party;
             });
             setPartiesById(nextParties);
         } catch (err) {

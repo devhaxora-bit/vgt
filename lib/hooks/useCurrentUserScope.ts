@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { hasFullBranchAccess, isBranchScopedAccess } from '@/lib/branchAccess';
+import { fetchCurrentUser } from '@/lib/auth/clientAuth';
 
 export type CurrentUserScope = {
     ready: boolean;
@@ -35,15 +36,14 @@ export function useCurrentUserScope(): CurrentUserScope {
 
         const load = async () => {
             try {
-                const res = await fetch('/api/auth/me');
-                const json = await res.json();
-                const user = json?.data;
+                const auth = await fetchCurrentUser();
                 if (cancelled) return;
 
-                if (!user) {
+                if (auth.status !== 'signed_in') {
                     setScope({ ...EMPTY, ready: true });
                     return;
                 }
+                const user = auth.user;
 
                 const branchCode = String(user.branch_code || '').trim().toUpperCase() || null;
                 const branchAccess = String(user.branch_access || 'global').toLowerCase();

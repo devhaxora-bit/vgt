@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
+import { fetchCurrentUser } from '@/lib/auth/clientAuth';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -31,21 +31,12 @@ export default function AdminLayout({
             setIsAuthorized(false);
 
             try {
-                const supabase = createClient();
-                const { data: { user: authUser } } = await supabase.auth.getUser();
+                const auth = await fetchCurrentUser();
 
-                if (!authUser) {
-                    router.replace('/login');
-                    return;
-                }
+                if (auth.status === 'signed_out') return;
 
-                const { data: userProfile, error } = await supabase
-                    .from('users')
-                    .select('role, branch_access')
-                    .eq('id', authUser.id)
-                    .single();
-
-                if (error || !userProfile) {
+                const userProfile = auth.status === 'signed_in' ? auth.user : null;
+                if (!userProfile) {
                     toast.error('Failed to verify permissions');
                     router.replace('/dashboard');
                     return;

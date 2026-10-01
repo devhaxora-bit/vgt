@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UserRepository } from '@/lib/repositories/UserRepository';
-import { createClient } from '@/utils/supabase/server';
+import { getSessionUser } from '@/lib/auth/serverSession';
 import { updateUserSchema } from '@/lib/schemas/user.schema';
 import { hasFullBranchAccess } from '@/lib/branchAccess';
 
 export async function GET() {
     try {
-        const supabase = await createClient();
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const authUser = await getSessionUser();
 
         if (!authUser) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -34,8 +33,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
     try {
-        const supabase = await createClient();
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const authUser = await getSessionUser();
 
         if (!authUser) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

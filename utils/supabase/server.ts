@@ -1,28 +1,29 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { withSessionCookieOptions } from '@/lib/auth/sessionCookie'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
+import { getServerSession } from '@/lib/auth/serverSession'
+import { mintSupabaseAccessToken } from '@/lib/auth/supabaseJwt'
+
+/**
+ * Request-scoped Supabase client acting as the signed-in user (RLS + auth.uid()).
+ * Identity comes from the app session cookie; without one this is an anon client.
+ */
 export async function createClient() {
-    const cookieStore = await cookies()
+    const session = await getServerSession()
+    const headers: Record<string, string> = {}
+    if (session.status === 'valid') {
+        headers.Authorization = `Bearer ${mintSupabaseAccessToken(session.session.userId)}`
+    }
 
-    return createServerClient(
+    return createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
-            cookies: {
-                getAll() {
-                    return cookieStore.getAll()
-                },
-                setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value, options }) => {
-                        try {
-                            cookieStore.set(name, value, withSessionCookieOptions(options, true))
-                        } catch {
-                            // Ignore errors from Server Components — middleware/proxy refreshes cookies.
-                        }
-                    })
-                },
+            global: { headers },
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false,
             },
-        }
+        },
     )
 }

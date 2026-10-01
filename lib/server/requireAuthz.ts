@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { createAdminClient } from '@/utils/supabase/admin';
+import { getServerSession } from '@/lib/auth/serverSession';
 import {
     canAccessAdminPath,
     canAccessMasterDataPath,
@@ -230,31 +230,26 @@ const normalizeBranch = (value: string | null | undefined): string | null => {
 export async function requireAuthz(
     options: RequireAuthzOptions = {},
 ): Promise<AuthzResult> {
-    const supabase = await createClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const sessionLookup = await getServerSession();
 
-    if (!authUser) {
+    if (sessionLookup.status === 'error') {
+        return {
+            ok: false,
+            response: NextResponse.json(
+                { error: 'Session service temporarily unavailable. Please retry.' },
+                { status: 503 },
+            ),
+        };
+    }
+    if (sessionLookup.status === 'invalid') {
         return {
             ok: false,
             response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
         };
     }
 
-    // Load profile with service role after JWT is verified.
-    // Avoids false "User profile not found" when users RLS self-select is missing.
-    const admin = createAdminClient();
-    const { data: profile, error } = await admin
-        .from('users')
-        .select('id, role, branch_access, branch_code, full_name, employee_code')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-    if (error || !profile) {
-        return {
-            ok: false,
-            response: NextResponse.json({ error: 'User profile not found' }, { status: 403 }),
-        };
-    }
+    const supabase = await createClient();
+    const profile = { id: sessionLookup.session.userId, ...sessionLookup.session.profile };
 
     if (options.adminOnly && String(profile.role).toLowerCase() !== 'admin') {
         return {

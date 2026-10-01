@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
+import { fetchCurrentUser } from '@/lib/auth/clientAuth';
 import {
     LogOut,
     LayoutDashboard,
@@ -67,44 +68,12 @@ export default function DashboardNav() {
 
         // Fetch user
         const fetchUser = async () => {
-            const supabase = createClient();
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (authUser) {
-                const { data: profile } = await supabase
-                    .from('users')
-                    .select('full_name, employee_code, role, branch_access, branch_code')
-                    .eq('id', authUser.id)
-                    .single();
-
-                if (profile) {
-                    let branchName: string | null = null;
-                    const branchCode = String(profile.branch_code || '').trim().toUpperCase() || null;
-                    if (branchCode) {
-                        const { data: branch } = await supabase
-                            .from('branches')
-                            .select('name')
-                            .ilike('code', branchCode)
-                            .maybeSingle();
-                        branchName = branch?.name || null;
-                    }
-
-                    setUser({
-                        ...profile,
-                        branch_code: branchCode,
-                        branch_name: branchName,
-                    });
-                } else {
-                    // Fallback to auth data if profile is missing
-                    setUser({
-                        full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Unknown User',
-                        employee_code: 'UNC-000',
-                        role: 'admin', // Default to admin so they can fix their profile
-                        branch_access: 'global',
-                        branch_code: null,
-                        branch_name: null,
-                    });
-                }
-            }
+            const auth = await fetchCurrentUser();
+            if (auth.status !== 'signed_in') return;
+            setUser({
+                ...auth.user,
+                branch_code: String(auth.user.branch_code || '').trim().toUpperCase() || null,
+            });
         };
 
         fetchUser();
@@ -117,14 +86,6 @@ export default function DashboardNav() {
             await fetch('/api/auth/logout', { method: 'POST' });
         } catch (err) {
             console.error('Logout API failed:', err);
-        }
-
-        // Belt-and-suspenders: clear any remaining client session storage.
-        try {
-            const supabase = createClient();
-            await supabase.auth.signOut();
-        } catch {
-            // Ignore — server logout already ran.
         }
 
         router.replace('/login');
@@ -300,12 +261,28 @@ export default function DashboardNav() {
             {/* Main Navigation Bar */}
             <div className="flex items-center justify-between px-4 md:px-6 h-14 md:h-16 w-full max-w-[1920px] mx-auto">
                 {/* Logo Area */}
-                <Link href="/dashboard" className="flex items-center gap-2 md:gap-3">
-                    <div className="h-8 w-8 md:h-9 md:w-9 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
-                        <Truck className="h-4 w-4 md:h-5 md:w-5 text-primary-foreground" />
-                    </div>
-                    <span className="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
-                        VGT
+                <Link
+                    href="/dashboard"
+                    className="flex items-center gap-2 md:gap-3 min-w-0"
+                    aria-label="Visakha Golden Transport dashboard"
+                >
+                    <span className="relative h-9 w-[72px] md:h-10 md:w-[88px] shrink-0">
+                        <Image
+                            src="/images/vgt-logo-navy-transparent.png"
+                            alt="Visakha Golden Transport"
+                            fill
+                            sizes="88px"
+                            className="object-contain object-left"
+                            priority
+                        />
+                    </span>
+                    <span className="hidden sm:flex flex-col leading-tight min-w-0">
+                        <span className="text-sm md:text-base font-bold text-foreground tracking-tight truncate">
+                            Visakha Golden Transport
+                        </span>
+                        <span className="text-[10px] md:text-xs text-muted-foreground font-medium">
+                            Transport Management
+                        </span>
                     </span>
                 </Link>
 
@@ -359,11 +336,19 @@ export default function DashboardNav() {
                         </SheetTrigger>
                         <SheetContent side="left" className="w-[300px] sm:w-[350px] p-0">
                             <SheetHeader className="p-4 border-b">
-                                <SheetTitle className="flex items-center gap-2">
-                                    <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
-                                        <Truck className="h-4 w-4 text-primary-foreground" />
-                                    </div>
-                                    VGT Menu
+                                <SheetTitle className="flex items-center gap-2.5 text-left">
+                                    <span className="relative h-9 w-[72px] shrink-0">
+                                        <Image
+                                            src="/images/vgt-logo-navy-transparent.png"
+                                            alt="Visakha Golden Transport"
+                                            fill
+                                            sizes="72px"
+                                            className="object-contain object-left"
+                                        />
+                                    </span>
+                                    <span className="text-sm font-semibold leading-tight">
+                                        Visakha Golden Transport
+                                    </span>
                                 </SheetTitle>
                             </SheetHeader>
                             <div className="flex flex-col h-[calc(100vh-80px)] overflow-y-auto">
@@ -440,7 +425,7 @@ export default function DashboardNav() {
                     <div className="flex items-center gap-4 md:gap-6">
                         <div className="flex items-center gap-2 text-primary">
                             <LayoutDashboard className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">Welcome to VGT</span>
+                            <span className="hidden sm:inline">Welcome to Visakha Golden Transport</span>
                         </div>
                         <div className="hidden sm:flex items-center gap-2">
                             <Users className="h-3.5 w-3.5" />

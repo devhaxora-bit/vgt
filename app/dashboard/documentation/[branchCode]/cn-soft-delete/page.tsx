@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronRight, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { createClient } from '@/utils/supabase/client';
+import { fetchCurrentUser } from '@/lib/auth/clientAuth';
 import { hasFullBranchAccess } from '@/lib/branchAccess';
 import { CnSoftDeletePanel } from '@/components/features/documentation/CnSoftDeletePanel';
 import { toast } from 'sonner';
@@ -20,19 +20,11 @@ export default function CnSoftDeletePage() {
     useEffect(() => {
         const checkAccess = async () => {
             try {
-                const supabase = createClient();
-                const { data: { user } } = await supabase.auth.getUser();
+                const auth = await fetchCurrentUser();
 
-                if (!user) {
-                    router.replace('/login');
-                    return;
-                }
+                if (auth.status === 'signed_out') return;
 
-                const { data: profile } = await supabase
-                    .from('users')
-                    .select('role, branch_access')
-                    .eq('id', user.id)
-                    .single();
+                const profile = auth.status === 'signed_in' ? auth.user : null;
 
                 const isAdmin = profile?.role === 'admin';
                 const isFullAccess = hasFullBranchAccess(profile);

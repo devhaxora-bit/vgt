@@ -44,7 +44,7 @@ export function SiteFooter() {
         </div>
 
         <Separator className="my-8 bg-white/12" />
-        <div className="flex flex-col gap-2 text-xs text-white/38 sm:flex-row sm:justify-between"><p>© {new Date().getFullYear()} Visakha Golden Transport.</p><p>Road transport across India.</p></div>
+        <div className="flex flex-col gap-2 text-xs text-white/38 sm:flex-row sm:justify-between"><p>© {new Date().getFullYear()} Visakha Golden Transport</p><p>Road transport across India.</p></div>
       </div>
     </footer>
   );

@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
+import { getSessionUser } from '@/lib/auth/serverSession';
 import { NextResponse } from 'next/server';
 
 const parseRangeValue = (value: unknown) => {
@@ -16,9 +17,7 @@ const isMissingCnManagementSchema = (error: { code?: string; message?: string } 
 
 export async function POST(request: Request) {
     const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser();
 
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -54,9 +53,7 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
     const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser();
 
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -92,9 +89,7 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
     const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser();
 
     if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
+import { getSessionUser } from '@/lib/auth/serverSession';
 import { NextResponse } from 'next/server';
 
 const LOW_CN_THRESHOLD = 5;
@@ -27,9 +28,7 @@ const isMissingSchemaColumn = (error: { code?: string; message?: string } | null
 };
 
 async function requireAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser();
 
     if (!user) {
         return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
