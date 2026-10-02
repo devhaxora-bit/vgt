@@ -32,13 +32,11 @@ export default function PartyQueryPage() {
         <QueryPageShell
             icon={<Building2 className="h-6 w-6" />}
             accentClass="bg-sky-500/10 text-sky-600"
-            title="Party Query"
-            description="Search a party by name, code, or GSTIN to review bills, payments, dues, consignments, and related challans."
+            title="Party"
             fullWidth
         >
             <QueryWorkbench
-                placeholder="Enter party name, code, or GSTIN…"
-                helperText="All rows stay on screen. Search a party to fill the placeholders."
+                placeholder="Party name, code, or GSTIN…"
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
                 keepLayout

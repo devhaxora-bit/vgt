@@ -32,13 +32,11 @@ export default function ChallanQueryPage() {
         <QueryPageShell
             icon={<ClipboardList className="h-6 w-6" />}
             accentClass="bg-violet-500/10 text-violet-600"
-            title="Challan Query"
-            description="Search a lorry challan number to view its vehicle, broker and linked consignments."
+            title="Challan"
             fullWidth
         >
             <QueryWorkbench
-                placeholder="Enter challan number or vehicle no…"
-                helperText="All rows stay on screen. Search a challan to fill the placeholders."
+                placeholder="Challan or vehicle no…"
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
                 keepLayout

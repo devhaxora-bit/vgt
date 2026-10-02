@@ -152,24 +152,35 @@ export async function GET(request: NextRequest) {
 
     const exportLimit = format === 'csv' ? Math.min(Math.max(limit, 1), 5000) : Math.min(limit, 200);
 
-    let query = auth.supabase
-        .from('ledger_audit_logs')
-        .select('id, occurred_at, txid, actor_id, entity_type, entity_id, entity_ref, action, old_party_id, new_party_id, old_broker_id, new_broker_id, changed_fields, old_data, new_data, reason, movement_summary')
-        .order('occurred_at', { ascending: false })
-        .limit(exportLimit);
+    const baseSelect =
+        'id, occurred_at, txid, actor_id, entity_type, entity_id, entity_ref, action, old_party_id, new_party_id, old_broker_id, new_broker_id, changed_fields, old_data, new_data';
+    const fullSelect = `${baseSelect}, reason, movement_summary`;
 
-    if (entity_type) query = query.eq('entity_type', entity_type);
-    if (action) query = query.eq('action', action);
-    if (entity_id) query = query.eq('entity_id', entity_id);
-    if (entity_ref) query = query.eq('entity_ref', entity_ref);
-    if (q) query = query.ilike('entity_ref', `%${q}%`);
-    if (txid) query = query.eq('txid', txid);
-    if (party_id) query = query.or(`old_party_id.eq.${party_id},new_party_id.eq.${party_id}`);
-    if (broker_id) query = query.or(`old_broker_id.eq.${broker_id},new_broker_id.eq.${broker_id}`);
-    if (from) query = query.gte('occurred_at', toStartIso(from));
-    if (to) query = query.lte('occurred_at', toInclusiveEndIso(to));
+    const buildQuery = (selectCols: string) => {
+        let query = auth.supabase
+            .from('ledger_audit_logs')
+            .select(selectCols)
+            .order('occurred_at', { ascending: false })
+            .limit(exportLimit);
 
-    const { data, error } = await query;
+        if (entity_type) query = query.eq('entity_type', entity_type);
+        if (action) query = query.eq('action', action);
+        if (entity_id) query = query.eq('entity_id', entity_id);
+        if (entity_ref) query = query.eq('entity_ref', entity_ref);
+        if (q) query = query.ilike('entity_ref', `%${q}%`);
+        if (txid) query = query.eq('txid', txid);
+        if (party_id) query = query.or(`old_party_id.eq.${party_id},new_party_id.eq.${party_id}`);
+        if (broker_id) query = query.or(`old_broker_id.eq.${broker_id},new_broker_id.eq.${broker_id}`);
+        if (from) query = query.gte('occurred_at', toStartIso(from));
+        if (to) query = query.lte('occurred_at', toInclusiveEndIso(to));
+        return query;
+    };
+
+    // Prefer reason/movement columns; fall back if migration 20260926170000 not applied yet.
+    let { data, error } = await buildQuery(fullSelect);
+    if (error && /reason|movement_summary/i.test(error.message)) {
+        ({ data, error } = await buildQuery(baseSelect));
+    }
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -225,8 +236,8 @@ export async function GET(request: NextRequest) {
             changed_fields: Array.isArray(row.changed_fields) ? row.changed_fields : [],
             old_data: asRecord(row.old_data),
             new_data: asRecord(row.new_data),
-            reason: row.reason ?? null,
-            movement_summary: row.movement_summary ?? null,
+            reason: (row as { reason?: string | null }).reason ?? null,
+            movement_summary: (row as { movement_summary?: string | null }).movement_summary ?? null,
         };
     });
 

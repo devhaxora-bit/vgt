@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Search, Loader2, ArrowRight, AlertCircle, CornerDownLeft } from 'lucide-react';
+import { Search, Loader2, ArrowRight, AlertCircle } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,17 @@ interface QueryWorkbenchProps<TDetail> {
     emptyHint?: React.ReactNode;
     /** Keep emptyHint / previous layout visible while a record is loading. */
     keepLayout?: boolean;
+    /**
+     * Put a short search box inside the result layout (e.g. CN No cell).
+     * When set, the large top search bar is hidden.
+     */
+    renderEmbedded?: (args: {
+        search: React.ReactNode;
+        detail: TDetail | null;
+        reset: () => void;
+        loading: boolean;
+        error: string | null;
+    }) => React.ReactNode;
 }
 
 export function QueryWorkbench<TDetail>({
@@ -32,6 +43,7 @@ export function QueryWorkbench<TDetail>({
     buildFreeSuggestion,
     emptyHint,
     keepLayout = false,
+    renderEmbedded,
 }: QueryWorkbenchProps<TDetail>) {
     const [term, setTerm] = React.useState('');
     const debouncedTerm = useDebounce(term, 250);
@@ -46,6 +58,7 @@ export function QueryWorkbench<TDetail>({
 
     const inputRef = React.useRef<HTMLInputElement>(null);
     const requestId = React.useRef(0);
+    const embedded = Boolean(renderEmbedded);
 
     React.useEffect(() => {
         let cancelled = false;
@@ -79,7 +92,7 @@ export function QueryWorkbench<TDetail>({
             setTerm(suggestion.primary);
             setError(null);
             setLoadingDetail(true);
-            setDetail(null);
+            if (!keepLayout && !embedded) setDetail(null);
             const currentRequest = ++requestId.current;
             try {
                 const result = await loadDetail(suggestion);
@@ -87,12 +100,13 @@ export function QueryWorkbench<TDetail>({
             } catch (err) {
                 if (requestId.current === currentRequest) {
                     setError(err instanceof Error ? err.message : 'Could not load this record.');
+                    if (embedded || keepLayout) setDetail(null);
                 }
             } finally {
                 if (requestId.current === currentRequest) setLoadingDetail(false);
             }
         },
-        [loadDetail],
+        [loadDetail, keepLayout, embedded],
     );
 
     const reset = React.useCallback(() => {
@@ -104,6 +118,14 @@ export function QueryWorkbench<TDetail>({
         requestAnimationFrame(() => inputRef.current?.focus());
     }, []);
 
+    const submitCurrent = () => {
+        if (activeIndex >= 0 && suggestions[activeIndex]) {
+            void handleSelect(suggestions[activeIndex]);
+        } else if (allowFreeSubmit && buildFreeSuggestion && term.trim()) {
+            void handleSelect(buildFreeSuggestion(term.trim()));
+        }
+    };
+
     const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'ArrowDown') {
             event.preventDefault();
@@ -114,11 +136,7 @@ export function QueryWorkbench<TDetail>({
             setActiveIndex((prev) => Math.max(prev - 1, 0));
         } else if (event.key === 'Enter') {
             event.preventDefault();
-            if (activeIndex >= 0 && suggestions[activeIndex]) {
-                void handleSelect(suggestions[activeIndex]);
-            } else if (allowFreeSubmit && buildFreeSuggestion && term.trim()) {
-                void handleSelect(buildFreeSuggestion(term.trim()));
-            }
+            submitCurrent();
         } else if (event.key === 'Escape') {
             setOpen(false);
         }
@@ -126,143 +144,156 @@ export function QueryWorkbench<TDetail>({
 
     const showDropdown = open && term.trim().length > 0;
 
-    const compact = Boolean(detail) || loadingDetail;
-
-    return (
-        <div className={cn('space-y-4', compact && 'space-y-3')}>
-            <div className={cn('relative', compact && 'max-w-xl')}>
-                <div className="relative flex items-center">
-                    <Search
-                        className={cn(
-                            'pointer-events-none absolute text-muted-foreground',
-                            compact ? 'left-3 h-4 w-4' : 'left-4 h-5 w-5',
-                        )}
-                    />
-                    <Input
-                        ref={inputRef}
-                        value={term}
-                        onChange={(e) => {
-                            setTerm(e.target.value);
-                            setOpen(true);
-                        }}
-                        onFocus={() => setOpen(true)}
-                        onBlur={() => window.setTimeout(() => setOpen(false), 150)}
-                        onKeyDown={handleKeyDown}
-                        placeholder={placeholder}
-                        className={cn(
-                            'border-2 font-medium shadow-sm focus-visible:ring-2',
-                            compact
-                                ? 'h-10 rounded-lg pl-9 pr-28 text-sm'
-                                : 'h-14 rounded-xl pl-12 pr-32 text-base',
-                        )}
-                        autoComplete="off"
-                        spellCheck={false}
-                    />
-                    <div className="absolute right-2 flex items-center gap-2">
-                        {loadingSuggestions ? (
-                            <Loader2 className="mr-1 h-4 w-4 animate-spin text-muted-foreground" />
-                        ) : null}
+    const searchControl = (
+        <div className={cn('relative', embedded ? 'w-[168px] min-w-[140px]' : 'w-full max-w-md')}>
+            <div className="relative flex items-center">
+                <Search className={cn('pointer-events-none absolute left-2 text-muted-foreground', embedded ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+                <Input
+                    ref={inputRef}
+                    value={term}
+                    onChange={(e) => {
+                        setTerm(e.target.value);
+                        setOpen(true);
+                    }}
+                    onFocus={() => setOpen(true)}
+                    onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={placeholder}
+                    className={cn(
+                        'border font-medium shadow-none focus-visible:ring-1',
+                        embedded
+                            ? 'h-7 rounded pl-6 pr-8 text-[11px]'
+                            : 'h-8 rounded-md pl-8 pr-20 text-sm',
+                    )}
+                    autoComplete="off"
+                    spellCheck={false}
+                />
+                <div className="absolute right-1 flex items-center gap-0.5">
+                    {loadingSuggestions ? (
+                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    ) : null}
+                    {embedded ? (
                         <Button
                             type="button"
-                            size={compact ? 'sm' : 'default'}
-                            className={cn('gap-1.5', compact ? 'h-7 rounded-md' : 'h-10 rounded-lg')}
+                            size="sm"
+                            variant="ghost"
+                            className="h-5 w-5 rounded p-0"
                             disabled={!term.trim()}
-                            onClick={() => {
-                                if (activeIndex >= 0 && suggestions[activeIndex]) {
-                                    void handleSelect(suggestions[activeIndex]);
-                                } else if (allowFreeSubmit && buildFreeSuggestion && term.trim()) {
-                                    void handleSelect(buildFreeSuggestion(term.trim()));
-                                }
-                            }}
+                            onClick={submitCurrent}
+                            aria-label="Search"
                         >
-                            Search <ArrowRight className="h-4 w-4" />
+                            <ArrowRight className="h-3 w-3" />
                         </Button>
-                    </div>
+                    ) : (
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="h-6 gap-1 rounded px-2 text-[11px]"
+                            disabled={!term.trim()}
+                            onClick={submitCurrent}
+                        >
+                            Go <ArrowRight className="h-3 w-3" />
+                        </Button>
+                    )}
                 </div>
+            </div>
 
-                {showDropdown ? (
-                    <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-xl border bg-popover shadow-xl">
-                        {loadingSuggestions && suggestions.length === 0 ? (
-                            <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin" /> Searching…
-                            </div>
-                        ) : suggestions.length === 0 ? (
-                            <div className="px-4 py-3 text-sm text-muted-foreground">
-                                {allowFreeSubmit ? (
-                                    <span className="flex items-center gap-2">
-                                        No saved match. Press
-                                        <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] font-bold">Enter</kbd>
-                                        to search “{term.trim()}”.
-                                    </span>
-                                ) : (
-                                    'No matching records found.'
-                                )}
-                            </div>
-                        ) : (
-                            <ul className="max-h-80 overflow-y-auto py-1">
-                                {suggestions.map((suggestion, index) => (
-                                    <li key={`${suggestion.value}-${index}`}>
-                                        <button
-                                            type="button"
-                                            onMouseDown={(e) => e.preventDefault()}
-                                            onClick={() => void handleSelect(suggestion)}
-                                            onMouseEnter={() => setActiveIndex(index)}
-                                            className={cn(
-                                                'flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors',
-                                                index === activeIndex ? 'bg-accent' : 'hover:bg-accent/60',
-                                            )}
-                                        >
-                                            <span className="flex min-w-0 flex-col">
-                                                <span className="truncate text-sm font-semibold text-foreground">
-                                                    {suggestion.primary}
-                                                </span>
-                                                {suggestion.secondary ? (
-                                                    <span className="truncate text-xs text-muted-foreground">
-                                                        {suggestion.secondary}
-                                                    </span>
-                                                ) : null}
+            {showDropdown ? (
+                <div className="absolute z-30 mt-1 w-[min(280px,70vw)] overflow-hidden rounded-md border bg-popover shadow-lg">
+                    {loadingSuggestions && suggestions.length === 0 ? (
+                        <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…
+                        </div>
+                    ) : suggestions.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                            {allowFreeSubmit ? `No match — press Enter for “${term.trim()}”.` : 'No matching records.'}
+                        </div>
+                    ) : (
+                        <ul className="max-h-64 overflow-y-auto py-0.5">
+                            {suggestions.map((suggestion, index) => (
+                                <li key={`${suggestion.value}-${index}`}>
+                                    <button
+                                        type="button"
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => void handleSelect(suggestion)}
+                                        onMouseEnter={() => setActiveIndex(index)}
+                                        className={cn(
+                                            'flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left transition-colors',
+                                            index === activeIndex ? 'bg-accent' : 'hover:bg-accent/60',
+                                        )}
+                                    >
+                                        <span className="flex min-w-0 flex-col">
+                                            <span className="truncate text-xs font-semibold text-foreground">
+                                                {suggestion.primary}
                                             </span>
-                                            {suggestion.trailing ? (
-                                                <span className="flex-shrink-0 font-mono text-xs font-semibold text-muted-foreground">
-                                                    {suggestion.trailing}
+                                            {suggestion.secondary ? (
+                                                <span className="truncate text-[10px] text-muted-foreground">
+                                                    {suggestion.secondary}
                                                 </span>
                                             ) : null}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
+                                        </span>
+                                        {suggestion.trailing ? (
+                                            <span className="flex-shrink-0 font-mono text-[10px] font-semibold text-muted-foreground">
+                                                {suggestion.trailing}
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            ) : null}
+        </div>
+    );
+
+    const errorBlock = error ? (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+            <span>{error}</span>
+        </div>
+    ) : null;
+
+    const loadingBlock = loadingDetail ? (
+        <div className="flex items-center gap-2 rounded-md border border-dashed px-2 py-1.5 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Filling values…
+        </div>
+    ) : null;
+
+    if (renderEmbedded) {
+        return (
+            <div className="space-y-2">
+                {errorBlock}
+                {loadingBlock}
+                {renderEmbedded({
+                    search: searchControl,
+                    detail,
+                    reset,
+                    loading: loadingDetail,
+                    error,
+                })}
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+                {searchControl}
+                {helperText && !detail && !loadingDetail && !error ? (
+                    <p className="text-[11px] text-muted-foreground">{helperText}</p>
                 ) : null}
             </div>
 
-            {helperText && !detail && !loadingDetail && !error ? (
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <CornerDownLeft className="h-3.5 w-3.5" /> {helperText}
-                </p>
-            ) : null}
-
-            {error ? (
-                <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-4 text-sm text-destructive">
-                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                    <div>
-                        <p className="font-semibold">Nothing to show</p>
-                        <p className="text-destructive/80">{error}</p>
-                    </div>
-                </div>
-            ) : null}
+            {errorBlock}
 
             {loadingDetail && !keepLayout ? (
-                <div className="flex items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-sm text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" /> Loading details…
+                <div className="flex items-center justify-center gap-2 rounded-md border border-dashed py-10 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading details…
                 </div>
             ) : null}
 
-            {loadingDetail && keepLayout ? (
-                <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Filling table values…
-                </div>
-            ) : null}
+            {loadingDetail && keepLayout ? loadingBlock : null}
 
             {detail ? (
                 renderResult(detail, { reset })

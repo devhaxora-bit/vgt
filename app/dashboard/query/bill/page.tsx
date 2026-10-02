@@ -32,13 +32,11 @@ export default function BillQueryPage() {
         <QueryPageShell
             icon={<ReceiptText className="h-6 w-6" />}
             accentClass="bg-emerald-500/10 text-emerald-600"
-            title="Bill Query"
-            description="Search a freight bill by reference number or party to review every billed line item."
+            title="Bill"
             fullWidth
         >
             <QueryWorkbench
-                placeholder="Enter bill number or party name…"
-                helperText="All rows stay on screen. Search a bill to fill the placeholders."
+                placeholder="Bill number or party…"
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
                 keepLayout

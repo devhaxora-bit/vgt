@@ -32,18 +32,18 @@ export default function CnsQueryPage() {
         <QueryPageShell
             icon={<FileText className="h-6 w-6" />}
             accentClass="bg-blue-500/10 text-blue-600"
-            title="CNS Query"
-            description="Search a consignment note number to view its complete tracking details."
+            title="CNS"
             fullWidth
         >
             <QueryWorkbench
-                placeholder="Enter CNS number…"
-                helperText="All rows stay on screen. Search a CN number to fill the placeholders."
+                placeholder="CN number…"
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
                 keepLayout
-                emptyHint={<CnsResultSheet detail={null} reset={() => undefined} />}
                 renderResult={(detail, { reset }) => <CnsResultSheet detail={detail} reset={reset} />}
+                renderEmbedded={({ search, detail, reset }) => (
+                    <CnsResultSheet detail={detail} reset={reset} searchSlot={search} />
+                )}
             />
         </QueryPageShell>
     );
