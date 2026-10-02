@@ -1,6 +1,6 @@
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function QueryPageShell({
@@ -13,7 +13,7 @@ export function QueryPageShell({
 }: {
     icon: React.ReactNode;
     title: string;
-    description: string;
+    description?: string;
     accentClass?: string;
     /** Dense tracking layouts use the full dashboard width. */
     fullWidth?: boolean;
@@ -24,25 +24,25 @@ export function QueryPageShell({
             className={cn(
                 'mx-auto w-full',
                 fullWidth
-                    ? 'max-w-[1920px] px-3 py-4 md:px-5 md:py-5'
-                    : 'max-w-6xl px-4 py-6 md:px-6 md:py-8',
+                    ? 'max-w-[1920px] px-3 py-2 md:px-4 md:py-3'
+                    : 'max-w-6xl px-4 py-3 md:px-6 md:py-4',
             )}
         >
-            <Link
-                href="/dashboard/query"
-                className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-                <ArrowLeft className="h-4 w-4" /> All queries
-            </Link>
-
-            <div className="mb-4 flex items-start gap-3">
-                <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg', accentClass)}>
+            <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Link
+                    href="/dashboard/query"
+                    className="text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                    Query
+                </Link>
+                <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
+                <div className={cn('flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md [&>svg]:h-3.5 [&>svg]:w-3.5', accentClass)}>
                     {icon}
                 </div>
-                <div>
-                    <h1 className="text-xl font-black tracking-tight text-foreground md:text-2xl">{title}</h1>
-                    <p className="text-sm text-muted-foreground">{description}</p>
-                </div>
+                <h1 className="text-sm font-bold tracking-tight text-foreground">{title}</h1>
+                {description ? (
+                    <span className="hidden text-[11px] text-muted-foreground sm:inline">· {description}</span>
+                ) : null}
             </div>
 
             {children}

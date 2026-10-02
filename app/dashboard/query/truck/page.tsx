@@ -31,13 +31,11 @@ export default function TruckQueryPage() {
         <QueryPageShell
             icon={<Truck className="h-6 w-6" />}
             accentClass="bg-amber-500/10 text-amber-600"
-            title="Truck Query"
-            description="Enter a vehicle number to view its master record and full movement history."
+            title="Truck"
             fullWidth
         >
             <QueryWorkbench
-                placeholder="Enter truck / vehicle number…"
-                helperText="All rows stay on screen. Search a vehicle to fill the placeholders."
+                placeholder="Vehicle number…"
                 searchSuggestions={searchSuggestions}
                 loadDetail={loadDetail}
                 allowFreeSubmit

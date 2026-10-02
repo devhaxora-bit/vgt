@@ -131,7 +131,16 @@ function PlaceholderCell({ children }: { children: React.ReactNode }) {
     return <span className={cn(isPlaceholder && 'text-muted-foreground/70')}>{isPlaceholder ? PLACEHOLDER : children}</span>;
 }
 
-export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail | null; reset: () => void }) {
+export function CnsResultSheet({
+    detail,
+    reset,
+    searchSlot,
+}: {
+    detail: QueryCnsDetail | null;
+    reset: () => void;
+    /** Compact CN search box rendered inside the summary table. */
+    searchSlot?: React.ReactNode;
+}) {
     const [printOpen, setPrintOpen] = React.useState(false);
     const [billOpen, setBillOpen] = React.useState(false);
     const [billDetail, setBillDetail] = React.useState<{
@@ -264,40 +273,7 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail | nul
     ];
 
     return (
-        <div className="animate-slideUp space-y-3">
-            {hasRecord ? (
-                <div className="flex flex-col gap-2 rounded-md border bg-card px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-lg font-black text-primary">{str(get(c, 'cn_no'))}</span>
-                        <Badge variant={cancelled ? 'destructive' : 'default'}>
-                            {cancelled ? 'Cancelled' : 'Active'}
-                        </Badge>
-                        {freightPending && <Badge variant="secondary">Freight Pending</Badge>}
-                        {detail?.parent_cn_no && (
-                            <Badge variant="outline" className="font-mono">
-                                Included in {detail.parent_cn_no}
-                            </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                            Booked {fmtDate(get(c, 'bkg_date') as string)} · {upper(get(c, 'booking_branch')) || PLACEHOLDER} → {upper(get(c, 'dest_branch')) || PLACEHOLDER}
-                        </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={reset}>
-                            <RotateCcw className="mr-1 h-3.5 w-3.5" /> New search
-                        </Button>
-                        {realBills[0] && (
-                            <Button type="button" variant="outline" size="sm" onClick={() => void handleOpenBill(realBills[0])}>
-                                <Download className="mr-1 h-3.5 w-3.5" /> Bill
-                            </Button>
-                        )}
-                        <Button type="button" variant="outline" size="sm" onClick={() => setPrintOpen(true)}>
-                            <FileText className="mr-1 h-3.5 w-3.5" /> CN Copy
-                        </Button>
-                    </div>
-                </div>
-            ) : null}
-
+            <div className="animate-slideUp space-y-3">
             {ewayExpired && (
                 <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs font-semibold text-destructive">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -308,12 +284,39 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail | nul
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
                 <div className="min-w-0 space-y-3">
                     {/* Summary table */}
-                    <TrackPanel title="Consignment Summary">
+                    <TrackPanel
+                        title="Consignment Summary"
+                        right={
+                            hasRecord ? (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <Badge variant={cancelled ? 'destructive' : 'secondary'} className="h-5 px-1.5 text-[10px] normal-case">
+                                        {cancelled ? 'Cancelled' : 'Active'}
+                                    </Badge>
+                                    {freightPending ? (
+                                        <Badge variant="outline" className="h-5 px-1.5 text-[10px] normal-case">
+                                            Freight Pending
+                                        </Badge>
+                                    ) : null}
+                                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={reset}>
+                                        <RotateCcw className="mr-1 h-3 w-3" /> Clear
+                                    </Button>
+                                    {realBills[0] && (
+                                        <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => void handleOpenBill(realBills[0])}>
+                                            <Download className="mr-1 h-3 w-3" /> Bill
+                                        </Button>
+                                    )}
+                                    <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setPrintOpen(true)}>
+                                        <FileText className="mr-1 h-3 w-3" /> CN Copy
+                                    </Button>
+                                </div>
+                            ) : null
+                        }
+                    >
                         <div className="overflow-x-auto">
-                            <table className="vgt-register-table w-full min-w-[900px] border-collapse text-xs">
+                            <table className="vgt-register-table w-full min-w-[980px] border-collapse text-xs">
                                 <thead>
                                     <tr>
-                                        {['Booking Dt', 'Dstn', 'Pkgs', 'Act Wt', 'Chrg Wt', 'Basis', 'Bill Stn', 'Delivery Type', 'Load Type', 'Goods Value', 'Goods Desc', 'Vehicle'].map((h) => (
+                                        {['CN No', 'Booking Dt', 'Dstn', 'Pkgs', 'Act Wt', 'Chrg Wt', 'Basis', 'Bill Stn', 'Delivery Type', 'Load Type', 'Goods Value', 'Goods Desc', 'Vehicle'].map((h) => (
                                             <th key={h} className="px-2 py-1 text-left text-[10px] font-bold uppercase tracking-wide whitespace-nowrap">
                                                 {h}
                                             </th>
@@ -322,6 +325,13 @@ export function CnsResultSheet({ detail, reset }: { detail: QueryCnsDetail | nul
                                 </thead>
                                 <tbody>
                                     <tr>
+                                        <td className="border-b px-2 py-1.5 align-middle">
+                                            {searchSlot ?? (
+                                                <span className="font-mono font-bold text-primary">
+                                                    {str(get(c, 'cn_no')) || PLACEHOLDER}
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="border-b px-2 py-1.5 whitespace-nowrap">{fmtDate(get(c, 'bkg_date') as string)}</td>
                                         <td className="border-b px-2 py-1.5 font-semibold">{upper(get(c, 'delivery_point') || get(c, 'dest_branch')) || PLACEHOLDER}</td>
                                         <td className="border-b px-2 py-1.5 font-mono">{cell(get(c, 'no_of_pkg') as number | null)}</td>
