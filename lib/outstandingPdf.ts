@@ -34,18 +34,28 @@ const fmtDate = (dateStr: string | null) => {
     return `${d}/${m}/${y}`;
 };
 
-const describeFilters = (filters: OutstandingPdfFilters) => {
+const describeFilters = (filters: OutstandingPdfFilters, options?: { omitSearch?: boolean }) => {
     const parts: string[] = [];
     if (filters.branch) {
         parts.push(`Branch: ${formatBranchLabel(filters.branch, filters.branchName)}`);
     }
     if (filters.status) parts.push(`Status: ${filters.status}`);
-    if (filters.search) parts.push(`Party: ${filters.search}`);
+    if (filters.search && !options?.omitSearch) parts.push(`Party: ${filters.search}`);
     return parts.length > 0 ? parts.join(' | ') : 'All Branches';
 };
 
+const billDateValue = (dateStr: string | null) => {
+    if (!dateStr) return Number.POSITIVE_INFINITY;
+    const parsed = Date.parse(dateStr);
+    return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+};
+
+/** PDF shows oldest bills first (dashboard keeps newest-first). */
+const sortBillsOldestFirst = (bills: OutstandingBill[]) =>
+    [...bills].sort((a, b) => billDateValue(a.billing_date) - billDateValue(b.billing_date));
+
 const buildBillRows = (bills: OutstandingBill[]) =>
-    bills
+    sortBillsOldestFirst(bills)
         .map(
             (bill) => `
     <tr class="bill-row">
@@ -173,8 +183,30 @@ const buildPageHtml = (
         </div>
         <div class="detail-grid">
             <div class="report-block">
+                ${
+                    payload.rows.length === 1
+                        ? `
+                <div class="party-title">${safe(payload.rows[0].party_name)}</div>
+                <div class="party-address">${safe(payload.rows[0].party_address || 'Address not available')}</div>
+                ${
+                    payload.rows[0].party_gstin
+                        ? `<div class="party-gstin"><span class="gstin-label">GSTIN:</span> ${safe(payload.rows[0].party_gstin.toUpperCase())}</div>`
+                        : ''
+                }
+                ${
+                    (() => {
+                        const secondary = describeFilters(payload.filters, { omitSearch: true });
+                        return secondary && secondary !== 'All Branches'
+                            ? `<div class="report-line muted">${safe(secondary)}</div>`
+                            : '';
+                    })()
+                }
+                `
+                        : `
                 <div class="report-title">Party Outstanding Report</div>
                 <div class="report-line">${safe(describeFilters(payload.filters))}</div>
+                `
+                }
             </div>
             <div class="right-block">
                 <div class="meta-row">
@@ -219,9 +251,14 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .header-pan { text-align: right; font-size: 12px; font-weight: 800; line-height: 1.35; }
 .header-pan span { color: #1d2f7a; }
 .detail-grid { display: grid; grid-template-columns: 56% 44%; border-bottom: 1.2px solid #1d2f7a; align-items: stretch; min-height: 58px; }
-.report-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 8px 10px; }
+.report-block { border-right: 1.2px solid #1d2f7a; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 8px 10px; }
 .report-title { color: #111; font-size: 14px; font-weight: 800; text-transform: uppercase; }
 .report-line { font-size: 11px; font-weight: 700; color: #111; text-transform: uppercase; overflow-wrap: anywhere; }
+.report-line.muted { font-size: 10px; font-weight: 700; color: #555; text-transform: uppercase; }
+.party-title { color: #111; font-size: 13px; font-weight: 800; line-height: 1.25; text-transform: uppercase; }
+.party-address { color: #111; font-size: 11px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; white-space: normal; }
+.party-gstin { font-size: 11px; font-weight: 800; color: #111; }
+.party-gstin .gstin-label { color: #1d2f7a; margin-right: 4px; }
 .right-block { display: grid; grid-template-rows: 1fr 1fr; }
 .meta-row { display: grid; grid-template-columns: 28% 72%; min-height: 29px; border-bottom: 1.2px solid #1d2f7a; }
 .meta-row:last-child { border-bottom: none; }
