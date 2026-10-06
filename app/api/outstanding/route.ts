@@ -22,6 +22,11 @@ type BillingRecord = {
         name: string;
         code: string;
         branch_code: string | null;
+        address: string | null;
+        city: string | null;
+        state: string | null;
+        pincode: string | null;
+        gstin: string | null;
     } | null;
 };
 
@@ -46,12 +51,32 @@ export type OutstandingPartyRow = {
     party_id: string;
     party_name: string;
     party_code: string;
+    party_address: string | null;
+    party_gstin: string | null;
     branch_code: string | null;
     branch_name: string | null;
     total_outstanding: number;
     total_billed: number;
     total_paid: number;
     bills: OutstandingBill[];
+};
+
+const formatPartyAddress = (party: NonNullable<BillingRecord['parties']>) => {
+    const base = String(party.address || '').trim();
+    const city = String(party.city || '').trim();
+    const state = String(party.state || '').trim();
+    const pincode = String(party.pincode || '').trim();
+
+    const location = [city, state].filter(Boolean).join(', ');
+    const withPin = location && pincode
+        ? `${location} - ${pincode}`
+        : location || (pincode ? pincode : '');
+
+    if (base && withPin) {
+        if (pincode && base.includes(pincode)) return base;
+        return `${base}, ${withPin}`;
+    }
+    return base || withPin || null;
 };
 
 // GET /api/outstanding
@@ -76,7 +101,7 @@ export async function GET(request: Request) {
     // Step 1: Fetch active billing records with party info
     let billQuery = supabase
         .from('party_billing_records')
-        .select('id, party_id, bill_ref_no, billing_date, amount, status, branch_code, parties(id, name, code, branch_code)')
+        .select('id, party_id, bill_ref_no, billing_date, amount, status, branch_code, parties(id, name, code, branch_code, address, city, state, pincode, gstin)')
         .eq('status', 'ACTIVE')
         .order('billing_date', { ascending: false })
         .limit(5000);
@@ -183,6 +208,8 @@ export async function GET(request: Request) {
                 party_id: party.id,
                 party_name: party.name,
                 party_code: party.code,
+                party_address: formatPartyAddress(party),
+                party_gstin: party.gstin ? String(party.gstin).trim() || null : null,
                 branch_code: partyBranchCode,
                 branch_name: partyBranchName,
                 total_outstanding: 0,
