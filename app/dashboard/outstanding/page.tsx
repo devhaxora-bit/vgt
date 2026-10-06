@@ -201,8 +201,9 @@ export default function OutstandingPage() {
         return filteredParties.filter((p) => p.party_id === selectedPartyId);
     }, [filteredParties, selectedPartyId]);
 
-    /** PDF/Print always use the current filtered set — one party detail or all parties in the list. */
+    /** PDF/Print: one selected/filtered party → statement; otherwise full list. */
     const exportRows = selectedPartyId && displayedData.length > 0 ? displayedData : filteredParties;
+    const statementMode = exportRows.length === 1;
     const canExportPdf = exportRows.length > 0 && !allPartiesLoading;
 
     const grandTotals = useMemo(
@@ -311,6 +312,7 @@ export default function OutstandingPage() {
                     status: PAY_STATUS_LABELS[payStatusFilter],
                 },
                 generatedAt,
+                statementMode,
             });
         } catch (err) {
             console.error('PDF export failed:', err);
@@ -365,6 +367,7 @@ export default function OutstandingPage() {
                             status: PAY_STATUS_LABELS[payStatusFilter],
                         },
                         generatedAt,
+                        statementMode,
                     },
                     logoUrl
                 )
