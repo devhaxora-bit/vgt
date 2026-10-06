@@ -36,6 +36,26 @@ const querySchema = z.object({
 type NamedRow = { id: string; name: string | null; code?: string | null };
 type UserRow = { id: string; full_name: string | null; employee_code: string | null };
 
+type AuditLogRow = {
+    id: string;
+    occurred_at: string;
+    txid: number | string;
+    actor_id: string | null;
+    entity_type: LedgerAuditLog['entity_type'];
+    entity_id: string;
+    entity_ref: string | null;
+    action: LedgerAuditLog['action'];
+    old_party_id: string | null;
+    new_party_id: string | null;
+    old_broker_id: string | null;
+    new_broker_id: string | null;
+    changed_fields: string[] | null;
+    old_data: unknown;
+    new_data: unknown;
+    reason?: string | null;
+    movement_summary?: string | null;
+};
+
 const uniqueIds = (values: Array<string | null | undefined>): string[] =>
     [...new Set(values.filter((id): id is string => Boolean(id)))];
 
@@ -185,7 +205,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const rows = data || [];
+    const rows = (data || []) as unknown as AuditLogRow[];
     const actorIds = uniqueIds(rows.map((row) => row.actor_id));
     const partyIds = uniqueIds(rows.flatMap((row) => [row.old_party_id, row.new_party_id]));
     const brokerIds = uniqueIds(rows.flatMap((row) => [row.old_broker_id, row.new_broker_id]));
@@ -236,8 +256,8 @@ export async function GET(request: NextRequest) {
             changed_fields: Array.isArray(row.changed_fields) ? row.changed_fields : [],
             old_data: asRecord(row.old_data),
             new_data: asRecord(row.new_data),
-            reason: (row as { reason?: string | null }).reason ?? null,
-            movement_summary: (row as { movement_summary?: string | null }).movement_summary ?? null,
+            reason: row.reason ?? null,
+            movement_summary: row.movement_summary ?? null,
         };
     });
 
