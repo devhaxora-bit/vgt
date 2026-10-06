@@ -15,6 +15,8 @@ export type OutstandingPdfPayload = {
     periodLabel: string;
     filters: OutstandingPdfFilters;
     generatedAt: string;
+    /** Single-party statement: left header shows party name + address. */
+    statementMode?: boolean;
 };
 
 const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
@@ -72,11 +74,16 @@ const buildBillRows = (bills: OutstandingBill[]) =>
         )
         .join('');
 
-const buildPartyBlock = (party: OutstandingPartyRow) => `
+const buildPartyBlock = (party: OutstandingPartyRow) => {
+    const address = String(party.party_address || '').trim();
+    return `
     <tr class="party-header-row">
         <td colspan="6">
             <div class="party-header-line">
-                <span class="party-name">${safe(party.party_name)}</span>
+                <div class="party-header-main">
+                    <span class="party-name">${safe(party.party_name)}</span>
+                    ${address ? `<span class="party-address-inline">${safe(address)}</span>` : ''}
+                </div>
                 <span class="party-meta">
                     <span class="party-code">${safe(party.party_code)}</span>
                     ${party.branch_code ? `<span class="party-branch">${safe(party.branch_name || party.branch_code)}</span>` : ''}
@@ -87,12 +94,13 @@ const buildPartyBlock = (party: OutstandingPartyRow) => `
     </tr>
     ${buildBillRows(party.bills)}
     <tr class="subtotal-row">
-        <td colspan="3" class="subtotal-label">Subtotal — ${safe(party.party_name)}</td>
+        <td colspan="3" class="subtotal-label">Subtotal</td>
         <td class="amount">${fmt(party.total_billed)}</td>
         <td class="amount">${fmt(party.total_paid)}</td>
         <td class="amount outstanding-cell">${fmt(party.total_outstanding)}</td>
     </tr>
 `;
+};
 
 const buildGrandTotals = (rows: OutstandingPartyRow[]) => {
     const totalBilled = rows.reduce((s, p) => s + p.total_billed, 0);
@@ -147,7 +155,7 @@ const buildTableSection = (
             ${isLastPage ? `
             <tr class="grand-total-row">
                 <td colspan="3" class="grand-total-label">
-                    GRAND TOTAL — ${allRows.length} ${allRows.length === 1 ? 'Party' : 'Parties'} / ${totals.totalBills} Bills
+                    GRAND TOTAL
                 </td>
                 <td class="amount">${fmt(totals.totalBilled)}</td>
                 <td class="amount">${fmt(totals.totalPaid)}</td>
@@ -157,6 +165,49 @@ const buildTableSection = (
         </tbody>
     </table>
     `;
+};
+
+const buildPartyStatementBlock = (party: OutstandingPartyRow, filters: OutstandingPdfFilters): string => {
+    const secondary = describeFilters(filters, { omitSearch: true });
+    const parts = [
+        `<div class="party-title">${safe(party.party_name)}</div>`,
+        `<div class="party-address">${safe(String(party.party_address || '').trim() || 'Address not available')}</div>`,
+    ];
+
+    const gstin = String(party.party_gstin || '').trim();
+    if (gstin) {
+        parts.push(
+            `<div class="party-gstin"><span class="gstin-label">GSTIN:</span> ${safe(gstin.toUpperCase())}</div>`,
+        );
+    }
+    if (secondary && secondary !== 'All Branches') {
+        parts.push(`<div class="report-line muted">${safe(secondary)}</div>`);
+    }
+
+    return parts.join('');
+};
+
+const buildDetailLeftBlock = (
+    payload: OutstandingPdfPayload,
+    pageRows: OutstandingPartyRow[],
+): string => {
+    // Prefer the party on this page when the page is a single-party statement slice
+    // (common when one party has many bills), or when the whole export is one party.
+    const focusParty =
+        payload.statementMode || payload.rows.length === 1
+            ? payload.rows[0] ?? null
+            : pageRows.length === 1
+              ? pageRows[0]
+              : null;
+
+    if (!focusParty) {
+        return [
+            '<div class="report-title">Party Outstanding Report</div>',
+            `<div class="report-line">${safe(describeFilters(payload.filters))}</div>`,
+        ].join('');
+    }
+
+    return buildPartyStatementBlock(focusParty, payload.filters);
 };
 
 const buildPageHtml = (
@@ -183,30 +234,7 @@ const buildPageHtml = (
         </div>
         <div class="detail-grid">
             <div class="report-block">
-                ${
-                    payload.rows.length === 1
-                        ? `
-                <div class="party-title">${safe(payload.rows[0].party_name)}</div>
-                <div class="party-address">${safe(payload.rows[0].party_address || 'Address not available')}</div>
-                ${
-                    payload.rows[0].party_gstin
-                        ? `<div class="party-gstin"><span class="gstin-label">GSTIN:</span> ${safe(payload.rows[0].party_gstin.toUpperCase())}</div>`
-                        : ''
-                }
-                ${
-                    (() => {
-                        const secondary = describeFilters(payload.filters, { omitSearch: true });
-                        return secondary && secondary !== 'All Branches'
-                            ? `<div class="report-line muted">${safe(secondary)}</div>`
-                            : '';
-                    })()
-                }
-                `
-                        : `
-                <div class="report-title">Party Outstanding Report</div>
-                <div class="report-line">${safe(describeFilters(payload.filters))}</div>
-                `
-                }
+                ${buildDetailLeftBlock(payload, pageRows)}
             </div>
             <div class="right-block">
                 <div class="meta-row">
@@ -273,10 +301,24 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 .items-table .amount { text-align: right; padding-right: 7px; font-variant-numeric: tabular-nums; }
 .items-table .bill-no-cell { font-family: monospace; font-size: 10.5px; padding-left: 18px; }
 .items-table .outstanding-cell:not(:empty) { background: rgba(255, 162, 162, 0.22); }
-/* Party header row — single line: name left, meta/bills right */
-.party-header-row td { background: rgba(144, 202, 249, 0.35); padding: 3px 8px; font-size: 12px; font-weight: 800; border-bottom: 1px solid #1d2f7a; height: 20px; white-space: nowrap; }
+/* Party header — must override tbody td height/overflow or the name gets clipped */
+.items-table tbody tr.party-header-row td {
+    height: auto;
+    min-height: 26px;
+    padding: 7px 8px;
+    overflow: visible;
+    white-space: normal;
+    line-height: 1.35;
+    vertical-align: middle;
+    background: rgba(144, 202, 249, 0.35);
+    font-size: 12px;
+    font-weight: 800;
+    border-bottom: 1px solid #1d2f7a;
+}
 .party-header-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0; }
-.party-name { color: #17308b; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-header-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.party-name { display: block; color: #17308b; line-height: 1.35; white-space: normal; overflow: visible; text-overflow: unset; }
+.party-address-inline { display: block; font-size: 10px; font-weight: 700; color: #333; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
 .party-meta { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
 .party-code { font-size: 10.5px; color: #555; font-family: monospace; background: rgba(0,0,0,0.06); padding: 0 5px; border-radius: 3px; }
 .party-branch { font-size: 10.5px; color: #444; background: rgba(0,0,0,0.05); padding: 0 5px; border-radius: 3px; }
