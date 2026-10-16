@@ -3,8 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertCircle,
-    Building2,
-    Calendar,
     ChevronDown,
     ChevronRight,
     Download,
@@ -409,40 +407,52 @@ export default function OutstandingPage() {
         payStatusFilter !== 'all',
     ].filter(Boolean).length;
 
+    const showingPartyDetail = Boolean(selectedPartyId && displayedData.length > 0);
+    const summaryStats = showingPartyDetail
+        ? {
+              parties: displayedData.length,
+              bills: displayedData.reduce((s, p) => s + p.bills.length, 0),
+              billed: grandTotals.billed,
+              paid: grandTotals.paid,
+              outstanding: grandTotals.outstanding,
+          }
+        : {
+              parties: filteredParties.length,
+              bills: listTotals.bills,
+              billed: listTotals.billed,
+              paid: listTotals.paid,
+              outstanding: listTotals.outstanding,
+          };
+
     return (
-        <div className="p-6 space-y-6 animate-fadeIn">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                        <AlertCircle className="h-6 w-6 text-primary" />
-                        Party Outstanding
-                    </h1>
-                    <p className="text-muted-foreground text-sm mt-1">
-                        Bill-wise outstanding amounts for all parties
-                    </p>
-                </div>
-                <div className="flex items-center gap-2 self-start flex-wrap">
+        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden p-2 md:p-2.5 animate-fadeIn">
+            {/* Compact title + actions */}
+            <div className="flex shrink-0 items-center justify-between gap-2">
+                <h1 className="flex min-w-0 items-center gap-1.5 text-sm font-bold tracking-tight">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-primary" />
+                    Party Outstanding
+                </h1>
+                <div className="flex shrink-0 items-center gap-1">
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => void loadAllParties()}
                         disabled={allPartiesLoading || !branchFilter}
-                        className="gap-2"
+                        className="h-7 gap-1 px-2 text-[11px]"
                     >
-                        <RotateCcw className="h-4 w-4" /> Refresh
+                        <RotateCcw className="h-3 w-3" /> Refresh
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={handlePrint}
                         disabled={isPrinting || !canExportPdf}
-                        className="gap-2"
+                        className="h-7 gap-1 px-2 text-[11px]"
                     >
                         {isPrinting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
-                            <Printer className="h-4 w-4" />
+                            <Printer className="h-3 w-3" />
                         )}
                         Print
                     </Button>
@@ -450,201 +460,214 @@ export default function OutstandingPage() {
                         size="sm"
                         onClick={handleExportPdf}
                         disabled={isPdfExporting || !canExportPdf}
-                        className="gap-2"
+                        className="h-7 gap-1 px-2 text-[11px]"
                     >
                         {isPdfExporting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
-                            <Download className="h-4 w-4" />
+                            <Download className="h-3 w-3" />
                         )}
                         {isPdfExporting
                             ? 'Exporting…'
                             : selectedPartyId
                                 ? 'Export PDF'
-                                : `Export PDF (${filteredParties.length})`}
+                                : `PDF (${filteredParties.length})`}
                     </Button>
                 </div>
             </div>
 
-            {/* Filters */}
-            <Card>
-                <CardContent className="pt-4 pb-4">
-                    <div className="flex flex-col md:flex-row gap-3 flex-wrap">
-                        {/* Branch */}
-                        <div className="flex flex-col gap-1 min-w-[200px]">
-                            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                                <Building2 className="h-3 w-3" /> Branch
-                            </label>
-                            {userScope.isBranchScoped ? (
-                                <Input
-                                    value={
-                                        branchFilter && branchFilter !== 'all'
-                                            ? branchNameByCode.get(branchFilter)
-                                                ? `${branchFilter} - ${branchNameByCode.get(branchFilter)}`
-                                                : branchFilter
-                                            : 'All Branches'
-                                    }
-                                    readOnly
-                                    disabled
-                                    className="h-9 bg-muted/40 text-sm"
-                                />
-                            ) : (
-                                <Select
-                                    value={branchFilter ?? 'all'}
-                                    onValueChange={(v) => setBranchFilter(v)}
-                                >
-                                    <SelectTrigger className="h-9 text-sm w-full">
-                                        <SelectValue placeholder="All Branches" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Branches</SelectItem>
-                                        {branchOptions.map((b) => (
-                                            <SelectItem key={b.value} value={b.value}>
-                                                {b.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
-                        </div>
-
-                        {/* Date From */}
-                        <div className="flex flex-col gap-1 min-w-[160px]">
-                            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                                <Calendar className="h-3 w-3" /> Bill Date From
-                            </label>
-                            <Input
-                                type="date"
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                                className="h-9 text-sm"
-                            />
-                        </div>
-
-                        {/* Date To */}
-                        <div className="flex flex-col gap-1 min-w-[160px]">
-                            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                                <Calendar className="h-3 w-3" /> Bill Date To
-                            </label>
-                            <Input
-                                type="date"
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                                className="h-9 text-sm"
-                            />
-                        </div>
-
-                        {/* Pay status */}
-                        <div className="flex flex-col gap-1 min-w-[180px]">
-                            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                                <FileText className="h-3 w-3" /> Bill Status
-                            </label>
-                            <Select
-                                value={payStatusFilter}
-                                onValueChange={(v) => setPayStatusFilter(v as PayStatusFilter)}
-                            >
-                                <SelectTrigger className="h-9 text-sm w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All</SelectItem>
-                                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                                    <SelectItem value="due">To be paid</SelectItem>
-                                    <SelectItem value="partial">Partial</SelectItem>
-                                    <SelectItem value="paid">Paid</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        {/* Party Search */}
-                        <div className="flex flex-col gap-1 flex-1 min-w-[220px]">
-                            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                                <Search className="h-3 w-3" /> Search Party
-                            </label>
-                            <div className="relative">
-                                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                                <Input
-                                    placeholder="Search party name or code…"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="h-9 pl-8 pr-8 text-sm"
-                                />
-                                {searchTerm && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setSearchTerm('')}
-                                        className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
+            {/* Filters (left) + summary cards (right) — one short row */}
+            <div className="grid shrink-0 gap-1.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)] lg:items-stretch">
+                <Card className="border shadow-sm">
+                    <CardContent className="flex h-full flex-col justify-center p-2">
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
+                            <div className="col-span-2 sm:col-span-1 xl:col-span-1 flex flex-col gap-0.5 min-w-0">
+                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                    Branch
+                                </label>
+                                {userScope.isBranchScoped ? (
+                                    <Input
+                                        value={
+                                            branchFilter && branchFilter !== 'all'
+                                                ? branchNameByCode.get(branchFilter)
+                                                    ? `${branchFilter} - ${branchNameByCode.get(branchFilter)}`
+                                                    : branchFilter
+                                                : 'All Branches'
+                                        }
+                                        readOnly
+                                        disabled
+                                        className="h-7 bg-muted/40 px-2 text-[11px]"
+                                    />
+                                ) : (
+                                    <Select
+                                        value={branchFilter ?? 'all'}
+                                        onValueChange={(v) => setBranchFilter(v)}
                                     >
-                                        <X className="h-3.5 w-3.5" />
-                                    </button>
+                                        <SelectTrigger className="h-7 w-full text-[11px]">
+                                            <SelectValue placeholder="All Branches" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All Branches</SelectItem>
+                                            {branchOptions.map((b) => (
+                                                <SelectItem key={b.value} value={b.value}>
+                                                    {b.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 )}
                             </div>
-                        </div>
 
-                        {/* Reset */}
-                        {activeFilterCount > 0 && (
-                            <div className="flex flex-col gap-1 justify-end">
-                                <label className="text-xs opacity-0">Reset</label>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={resetFilters}
-                                    className="gap-1.5 h-9 text-muted-foreground"
-                                >
-                                    <X className="h-3.5 w-3.5" />
-                                    Reset
-                                    <Badge variant="secondary" className="ml-0.5 text-xs px-1.5 py-0">
-                                        {activeFilterCount}
-                                    </Badge>
-                                </Button>
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                    From
+                                </label>
+                                <Input
+                                    type="date"
+                                    value={dateFrom}
+                                    onChange={(e) => setDateFrom(e.target.value)}
+                                    className="h-7 px-1.5 text-[11px]"
+                                />
                             </div>
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
 
-            {selectedPartyId && displayedData.length > 0 ? (
-                <>
-                    <div className="flex items-center gap-2 text-sm">
-                        <Button variant="ghost" size="sm" onClick={clearSelectedParty} className="h-8 gap-1 text-muted-foreground">
-                            <X className="h-3.5 w-3.5" /> Back to list
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                    To
+                                </label>
+                                <Input
+                                    type="date"
+                                    value={dateTo}
+                                    onChange={(e) => setDateTo(e.target.value)}
+                                    className="h-7 px-1.5 text-[11px]"
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                    Status
+                                </label>
+                                <Select
+                                    value={payStatusFilter}
+                                    onValueChange={(v) => setPayStatusFilter(v as PayStatusFilter)}
+                                >
+                                    <SelectTrigger className="h-7 w-full text-[11px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All</SelectItem>
+                                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                                        <SelectItem value="due">To be paid</SelectItem>
+                                        <SelectItem value="partial">Partial</SelectItem>
+                                        <SelectItem value="paid">Paid</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="col-span-2 sm:col-span-3 xl:col-span-2 flex flex-col gap-0.5 min-w-0">
+                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                    Search
+                                </label>
+                                <div className="relative flex gap-1">
+                                    <div className="relative min-w-0 flex-1">
+                                        <Search className="pointer-events-none absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Party name or code…"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="h-7 pl-7 pr-6 text-[11px]"
+                                        />
+                                        {searchTerm ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setSearchTerm('')}
+                                                className="absolute right-1.5 top-1.5 text-muted-foreground hover:text-foreground"
+                                            >
+                                                <X className="h-3.5 w-3.5" />
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                    {activeFilterCount > 0 ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={resetFilters}
+                                            className="h-7 shrink-0 gap-1 px-1.5 text-[11px] text-muted-foreground"
+                                        >
+                                            <X className="h-3 w-3" />
+                                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">
+                                                {activeFilterCount}
+                                            </Badge>
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                    <Card className="shadow-sm">
+                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                {showingPartyDetail ? 'Bills' : 'Parties'}
+                            </p>
+                            <p className="mt-0.5 text-base font-bold tabular-nums leading-tight">
+                                {showingPartyDetail ? summaryStats.bills : summaryStats.parties}
+                            </p>
+                            {!showingPartyDetail ? (
+                                <p className="text-[9px] text-muted-foreground tabular-nums leading-none">
+                                    {summaryStats.bills} bills
+                                </p>
+                            ) : null}
+                        </CardContent>
+                    </Card>
+                    <Card className="shadow-sm">
+                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                Billed
+                            </p>
+                            <p className="mt-0.5 text-xs font-bold tabular-nums leading-tight md:text-sm">
+                                ₹{fmt(summaryStats.billed)}
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card className="shadow-sm">
+                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                Paid
+                            </p>
+                            <p className="mt-0.5 text-xs font-bold tabular-nums leading-tight text-indigo-700 md:text-sm">
+                                ₹{fmt(summaryStats.paid)}
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card className="border-destructive/30 bg-destructive/5 shadow-sm">
+                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+                                Outstanding
+                            </p>
+                            <p className="mt-0.5 text-xs font-bold tabular-nums leading-tight text-destructive md:text-sm">
+                                ₹{fmt(summaryStats.outstanding)}
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+
+            {showingPartyDetail ? (
+                <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
+                    <div className="flex shrink-0 items-center gap-2 text-[11px]">
+                        <Button variant="ghost" size="sm" onClick={clearSelectedParty} className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground">
+                            <X className="h-3 w-3" /> Back
                         </Button>
                         <span className="text-muted-foreground">Showing:</span>
-                        <span className="font-semibold">{displayedData[0].party_name}</span>
-                        <Badge variant="outline" className="font-mono text-xs">{displayedData[0].party_code}</Badge>
+                        <span className="truncate font-semibold">{displayedData[0].party_name}</span>
+                        <Badge variant="outline" className="font-mono text-[10px]">{displayedData[0].party_code}</Badge>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <Card>
-                            <CardContent className="pt-4 pb-4">
-                                <p className="text-xs text-muted-foreground font-medium">Bills</p>
-                                <p className="text-2xl font-bold mt-1">
-                                    {displayedData.reduce((s, p) => s + p.bills.length, 0)}
-                                </p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="pt-4 pb-4">
-                                <p className="text-xs text-muted-foreground font-medium">Total Billed</p>
-                                <p className="text-xl font-bold mt-1 tabular-nums">₹{fmt(grandTotals.billed)}</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="pt-4 pb-4">
-                                <p className="text-xs text-muted-foreground font-medium">Total Paid</p>
-                                <p className="text-xl font-bold mt-1 tabular-nums">₹{fmt(grandTotals.paid)}</p>
-                            </CardContent>
-                        </Card>
-                        <Card className="border-destructive/30 bg-destructive/5">
-                            <CardContent className="pt-4 pb-4">
-                                <p className="text-xs text-muted-foreground font-medium">Outstanding</p>
-                                <p className="text-xl font-bold mt-1 text-destructive tabular-nums">₹{fmt(grandTotals.outstanding)}</p>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <Card>
-                        <CardContent className="p-0">
+                    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border shadow-sm">
+                        <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+                            <div className="min-h-0 flex-1 overflow-auto">
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -737,7 +760,7 @@ export default function OutstandingPage() {
                                                         <TableRow className="bg-primary/5 border-b-2">
                                                             <TableCell className=""></TableCell>
                                                             <TableCell colSpan={3} className="pl-8 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                                                                {party.party_name} — Subtotal
+                                                                Subtotal
                                                             </TableCell>
                                                             <TableCell className=" text-right tabular-nums text-xs font-bold">
                                                                 ₹{fmt(party.total_billed)}
@@ -758,8 +781,7 @@ export default function OutstandingPage() {
                                     <TableRow className="bg-muted border-t-2 font-bold">
                                         <TableCell className=""></TableCell>
                                         <TableCell colSpan={3} className="text-xs font-bold uppercase tracking-wide">
-                                            Grand Total — {displayedData.length} {displayedData.length === 1 ? 'Party' : 'Parties'} /{' '}
-                                            {displayedData.reduce((s, p) => s + p.bills.length, 0)} Bills
+                                            Grand Total — {displayedData.reduce((s, p) => s + p.bills.length, 0)} Bills
                                         </TableCell>
                                         <TableCell className="text-right tabular-nums text-xs font-bold">
                                             ₹{fmt(grandTotals.billed)}
@@ -773,13 +795,14 @@ export default function OutstandingPage() {
                                     </TableRow>
                                 </TableBody>
                             </Table>
+                            </div>
                         </CardContent>
                     </Card>
-                </>
+                </div>
             ) : (
-                <Card className="border shadow-lg overflow-hidden">
-                    <CardContent className="p-0">
-                        <div className="overflow-x-auto">
+                <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border shadow-sm">
+                    <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+                        <div className="min-h-0 flex-1 overflow-auto">
                             <Table>
                                 <TableHeader className="bg-muted/40 border-b">
                                     <TableRow>
@@ -879,7 +902,7 @@ export default function OutstandingPage() {
                             </Table>
                         </div>
                         {filteredParties.length > 0 && !allPartiesLoading && (
-                            <div className="px-3 py-2 border-t bg-muted/20 grid grid-cols-8 gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                            <div className="shrink-0 border-t bg-muted/20 px-3 py-1.5 grid grid-cols-8 gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                                 <div className="col-span-2">Total ({filteredParties.length} parties) · {PAY_STATUS_LABELS[payStatusFilter]}</div>
                                 <div></div>
                                 <div className="text-right font-mono text-foreground">{listTotals.bills}</div>
