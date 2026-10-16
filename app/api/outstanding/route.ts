@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuthz } from '@/lib/server/requireAuthz';
+import { buildSettledBillAmountMap } from '@/lib/server/partyPaymentReceipts';
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
 const toMoney = (value: number | string | null | undefined) => Number(value || 0) || 0;
-
-type BillAllocation = {
-    billing_record_id?: string;
-    settled_amount?: number | null;
-};
 
 type BillingRecord = {
     id: string;
@@ -31,9 +27,15 @@ type BillingRecord = {
 };
 
 type PaymentReceipt = {
+    id: string;
     party_id: string;
     status: string;
-    bill_allocations: BillAllocation[] | null;
+    amount: number | string | null;
+    related_billing_record_ids: string[] | null;
+    bill_allocations: Array<{
+        billing_record_id?: string;
+        settled_amount?: number | null;
+    }> | null;
 };
 
 export type OutstandingBill = {
@@ -79,6 +81,51 @@ const formatPartyAddress = (party: NonNullable<BillingRecord['parties']>) => {
     return base || withPin || null;
 };
 
+/**
+ * Payments with no bill allocations / related bill still reduce party dues in the ledger.
+ * Apply them FIFO to oldest unpaid bills so Outstanding totals match Party Ledger.
+ */
+const applyUnallocatedPaymentsFifo = (
+    bills: OutstandingBill[],
+    unallocatedByParty: Map<string, number>,
+    partyId: string,
+): OutstandingBill[] => {
+    let remaining = roundMoney(unallocatedByParty.get(partyId) || 0);
+    if (remaining <= 0.005) return bills;
+
+    const sortedIndexes = bills
+        .map((bill, index) => ({ bill, index }))
+        .sort((a, b) => {
+            const da = a.bill.billing_date || '';
+            const db = b.bill.billing_date || '';
+            if (da !== db) return da.localeCompare(db);
+            return a.bill.bill_ref_no?.localeCompare(b.bill.bill_ref_no || '') || 0;
+        });
+
+    const next = bills.map((bill) => ({ ...bill }));
+
+    for (const { index } of sortedIndexes) {
+        if (remaining <= 0.005) break;
+        const bill = next[index];
+        if (bill.outstanding <= 0.005) continue;
+
+        const apply = Math.min(bill.outstanding, remaining);
+        const paidAmount = roundMoney(bill.paid_amount + apply);
+        const outstanding = roundMoney(Math.max(bill.amount - paidAmount, 0));
+        remaining = roundMoney(remaining - apply);
+
+        next[index] = {
+            ...bill,
+            paid_amount: paidAmount,
+            outstanding,
+            pay_status:
+                outstanding <= 0.005 ? 'paid' : paidAmount > 0.005 ? 'partial' : 'due',
+        };
+    }
+
+    return next;
+};
+
 // GET /api/outstanding
 // Returns bill-wise amounts grouped by party (all ACTIVE bills: due / partial / paid).
 // Query params:
@@ -104,7 +151,7 @@ export async function GET(request: Request) {
         .select('id, party_id, bill_ref_no, billing_date, amount, status, branch_code, parties(id, name, code, branch_code, address, city, state, pincode, gstin)')
         .eq('status', 'ACTIVE')
         .order('billing_date', { ascending: false })
-        .limit(5000);
+        .limit(10000);
 
     if (branch) {
         billQuery = billQuery.eq('branch_code', branch);
@@ -140,39 +187,48 @@ export async function GET(request: Request) {
     }
 
     const partyIds = Array.from(new Set(filteredBills.map((b) => b.party_id)));
-    const billIds = filteredBills.map((b) => b.id);
 
-    // Step 2: Fetch active payment receipts that have allocations for these bills
+    // Step 2: Fetch active payment receipts for these parties
     const { data: receiptsRaw, error: receiptsError } = await supabase
         .from('party_payment_receipts')
-        .select('party_id, status, bill_allocations')
+        .select('id, party_id, status, amount, related_billing_record_ids, bill_allocations')
         .eq('status', 'ACTIVE')
         .in('party_id', partyIds)
-        .limit(10000);
+        .limit(20000);
 
     if (receiptsError) {
         console.error('Failed to fetch payment receipts:', receiptsError);
         return NextResponse.json({ error: receiptsError.message }, { status: 500 });
     }
 
-    // Step 3: Build paidByBillId map
-    const paidByBillId = new Map<string, number>();
-    const billIdSet = new Set(billIds);
+    const receipts = (receiptsRaw || []) as PaymentReceipt[];
 
-    (receiptsRaw || []).forEach((receipt: PaymentReceipt) => {
-        if (receipt.status !== 'ACTIVE') return;
-        const allocations: BillAllocation[] = Array.isArray(receipt.bill_allocations)
-            ? receipt.bill_allocations
-            : [];
-        allocations.forEach((alloc) => {
-            const billId = String(alloc.billing_record_id || '').trim();
-            if (!billId || !billIdSet.has(billId)) return;
-            const prev = paidByBillId.get(billId) || 0;
-            paidByBillId.set(billId, roundMoney(prev + toMoney(alloc.settled_amount)));
-        });
+    // Same settlement rules as ledger UI (allocations, else single related bill).
+    const paidByBillId = buildSettledBillAmountMap(receipts);
+
+    // Unallocated receipts (no allocations and not a single related bill) still count in ledger paid.
+    const unallocatedByParty = new Map<string, number>();
+    receipts.forEach((receipt) => {
+        const hasAllocations = Array.isArray(receipt.bill_allocations) && receipt.bill_allocations.length > 0;
+        const relatedCount = Array.isArray(receipt.related_billing_record_ids)
+            ? receipt.related_billing_record_ids.length
+            : 0;
+        if (hasAllocations || relatedCount === 1) return;
+        const prev = unallocatedByParty.get(receipt.party_id) || 0;
+        unallocatedByParty.set(receipt.party_id, roundMoney(prev + toMoney(receipt.amount)));
     });
 
-    // Step 4: Fetch branch names for parties
+    // Opening balances (included in party ledger outstanding)
+    const { data: accountRows } = await supabase
+        .from('party_ledger_accounts')
+        .select('party_id, opening_balance')
+        .in('party_id', partyIds);
+    const openingByParty = new Map<string, number>();
+    (accountRows || []).forEach((row: { party_id: string; opening_balance: number | string | null }) => {
+        openingByParty.set(row.party_id, toMoney(row.opening_balance));
+    });
+
+    // Step 3: Fetch branch names for parties
     const branchCodes = Array.from(
         new Set(filteredBills.map((b) => b.parties?.branch_code).filter(Boolean) as string[])
     );
@@ -187,7 +243,7 @@ export async function GET(request: Request) {
         });
     }
 
-    // Step 5: Group by party — include all ACTIVE bills (due / partial / paid)
+    // Step 4: Group by party
     const partyMap = new Map<string, OutstandingPartyRow>();
 
     filteredBills.forEach((bill) => {
@@ -229,12 +285,36 @@ export async function GET(request: Request) {
             outstanding,
             pay_status: payStatus,
         });
-        partyRow.total_billed = roundMoney(partyRow.total_billed + billAmount);
-        partyRow.total_paid = roundMoney(partyRow.total_paid + paidAmount);
-        partyRow.total_outstanding = roundMoney(partyRow.total_outstanding + outstanding);
     });
 
     const result = Array.from(partyMap.values())
+        .map((party) => {
+            const billsAfterUnallocated = applyUnallocatedPaymentsFifo(
+                party.bills,
+                unallocatedByParty,
+                party.party_id,
+            );
+            const opening = openingByParty.get(party.party_id) || 0;
+            const totalBilled = roundMoney(
+                billsAfterUnallocated.reduce((sum, bill) => sum + bill.amount, 0),
+            );
+            const totalPaid = roundMoney(
+                billsAfterUnallocated.reduce((sum, bill) => sum + bill.paid_amount, 0),
+            );
+            const billOutstanding = roundMoney(
+                billsAfterUnallocated.reduce((sum, bill) => sum + bill.outstanding, 0),
+            );
+            // Match party ledger: opening + billed - paid (bill-wise after FIFO unallocated).
+            const totalOutstanding = roundMoney(Math.max(opening + billOutstanding, 0));
+
+            return {
+                ...party,
+                bills: billsAfterUnallocated,
+                total_billed: totalBilled,
+                total_paid: totalPaid,
+                total_outstanding: totalOutstanding,
+            };
+        })
         .sort((a, b) => a.party_name.localeCompare(b.party_name));
 
     return NextResponse.json(result);
