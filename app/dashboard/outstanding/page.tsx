@@ -39,10 +39,11 @@ import {
 import { downloadOutstandingPdf } from '@/lib/outstandingPdf';
 import type { OutstandingPartyRow, OutstandingBill } from '@/app/api/outstanding/route';
 
-type PayStatusFilter = 'all' | 'due' | 'partial' | 'paid';
+type PayStatusFilter = 'all' | 'unpaid' | 'due' | 'partial' | 'paid';
 
 const PAY_STATUS_LABELS: Record<PayStatusFilter, string> = {
     all: 'All',
+    unpaid: 'Unpaid',
     due: 'To be paid',
     partial: 'Partial',
     paid: 'Paid',
@@ -67,6 +68,7 @@ const fmtDateInput = (dateStr: string) => {
 
 const billMatchesStatus = (bill: OutstandingBill, status: PayStatusFilter) => {
     if (status === 'all') return true;
+    if (status === 'unpaid') return bill.pay_status === 'due' || bill.pay_status === 'partial';
     return bill.pay_status === status;
 };
 
@@ -107,7 +109,7 @@ export default function OutstandingPage() {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [payStatusFilter, setPayStatusFilter] = useState<PayStatusFilter>('due');
+    const [payStatusFilter, setPayStatusFilter] = useState<PayStatusFilter>('all');
     const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set());
     const [selectedPartyId, setSelectedPartyId] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
@@ -257,7 +259,7 @@ export default function OutstandingPage() {
 
     const resetFilters = () => {
         setSearchTerm('');
-        setPayStatusFilter('due');
+        setPayStatusFilter('all');
         setBranchFilter(defaultBranchFilterValue(userScope));
         setDateFrom('');
         setDateTo('');
@@ -404,7 +406,7 @@ export default function OutstandingPage() {
         !!dateFrom,
         !!dateTo,
         !!searchTerm.trim(),
-        payStatusFilter !== 'due',
+        payStatusFilter !== 'all',
     ].filter(Boolean).length;
 
     return (
@@ -546,6 +548,7 @@ export default function OutstandingPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All</SelectItem>
+                                    <SelectItem value="unpaid">Unpaid</SelectItem>
                                     <SelectItem value="due">To be paid</SelectItem>
                                     <SelectItem value="partial">Partial</SelectItem>
                                     <SelectItem value="paid">Paid</SelectItem>
