@@ -30,7 +30,7 @@ type PaymentReceipt = {
     id: string;
     party_id: string;
     status: string;
-    amount: number | string | null;
+    amount: number | null;
     related_billing_record_ids: string[] | null;
     bill_allocations: Array<{
         billing_record_id?: string;
@@ -201,7 +201,23 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: receiptsError.message }, { status: 500 });
     }
 
-    const receipts = (receiptsRaw || []) as PaymentReceipt[];
+    const receipts: PaymentReceipt[] = (receiptsRaw || []).map((row) => ({
+        id: String(row.id),
+        party_id: String(row.party_id),
+        status: String(row.status || ''),
+        amount: toMoney(row.amount as number | string | null),
+        related_billing_record_ids: Array.isArray(row.related_billing_record_ids)
+            ? row.related_billing_record_ids.map((id) => String(id))
+            : null,
+        bill_allocations: Array.isArray(row.bill_allocations)
+            ? row.bill_allocations.map((allocation) => ({
+                  billing_record_id: allocation?.billing_record_id
+                      ? String(allocation.billing_record_id)
+                      : undefined,
+                  settled_amount: toMoney(allocation?.settled_amount),
+              }))
+            : null,
+    }));
 
     // Same settlement rules as ledger UI (allocations, else single related bill).
     const paidByBillId = buildSettledBillAmountMap(receipts);
