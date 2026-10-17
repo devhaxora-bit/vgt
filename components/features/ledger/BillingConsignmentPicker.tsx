@@ -68,9 +68,9 @@ const getConsignmentBaseFreight = (consignment: BillingConsignmentOption): numbe
     const totalFreight = Number(consignment.total_freight) || 0;
     const detention = Number(consignment.retention_charges) || 0;
     const extraCharges = getConsignmentExtraCharges(consignment);
-    const derivedFreight = totalFreight - detention - extraCharges;
-
-    return derivedFreight > 0 ? derivedFreight : totalFreight;
+    // Never fall back to total_freight — that double-counts Extra KM / other charges
+    // when basic_freight is 0 (e.g. extra-only CN lines).
+    return Math.max(0, derivedFreight);
 };
 
 export function BillingConsignmentPicker({

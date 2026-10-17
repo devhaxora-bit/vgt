@@ -277,9 +277,9 @@ const getConsignmentBaseFreight = (
     const totalFreight = parseMoney(consignment.total_freight);
     const detention = parseMoney(consignment.retention_charges);
     const extraCharges = getConsignmentExtraCharges(consignment);
-    const derivedFreight = totalFreight - detention - extraCharges;
-
-    return derivedFreight > 0 ? derivedFreight : totalFreight;
+    // Never fall back to total_freight — that double-counts Extra KM / other charges
+    // when basic_freight is 0 (e.g. extra-only CN lines).
+    return Math.max(0, derivedFreight);
 };
 
 const getConsignmentChargeBreakdown = (
@@ -372,6 +372,35 @@ const normalizeSnapshotRows = (value: unknown): BillingConsignmentSnapshotRow[] 
         const cnNo = String(snapshotRow.cn_no || '').trim();
         if (!cnNo) return rows;
 
+        const basicFreight = roundMoney(parseMoney(snapshotRow.basic_freight));
+        const unloading = roundMoney(parseMoney(snapshotRow.unloading));
+        const detention = roundMoney(parseMoney(snapshotRow.detention));
+        const extraKm = roundMoney(parseMoney(snapshotRow.extra_km));
+        const loading = roundMoney(parseMoney(snapshotRow.loading));
+        const doorCollection = roundMoney(parseMoney(snapshotRow.door_collection));
+        const doorDelivery = roundMoney(parseMoney(snapshotRow.door_delivery));
+        const trafficChallan = roundMoney(parseMoney(snapshotRow.traffic_challan));
+        const otherCharges = roundMoney(parseMoney(snapshotRow.other_charges));
+        const totalAmount = roundMoney(parseMoney(snapshotRow.total_amount));
+        const storedFreight = roundMoney(parseMoney(snapshotRow.freight));
+        // Repair older snapshots that copied total into freight when only Extra KM (etc.) applied.
+        const freight = basicFreight > 0
+            ? (storedFreight > 0 ? storedFreight : basicFreight)
+            : Math.max(
+                0,
+                roundMoney(
+                    totalAmount
+                    - unloading
+                    - detention
+                    - extraKm
+                    - loading
+                    - doorCollection
+                    - doorDelivery
+                    - trafficChallan
+                    - otherCharges,
+                ),
+            );
+
         rows.push({
             cn_no: cnNo,
             freight_included: Boolean(snapshotRow.freight_included),
@@ -384,20 +413,20 @@ const normalizeSnapshotRows = (value: unknown): BillingConsignmentSnapshotRow[] 
             delivery_station: snapshotRow.delivery_station ? String(snapshotRow.delivery_station) : null,
             charge_wt: snapshotRow.charge_wt ? String(snapshotRow.charge_wt) : null,
             load_unit: snapshotRow.load_unit ? String(snapshotRow.load_unit) : null,
-            basic_freight: roundMoney(parseMoney(snapshotRow.basic_freight)),
+            basic_freight: basicFreight,
             is_fixed_rate: Boolean(snapshotRow.is_fixed_rate)
                 || isFixedFreightRate(snapshotRow.freight_rate, snapshotRow.basic_freight),
             freight_rate: roundMoney(parseMoney(snapshotRow.freight_rate)),
-            freight: roundMoney(parseMoney(snapshotRow.freight)),
-            unloading: roundMoney(parseMoney(snapshotRow.unloading)),
-            detention: roundMoney(parseMoney(snapshotRow.detention)),
-            extra_km: roundMoney(parseMoney(snapshotRow.extra_km)),
-            loading: roundMoney(parseMoney(snapshotRow.loading)),
-            door_collection: roundMoney(parseMoney(snapshotRow.door_collection)),
-            door_delivery: roundMoney(parseMoney(snapshotRow.door_delivery)),
-            traffic_challan: roundMoney(parseMoney(snapshotRow.traffic_challan)),
-            other_charges: roundMoney(parseMoney(snapshotRow.other_charges)),
-            total_amount: roundMoney(parseMoney(snapshotRow.total_amount)),
+            freight,
+            unloading,
+            detention,
+            extra_km: extraKm,
+            loading,
+            door_collection: doorCollection,
+            door_delivery: doorDelivery,
+            traffic_challan: trafficChallan,
+            other_charges: otherCharges,
+            total_amount: totalAmount,
         });
 
         return rows;
