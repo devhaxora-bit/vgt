@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertCircle,
-    ChevronDown,
     ChevronRight,
     Download,
     FileText,
@@ -108,7 +107,6 @@ export default function OutstandingPage() {
     const [dateTo, setDateTo] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [payStatusFilter, setPayStatusFilter] = useState<PayStatusFilter>('all');
-    const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set());
     const [selectedPartyId, setSelectedPartyId] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -169,10 +167,13 @@ export default function OutstandingPage() {
 
     useEffect(() => {
         if (!branchFilter) return;
-        setSelectedPartyId(null);
-        setExpandedParties(new Set());
         void loadAllParties();
     }, [branchFilter, dateFrom, dateTo, loadAllParties]);
+
+    // Changing branch returns to the party list.
+    useEffect(() => {
+        setSelectedPartyId(null);
+    }, [branchFilter]);
 
     const filteredParties = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
@@ -192,7 +193,6 @@ export default function OutstandingPage() {
         if (!selectedPartyId) return;
         if (!filteredParties.some((p) => p.party_id === selectedPartyId)) {
             setSelectedPartyId(null);
-            setExpandedParties(new Set());
         }
     }, [filteredParties, selectedPartyId]);
 
@@ -233,26 +233,12 @@ export default function OutstandingPage() {
         [filteredParties]
     );
 
-    const toggleParty = (partyId: string) => {
-        setExpandedParties((prev) => {
-            const next = new Set(prev);
-            if (next.has(partyId)) {
-                next.delete(partyId);
-            } else {
-                next.add(partyId);
-            }
-            return next;
-        });
-    };
-
     const selectParty = (partyId: string) => {
         setSelectedPartyId(partyId);
-        setExpandedParties(new Set([partyId]));
     };
 
     const clearSelectedParty = () => {
         setSelectedPartyId(null);
-        setExpandedParties(new Set());
     };
 
     const resetFilters = () => {
@@ -262,7 +248,6 @@ export default function OutstandingPage() {
         setDateFrom('');
         setDateTo('');
         setSelectedPartyId(null);
-        setExpandedParties(new Set());
     };
 
     const branchNameByCode = useMemo(
@@ -425,7 +410,7 @@ export default function OutstandingPage() {
           };
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden p-2 md:p-2.5 animate-fadeIn">
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden p-[5px] animate-fadeIn">
             {/* Compact title + actions */}
             <div className="flex shrink-0 items-center justify-between gap-2">
                 <h1 className="flex min-w-0 items-center gap-1.5 text-sm font-bold tracking-tight">
@@ -476,15 +461,86 @@ export default function OutstandingPage() {
                 </div>
             </div>
 
-            {/* Filters (left) + summary cards (right) — one short row */}
-            <div className="grid shrink-0 gap-1.5 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)] lg:items-stretch">
-                <Card className="border shadow-sm">
-                    <CardContent className="flex h-full flex-col justify-center p-2">
-                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 xl:grid-cols-6">
-                            <div className="col-span-2 sm:col-span-1 xl:col-span-1 flex flex-col gap-0.5 min-w-0">
-                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                    Branch
-                                </label>
+            {showingPartyDetail ? (
+                <div className="flex shrink-0 flex-col gap-1">
+                    {/* Line 1: party details + date filters only */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={clearSelectedParty}
+                                className="h-7 gap-1 px-1.5 text-[11px] text-muted-foreground"
+                            >
+                                <X className="h-3 w-3" /> Back
+                            </Button>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-xl font-bold leading-tight text-primary md:text-2xl">{displayedData[0].party_name}</p>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                    <Badge variant="outline" className="h-4 font-mono text-[10px]">
+                                        {displayedData[0].party_code}
+                                    </Badge>
+                                    {displayedData[0].branch_code ? (
+                                        <Badge variant="secondary" className="h-4 text-[10px]">
+                                            {displayedData[0].branch_name || displayedData[0].branch_code}
+                                        </Badge>
+                                    ) : null}
+                                </div>
+                            </div>
+                            <Input
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                className="h-7 w-[128px] px-1.5 text-[11px]"
+                                title="From date"
+                            />
+                            <Input
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                className="h-7 w-[128px] px-1.5 text-[11px]"
+                                title="To date"
+                            />
+                            <Select
+                                value={payStatusFilter}
+                                onValueChange={(v) => setPayStatusFilter(v as PayStatusFilter)}
+                            >
+                                <SelectTrigger className="h-7 w-[110px] text-[11px]" title="Status">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All</SelectItem>
+                                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                                    <SelectItem value="due">To be paid</SelectItem>
+                                    <SelectItem value="partial">Partial</SelectItem>
+                                    <SelectItem value="paid">Paid</SelectItem>
+                                </SelectContent>
+                            </Select>
+                    </div>
+
+                    {/* Line 2: compact detail boxes */}
+                    <div className="grid grid-cols-4 gap-1">
+                        <div className="rounded-md border bg-muted/40 px-2 py-1 leading-none">
+                            <span className="text-[9px] font-semibold uppercase text-muted-foreground">Bills</span>
+                            <p className="text-xs font-bold tabular-nums">{summaryStats.bills}</p>
+                        </div>
+                        <div className="rounded-md border bg-muted/40 px-2 py-1 leading-none">
+                            <span className="text-[9px] font-semibold uppercase text-muted-foreground">Billed</span>
+                            <p className="text-xs font-bold tabular-nums">₹{fmt(summaryStats.billed)}</p>
+                        </div>
+                        <div className="rounded-md border bg-muted/40 px-2 py-1 leading-none">
+                            <span className="text-[9px] font-semibold uppercase text-muted-foreground">Paid</span>
+                            <p className="text-xs font-bold tabular-nums text-indigo-700">₹{fmt(summaryStats.paid)}</p>
+                        </div>
+                        <div className="rounded-md border border-destructive/20 bg-destructive/5 px-2 py-1 leading-none">
+                            <span className="text-[9px] font-semibold uppercase text-muted-foreground">Outstanding</span>
+                            <p className="text-xs font-bold tabular-nums text-destructive">₹{fmt(summaryStats.outstanding)}</p>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex shrink-0 flex-col gap-1.5">
+                        {/* Row 1: filters stretch full width */}
+                        <div className="flex w-full min-w-0 items-center gap-1.5">
                                 {userScope.isBranchScoped ? (
                                     <Input
                                         value={
@@ -496,15 +552,17 @@ export default function OutstandingPage() {
                                         }
                                         readOnly
                                         disabled
-                                        className="h-7 bg-muted/40 px-2 text-[11px]"
+                                        className="h-7 min-w-0 flex-[1.4] bg-muted/40 px-2 text-[11px]"
+                                        title="Branch"
                                     />
                                 ) : (
+                                    <div className="min-w-0 flex-[1.4]">
                                     <Select
                                         value={branchFilter ?? 'all'}
                                         onValueChange={(v) => setBranchFilter(v)}
                                     >
-                                        <SelectTrigger className="h-7 w-full text-[11px]">
-                                            <SelectValue placeholder="All Branches" />
+                                        <SelectTrigger className="h-7 w-full text-[11px]" title="Branch">
+                                            <SelectValue placeholder="Branch" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">All Branches</SelectItem>
@@ -515,42 +573,30 @@ export default function OutstandingPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                    </div>
                                 )}
-                            </div>
 
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                    From
-                                </label>
                                 <Input
                                     type="date"
                                     value={dateFrom}
                                     onChange={(e) => setDateFrom(e.target.value)}
-                                    className="h-7 px-1.5 text-[11px]"
+                                    className="h-7 min-w-0 flex-1 px-1.5 text-[11px]"
+                                    title="From date"
                                 />
-                            </div>
-
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                    To
-                                </label>
                                 <Input
                                     type="date"
                                     value={dateTo}
                                     onChange={(e) => setDateTo(e.target.value)}
-                                    className="h-7 px-1.5 text-[11px]"
+                                    className="h-7 min-w-0 flex-1 px-1.5 text-[11px]"
+                                    title="To date"
                                 />
-                            </div>
 
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                    Status
-                                </label>
+                                <div className="min-w-0 flex-1">
                                 <Select
                                     value={payStatusFilter}
                                     onValueChange={(v) => setPayStatusFilter(v as PayStatusFilter)}
                                 >
-                                    <SelectTrigger className="h-7 w-full text-[11px]">
+                                    <SelectTrigger className="h-7 w-full text-[11px]" title="Status">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -561,110 +607,70 @@ export default function OutstandingPage() {
                                         <SelectItem value="paid">Paid</SelectItem>
                                     </SelectContent>
                                 </Select>
-                            </div>
+                                </div>
 
-                            <div className="col-span-2 sm:col-span-3 xl:col-span-2 flex flex-col gap-0.5 min-w-0">
-                                <label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                    Search
-                                </label>
-                                <div className="relative flex gap-1">
-                                    <div className="relative min-w-0 flex-1">
-                                        <Search className="pointer-events-none absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                                        <Input
-                                            placeholder="Party name or code…"
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="h-7 pl-7 pr-6 text-[11px]"
-                                        />
-                                        {searchTerm ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => setSearchTerm('')}
-                                                className="absolute right-1.5 top-1.5 text-muted-foreground hover:text-foreground"
-                                            >
-                                                <X className="h-3.5 w-3.5" />
-                                            </button>
-                                        ) : null}
-                                    </div>
-                                    {activeFilterCount > 0 ? (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={resetFilters}
-                                            className="h-7 shrink-0 gap-1 px-1.5 text-[11px] text-muted-foreground"
+                                <div className="relative min-w-0 flex-[1.6]">
+                                    <Search className="pointer-events-none absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Party name or code…"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="h-7 w-full pl-7 pr-6 text-[11px]"
+                                    />
+                                    {searchTerm ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchTerm('')}
+                                            className="absolute right-1.5 top-1.5 text-muted-foreground hover:text-foreground"
                                         >
-                                            <X className="h-3 w-3" />
-                                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">
-                                                {activeFilterCount}
-                                            </Badge>
-                                        </Button>
+                                            <X className="h-3.5 w-3.5" />
+                                        </button>
                                     ) : null}
                                 </div>
+                                {activeFilterCount > 0 ? (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={resetFilters}
+                                        className="h-7 shrink-0 gap-1 px-1.5 text-[11px] text-muted-foreground"
+                                    >
+                                        <X className="h-3 w-3" />
+                                        <Badge variant="secondary" className="h-4 px-1 text-[9px]">
+                                            {activeFilterCount}
+                                        </Badge>
+                                    </Button>
+                                ) : null}
+                        </div>
+
+                        {/* Row 2: summary totals */}
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                            <div className="rounded-md bg-muted/50 px-2.5 py-1.5 leading-tight">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Parties</span>
+                                <p className="text-sm font-bold tabular-nums md:text-base">
+                                    {summaryStats.parties}
+                                    <span className="ml-1 text-xs font-semibold text-muted-foreground md:text-sm">
+                                        / {summaryStats.bills} bills
+                                    </span>
+                                </p>
+                            </div>
+                            <div className="rounded-md bg-muted/50 px-2.5 py-1.5 leading-tight">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Billed</span>
+                                <p className="text-sm font-bold tabular-nums md:text-base">₹{fmt(summaryStats.billed)}</p>
+                            </div>
+                            <div className="rounded-md bg-muted/50 px-2.5 py-1.5 leading-tight">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Paid</span>
+                                <p className="text-sm font-bold tabular-nums text-indigo-700 md:text-base">₹{fmt(summaryStats.paid)}</p>
+                            </div>
+                            <div className="rounded-md border border-destructive/20 bg-destructive/5 px-2.5 py-1.5 leading-tight">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Due</span>
+                                <p className="text-sm font-bold tabular-nums text-destructive md:text-base">₹{fmt(summaryStats.outstanding)}</p>
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-4 gap-1.5">
-                    <Card className="shadow-sm">
-                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                {showingPartyDetail ? 'Bills' : 'Parties'}
-                            </p>
-                            <p className="mt-0.5 text-base font-bold tabular-nums leading-tight">
-                                {showingPartyDetail ? summaryStats.bills : summaryStats.parties}
-                            </p>
-                            {!showingPartyDetail ? (
-                                <p className="text-[9px] text-muted-foreground tabular-nums leading-none">
-                                    {summaryStats.bills} bills
-                                </p>
-                            ) : null}
-                        </CardContent>
-                    </Card>
-                    <Card className="shadow-sm">
-                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                Billed
-                            </p>
-                            <p className="mt-0.5 text-xs font-bold tabular-nums leading-tight md:text-sm">
-                                ₹{fmt(summaryStats.billed)}
-                            </p>
-                        </CardContent>
-                    </Card>
-                    <Card className="shadow-sm">
-                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                Paid
-                            </p>
-                            <p className="mt-0.5 text-xs font-bold tabular-nums leading-tight text-indigo-700 md:text-sm">
-                                ₹{fmt(summaryStats.paid)}
-                            </p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-destructive/30 bg-destructive/5 shadow-sm">
-                        <CardContent className="flex h-full flex-col justify-center px-2 py-1.5">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
-                                Outstanding
-                            </p>
-                            <p className="mt-0.5 text-xs font-bold tabular-nums leading-tight text-destructive md:text-sm">
-                                ₹{fmt(summaryStats.outstanding)}
-                            </p>
-                        </CardContent>
-                    </Card>
                 </div>
-            </div>
+            )}
 
             {showingPartyDetail ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
-                    <div className="flex shrink-0 items-center gap-2 text-[11px]">
-                        <Button variant="ghost" size="sm" onClick={clearSelectedParty} className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground">
-                            <X className="h-3 w-3" /> Back
-                        </Button>
-                        <span className="text-muted-foreground">Showing:</span>
-                        <span className="truncate font-semibold">{displayedData[0].party_name}</span>
-                        <Badge variant="outline" className="font-mono text-[10px]">{displayedData[0].party_code}</Badge>
-                    </div>
-
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border shadow-sm">
                         <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
                             <div className="min-h-0 flex-1 overflow-auto">
@@ -672,7 +678,7 @@ export default function OutstandingPage() {
                                 <TableHeader>
                                     <TableRow className="bg-muted/40 hover:bg-muted/40">
                                         <TableHead className="w-8"></TableHead>
-                                        <TableHead className="font-semibold">Party / Bill No.</TableHead>
+                                        <TableHead className="font-semibold">Bill No.</TableHead>
                                         <TableHead className="font-semibold">Bill Date</TableHead>
                                         <TableHead className="font-semibold">Status</TableHead>
                                         <TableHead className="font-semibold text-right">Bill Amount</TableHead>
@@ -681,120 +687,53 @@ export default function OutstandingPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {displayedData.map((party) => {
-                                        const isExpanded = expandedParties.has(party.party_id);
-                                        return (
-                                            <React.Fragment key={party.party_id}>
+                                    {displayedData.map((party) => (
+                                        <React.Fragment key={party.party_id}>
+                                            {party.bills.map((bill, idx) => (
                                                 <TableRow
-                                                    className="bg-muted/60 hover:bg-muted/80 cursor-pointer select-none font-semibold border-t-2"
-                                                    onClick={() => toggleParty(party.party_id)}
+                                                    key={bill.id}
+                                                    className={idx % 2 === 0 ? 'bg-background' : 'bg-[var(--table-row-even)]'}
                                                 >
-                                                    <TableCell className="w-8 ">
-                                                        {isExpanded ? (
-                                                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                                                        ) : (
-                                                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                                                        )}
+                                                    <TableCell className="w-8"></TableCell>
+                                                    <TableCell>
+                                                        <span className="font-medium text-xs font-mono">
+                                                            {bill.bill_ref_no || '—'}
+                                                        </span>
                                                     </TableCell>
-                                                    <TableCell className="">
-                                                        <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
-                                                            <span className="min-w-0 flex-1 truncate font-bold text-xs" title={party.party_name}>
-                                                                {party.party_name}
-                                                            </span>
-                                                            <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[9px] font-mono">
-                                                                {party.party_code}
-                                                            </Badge>
-                                                            {party.branch_code && (
-                                                                <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[9px]">
-                                                                    {party.branch_name || party.branch_code}
-                                                                </Badge>
-                                                            )}
-                                                            <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
-                                                                {party.bills.length} bill{party.bills.length !== 1 ? 's' : ''}
-                                                            </span>
-                                                        </div>
+                                                    <TableCell className="text-xs text-muted-foreground">
+                                                        {fmtDate(bill.billing_date)}
                                                     </TableCell>
-                                                    <TableCell className=" text-muted-foreground text-[11px]">—</TableCell>
-                                                    <TableCell className=" text-muted-foreground text-[11px]">—</TableCell>
-                                                    <TableCell className=" text-right tabular-nums text-xs font-bold">
-                                                        ₹{fmt(party.total_billed)}
+                                                    <TableCell>
+                                                        {payStatusBadge(bill.pay_status)}
                                                     </TableCell>
-                                                    <TableCell className=" text-right tabular-nums text-xs text-muted-foreground">
-                                                        ₹{fmt(party.total_paid)}
+                                                    <TableCell className="text-right tabular-nums text-xs">
+                                                        ₹{fmt(bill.amount)}
                                                     </TableCell>
-                                                    <TableCell className=" text-right tabular-nums text-xs font-bold text-destructive">
-                                                        ₹{fmt(party.total_outstanding)}
+                                                    <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
+                                                        ₹{fmt(bill.paid_amount)}
+                                                    </TableCell>
+                                                    <TableCell className={`text-right tabular-nums text-xs font-semibold ${bill.outstanding > 0.005 ? 'text-destructive' : 'text-emerald-700'}`}>
+                                                        ₹{fmt(bill.outstanding)}
                                                     </TableCell>
                                                 </TableRow>
-
-                                                {isExpanded && (
-                                                    <>
-                                                        {party.bills.map((bill, idx) => (
-                                                            <TableRow
-                                                                key={bill.id}
-                                                                className={idx % 2 === 0 ? 'bg-background' : 'bg-[var(--table-row-even)]'}
-                                                            >
-                                                                <TableCell className="w-8 "></TableCell>
-                                                                <TableCell className=" pl-8">
-                                                                    <span className="font-medium text-xs font-mono">
-                                                                        {bill.bill_ref_no || '—'}
-                                                                    </span>
-                                                                </TableCell>
-                                                                <TableCell className=" text-xs text-muted-foreground">
-                                                                    {fmtDate(bill.billing_date)}
-                                                                </TableCell>
-                                                                <TableCell className="">
-                                                                    {payStatusBadge(bill.pay_status)}
-                                                                </TableCell>
-                                                                <TableCell className=" text-right tabular-nums text-xs">
-                                                                    ₹{fmt(bill.amount)}
-                                                                </TableCell>
-                                                                <TableCell className=" text-right tabular-nums text-xs text-muted-foreground">
-                                                                    ₹{fmt(bill.paid_amount)}
-                                                                </TableCell>
-                                                                <TableCell className={`text-right tabular-nums text-xs font-semibold ${bill.outstanding > 0.005 ? 'text-destructive' : 'text-emerald-700'}`}>
-                                                                    ₹{fmt(bill.outstanding)}
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                        <TableRow className="bg-primary/5 border-b-2">
-                                                            <TableCell className=""></TableCell>
-                                                            <TableCell colSpan={3} className="pl-8 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                                                                Subtotal
-                                                            </TableCell>
-                                                            <TableCell className=" text-right tabular-nums text-xs font-bold">
-                                                                ₹{fmt(party.total_billed)}
-                                                            </TableCell>
-                                                            <TableCell className=" text-right tabular-nums text-xs font-semibold text-muted-foreground">
-                                                                ₹{fmt(party.total_paid)}
-                                                            </TableCell>
-                                                            <TableCell className=" text-right tabular-nums text-xs font-bold text-destructive">
-                                                                ₹{fmt(party.total_outstanding)}
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    </>
-                                                )}
-                                            </React.Fragment>
-                                        );
-                                    })}
-
-                                    <TableRow className="bg-muted border-t-2 font-bold">
-                                        <TableCell className=""></TableCell>
-                                        <TableCell colSpan={3} className="text-xs font-bold uppercase tracking-wide">
-                                            Grand Total — {displayedData.reduce((s, p) => s + p.bills.length, 0)} Bills
-                                        </TableCell>
-                                        <TableCell className="text-right tabular-nums text-xs font-bold">
-                                            ₹{fmt(grandTotals.billed)}
-                                        </TableCell>
-                                        <TableCell className="text-right tabular-nums text-xs font-semibold text-muted-foreground">
-                                            ₹{fmt(grandTotals.paid)}
-                                        </TableCell>
-                                        <TableCell className="text-right tabular-nums text-xs font-bold text-destructive">
-                                            ₹{fmt(grandTotals.outstanding)}
-                                        </TableCell>
-                                    </TableRow>
+                                            ))}
+                                            {Array.from({
+                                                length: Math.max(0, 16 - party.bills.length),
+                                            }).map((_, idx) => (
+                                                <TableRow key={`pad-${party.party_id}-${idx}`} className="h-8 border-0 hover:bg-transparent">
+                                                    <TableCell colSpan={7} className="h-8 border-0 p-0">&nbsp;</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </React.Fragment>
+                                    ))}
                                 </TableBody>
                             </Table>
+                            </div>
+                            <div className="shrink-0 flex items-center gap-4 border-t-2 bg-muted px-3 py-2.5 text-sm font-bold">
+                                <span className="min-w-0 flex-1 uppercase tracking-wide">Grand Total</span>
+                                <span className="w-36 text-right tabular-nums">₹{fmt(grandTotals.billed)}</span>
+                                <span className="w-36 text-right tabular-nums text-muted-foreground">₹{fmt(grandTotals.paid)}</span>
+                                <span className="w-36 text-right tabular-nums text-destructive">₹{fmt(grandTotals.outstanding)}</span>
                             </div>
                         </CardContent>
                     </Card>
@@ -902,14 +841,15 @@ export default function OutstandingPage() {
                             </Table>
                         </div>
                         {filteredParties.length > 0 && !allPartiesLoading && (
-                            <div className="shrink-0 border-t bg-muted/20 px-3 py-1.5 grid grid-cols-8 gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                <div className="col-span-2">Total ({filteredParties.length} parties) · {PAY_STATUS_LABELS[payStatusFilter]}</div>
-                                <div></div>
-                                <div className="text-right font-mono text-foreground">{listTotals.bills}</div>
-                                <div className="text-right font-mono text-foreground">₹{fmt(listTotals.billed)}</div>
-                                <div className="text-right font-mono text-indigo-700">₹{fmt(listTotals.paid)}</div>
-                                <div className="text-right font-mono text-red-700">₹{fmt(listTotals.outstanding)}</div>
-                                <div></div>
+                            <div className="shrink-0 flex items-center gap-4 border-t-2 bg-muted px-3 py-2.5 text-sm font-bold">
+                                <span className="min-w-0 flex-1 uppercase tracking-wide">
+                                    Grand Total · {filteredParties.length} parties · {PAY_STATUS_LABELS[payStatusFilter]}
+                                </span>
+                                <span className="w-20 text-right tabular-nums">{listTotals.bills}</span>
+                                <span className="w-36 text-right tabular-nums">₹{fmt(listTotals.billed)}</span>
+                                <span className="w-36 text-right tabular-nums text-indigo-700">₹{fmt(listTotals.paid)}</span>
+                                <span className="w-36 text-right tabular-nums text-destructive">₹{fmt(listTotals.outstanding)}</span>
+                                <span className="w-16" />
                             </div>
                         )}
                     </CardContent>
