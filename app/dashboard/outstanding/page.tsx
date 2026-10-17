@@ -106,7 +106,7 @@ export default function OutstandingPage() {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [payStatusFilter, setPayStatusFilter] = useState<PayStatusFilter>('all');
+    const [payStatusFilter, setPayStatusFilter] = useState<PayStatusFilter>('unpaid');
     const [selectedPartyId, setSelectedPartyId] = useState<string | null>(null);
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -243,7 +243,7 @@ export default function OutstandingPage() {
 
     const resetFilters = () => {
         setSearchTerm('');
-        setPayStatusFilter('all');
+        setPayStatusFilter('unpaid');
         setBranchFilter(defaultBranchFilterValue(userScope));
         setDateFrom('');
         setDateTo('');
@@ -389,7 +389,7 @@ export default function OutstandingPage() {
         !!dateFrom,
         !!dateTo,
         !!searchTerm.trim(),
-        payStatusFilter !== 'all',
+        payStatusFilter !== 'unpaid',
     ].filter(Boolean).length;
 
     const showingPartyDetail = Boolean(selectedPartyId && displayedData.length > 0);
