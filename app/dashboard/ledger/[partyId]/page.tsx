@@ -189,7 +189,7 @@ const getConsignmentBaseFreight = (
     const extraCharges = getConsignmentExtraCharges(consignment);
     // Never fall back to total_freight — that double-counts Extra KM / other charges
     // when basic_freight is 0 (e.g. extra-only CN lines).
-    return Math.max(0, derivedFreight);
+    return Math.max(0, totalFreight - detention - extraCharges);
 };
 
 const getConsignmentChargeBreakdown = (
