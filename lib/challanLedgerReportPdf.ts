@@ -1,4 +1,5 @@
 import { formatBranchLabel as formatBranch } from '@/lib/formatBranchLabel';
+import { roundMoney } from '@/lib/money';
 import {
     loadPdfLogo,
     PDF_HEADER_LOGO_IMG_CSS,
@@ -60,8 +61,7 @@ const TABLE_COLUMNS = 11;
 const PAGE_LAYOUT_BUFFER_PX = 22;
 const MAX_LAST_PAGE_BLANK_ROWS = 5;
 
-const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 const safe = (value: string | number | null | undefined) => String(value ?? '')
     .replace(/&/g, '&amp;')

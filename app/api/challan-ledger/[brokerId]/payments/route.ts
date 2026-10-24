@@ -3,9 +3,8 @@ import {
     buildSettledChallanAmountMap,
     getChallanNetPayable,
 } from '@/lib/server/challanBillingSnapshot';
+import { roundMoney } from '@/lib/money';
 import { requireAuthz, requireBrokerBranchAccess } from '@/lib/server/requireAuthz';
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const normalizeLineItems = (value: unknown) => {
     if (!Array.isArray(value)) return [];

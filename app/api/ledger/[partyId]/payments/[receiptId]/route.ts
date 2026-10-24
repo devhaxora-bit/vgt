@@ -5,9 +5,8 @@ import {
     normalizeBillAllocations,
     resolvePaymentAmounts,
 } from '@/lib/server/partyPaymentReceipts';
+import { roundMoney } from '@/lib/money';
 import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 const VALID_MODES = ['CASH', 'CHEQUE', 'NEFT', 'RTGS', 'UPI', 'ADJUSTMENT'] as const;
 
 const mapPaymentUpdateError = (message: string) => {

@@ -5,9 +5,8 @@ import {
     normalizeBillAllocations,
     resolvePaymentAmounts,
 } from '@/lib/server/partyPaymentReceipts';
+import { roundMoney } from '@/lib/money';
 import { requireAuthz, requirePartyBranchAccess } from '@/lib/server/requireAuthz';
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 // POST /api/ledger/[partyId]/payments
 // Record a payment receipt (admin only)

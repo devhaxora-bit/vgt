@@ -33,6 +33,7 @@ import {
 } from '@/lib/billFreightDisplay';
 import { downloadBillPdfFromDocument, renderBillPdfPages } from '@/lib/billPdf';
 import { formatBillCnNo, formatBillIncludeRateLabel, isFreightIncludedCn } from '@/lib/formatBillCnNo';
+import { parseMoney, roundMoney } from '@/lib/money';
 import { loadPdfLogo, VGT_LOGO_PATH } from '@/lib/pdfLogo';
 
 interface PartyInfo {
@@ -135,7 +136,7 @@ interface BillingConsignmentSnapshotRow {
 }
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 const fmtDate = (value?: string | null) => {
     if (!value) return '—';
@@ -243,14 +244,6 @@ const withPartyPincode = (line1: string, stateLine: string, pincode?: string | n
 
     return { addressLine1: line1, addressStateLine: pin };
 };
-
-const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const getConsignmentExtraCharges = (
     consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>

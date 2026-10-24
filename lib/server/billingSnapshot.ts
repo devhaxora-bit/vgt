@@ -8,6 +8,7 @@ import {
     sumVehicleCancelCharges,
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
+import { parseMoney, roundMoney } from '@/lib/money';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
@@ -77,14 +78,6 @@ export interface PreparedBillingSnapshot {
     vehicleCancelChargesTotal: number;
     finalBillAmount: number;
 }
-
-const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const getConsignmentExtraCharges = (
     consignment: Pick<BillingSnapshotConsignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>

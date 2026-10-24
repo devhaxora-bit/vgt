@@ -14,7 +14,7 @@ export interface BillingExtraChargeDraftItem {
 }
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 const createEmptyChargeItem = (): BillingExtraChargeDraftItem => ({
     id: Math.random().toString(36).slice(2, 10),

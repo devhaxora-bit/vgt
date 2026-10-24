@@ -32,4 +32,20 @@ export type BookingRegisterSummary = {
     billed_count: number;
     unbilled_count: number;
     cancelled_count: number;
+    /**
+     * Unique vehicle-days in the filtered set.
+     * Same vehicle + same booking date with multiple LRs = 1.
+     * Same vehicle on a different day = another count.
+     */
+    vehicle_count: number;
+};
+
+/** One vehicle on one booking date (may cover multiple LRs). */
+export type BookingRegisterVehicleDay = {
+    vehicle_no: string;
+    bkg_date: string;
+    lr_count: number;
+    freight_total: number;
+    cn_nos: string[];
+    booking_branch: string | null;
 };

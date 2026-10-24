@@ -10,6 +10,7 @@ import {
     RefreshCw,
     RotateCcw,
     Search,
+    Truck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,9 +27,13 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
-import type { BookingRegisterRow } from '@/lib/types/bookingRegister.types';
+import type {
+    BookingRegisterRow,
+    BookingRegisterVehicleDay,
+} from '@/lib/types/bookingRegister.types';
 
 type BillStatusFilter = 'all' | 'billed' | 'unbilled';
+type ViewMode = 'register' | 'vehicle';
 type SortField =
     | 'bkg_date'
     | 'cn_no'
@@ -36,6 +41,13 @@ type SortField =
     | 'billing_party'
     | 'bkg_basis'
     | 'total_freight';
+
+/** Normalize plate so AP 01 AB 1234 and ap01ab1234 match. */
+const normalizeVehicleNo = (value: unknown): string =>
+    String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '');
 
 const BKG_BASIS_OPTIONS = [
     { value: 'all', label: 'All bases' },
@@ -81,8 +93,10 @@ export default function BookingRegisterPage() {
     const [billStatus, setBillStatus] = useState<BillStatusFilter>('all');
     const [partyQ, setPartyQ] = useState('');
     const [cnNo, setCnNo] = useState('');
+    const [vehicleQ, setVehicleQ] = useState('');
     const [destBranch, setDestBranch] = useState('all');
     const [includeCancelled, setIncludeCancelled] = useState(false);
+    const [viewMode, setViewMode] = useState<ViewMode>('register');
 
     const [rows, setRows] = useState<BookingRegisterRow[]>([]);
     const [summary, setSummary] = useState({
@@ -92,6 +106,7 @@ export default function BookingRegisterPage() {
         billed_count: 0,
         unbilled_count: 0,
         cancelled_count: 0,
+        vehicle_count: 0,
     });
     const [isLoading, setIsLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
@@ -132,9 +147,11 @@ export default function BookingRegisterPage() {
         setBillStatus('all');
         setPartyQ('');
         setCnNo('');
+        setVehicleQ('');
         setDestBranch('all');
         setIncludeCancelled(false);
         setTableSearch('');
+        setViewMode('register');
         setBranchFilter(defaultBranchFilterValue(userScope));
     };
 
@@ -150,6 +167,7 @@ export default function BookingRegisterPage() {
             if (billStatus !== 'all') params.set('bill_status', billStatus);
             if (partyQ.trim()) params.set('party_q', partyQ.trim());
             if (cnNo.trim()) params.set('cn_no', cnNo.trim());
+            if (vehicleQ.trim()) params.set('vehicle_q', vehicleQ.trim());
             if (destBranch !== 'all') params.set('dest_branch', destBranch);
             if (includeCancelled) params.set('include_cancelled', 'true');
             params.set('limit', '5000');
@@ -167,6 +185,7 @@ export default function BookingRegisterPage() {
                     billed_count: 0,
                     unbilled_count: 0,
                     cancelled_count: 0,
+                    vehicle_count: 0,
                 },
             );
             setHasLoaded(true);
@@ -184,6 +203,7 @@ export default function BookingRegisterPage() {
         billStatus,
         partyQ,
         cnNo,
+        vehicleQ,
         destBranch,
         includeCancelled,
     ]);
@@ -223,6 +243,48 @@ export default function BookingRegisterPage() {
         });
     }, [rows, sortField, sortDir, tableSearch]);
 
+    /** Group LRs by vehicle + booking date (same day duplicates collapse to one trip). */
+    const vehicleDayRows = useMemo((): BookingRegisterVehicleDay[] => {
+        const map = new Map<string, BookingRegisterVehicleDay>();
+
+        for (const row of sortedRows) {
+            const vehicle = normalizeVehicleNo(row.vehicle_no);
+            const day = String(row.bkg_date || '').slice(0, 10);
+            if (!vehicle || !day) continue;
+
+            const key = `${vehicle}|${day}`;
+            const existing = map.get(key);
+            if (existing) {
+                existing.lr_count += 1;
+                existing.freight_total += Number(row.total_freight || 0);
+                if (row.cn_no) existing.cn_nos.push(row.cn_no);
+                continue;
+            }
+
+            map.set(key, {
+                vehicle_no: vehicle,
+                bkg_date: day,
+                lr_count: 1,
+                freight_total: Number(row.total_freight || 0),
+                cn_nos: row.cn_no ? [row.cn_no] : [],
+                booking_branch: row.booking_branch,
+            });
+        }
+
+        return [...map.values()].sort((a, b) => {
+            const dateCmp = String(b.bkg_date).localeCompare(String(a.bkg_date));
+            if (dateCmp !== 0) return dateCmp;
+            return a.vehicle_no.localeCompare(b.vehicle_no, undefined, { numeric: true });
+        });
+    }, [sortedRows]);
+
+    const displayVehicleCount = useMemo(() => {
+        if (tableSearch.trim() || viewMode === 'vehicle') {
+            return vehicleDayRows.length;
+        }
+        return summary.vehicle_count ?? vehicleDayRows.length;
+    }, [summary.vehicle_count, tableSearch, vehicleDayRows.length, viewMode]);
+
     const toggleSort = (field: SortField) => {
         if (sortField === field) {
             setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -233,6 +295,38 @@ export default function BookingRegisterPage() {
     };
 
     const exportCsv = () => {
+        if (viewMode === 'vehicle') {
+            if (vehicleDayRows.length === 0) {
+                toast.error('Nothing to export');
+                return;
+            }
+            const headers = ['Bkg Date', 'Vehicle', 'Branch', 'LR Count', 'Freight', 'CN Nos'];
+            const lines = [headers.join(',')];
+            for (const trip of vehicleDayRows) {
+                lines.push(
+                    [
+                        trip.bkg_date,
+                        trip.vehicle_no,
+                        trip.booking_branch,
+                        trip.lr_count,
+                        trip.freight_total,
+                        trip.cn_nos.join(' | '),
+                    ]
+                        .map(csvEscape)
+                        .join(','),
+                );
+            }
+            const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `booking-register-vehicles-${dateFrom || 'all'}-${dateTo || 'all'}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast.success('CSV downloaded');
+            return;
+        }
+
         if (sortedRows.length === 0) {
             toast.error('Nothing to export');
             return;
@@ -305,7 +399,7 @@ export default function BookingRegisterPage() {
                     </div>
                     <h1 className="text-2xl font-bold tracking-tight text-[#101828]">Booking Register</h1>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Date-wise, party-wise, TBB and billed booking list — dense register layout.
+                        Date-wise, party-wise, vehicle-wise, TBB and billed booking list — dense register layout.
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -420,6 +514,15 @@ export default function BookingRegisterPage() {
                             <Label className="text-xs">CN No</Label>
                             <Input className="h-9 font-mono" placeholder="CN number" value={cnNo} onChange={(e) => setCnNo(e.target.value)} />
                         </div>
+                        <div className="space-y-1.5">
+                            <Label className="text-xs">Vehicle No</Label>
+                            <Input
+                                className="h-9 font-mono uppercase"
+                                placeholder="e.g. AP01AB1234"
+                                value={vehicleQ}
+                                onChange={(e) => setVehicleQ(e.target.value)}
+                            />
+                        </div>
                         <div className="space-y-1.5 flex items-end">
                             <label className="flex items-center gap-2 text-xs h-9 px-1">
                                 <input
@@ -435,9 +538,14 @@ export default function BookingRegisterPage() {
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
                 {[
                     { label: 'Bookings', value: String(summary.count) },
+                    {
+                        label: 'Vehicles',
+                        value: String(displayVehicleCount),
+                        hint: 'Unique vehicle × day (same truck, same day = 1)',
+                    },
                     { label: 'Freight', value: `₹${fmtMoney(summary.freight_total)}` },
                     { label: 'TBB', value: String(summary.tbb_count) },
                     { label: 'Billed', value: String(summary.billed_count) },
@@ -447,15 +555,43 @@ export default function BookingRegisterPage() {
                     <div key={kpi.label} className="rounded-lg border bg-white px-3 py-2.5 shadow-sm">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{kpi.label}</p>
                         <p className="text-lg font-bold tabular-nums text-[#101828]">{kpi.value}</p>
+                        {'hint' in kpi && kpi.hint ? (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{kpi.hint}</p>
+                        ) : null}
                     </div>
                 ))}
             </div>
 
             <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
-                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        Register · {sortedRows.length} row{sortedRows.length === 1 ? '' : 's'}
-                    </p>
+                <div className="flex flex-col gap-2 border-b bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                            {viewMode === 'vehicle'
+                                ? `Vehicle-wise · ${vehicleDayRows.length} trip${vehicleDayRows.length === 1 ? '' : 's'}`
+                                : `Register · ${sortedRows.length} row${sortedRows.length === 1 ? '' : 's'}`}
+                        </p>
+                        <div className="inline-flex rounded-md border bg-white p-0.5">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={viewMode === 'register' ? 'default' : 'ghost'}
+                                className="h-7 px-2.5 text-[11px]"
+                                onClick={() => setViewMode('register')}
+                            >
+                                LR list
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={viewMode === 'vehicle' ? 'default' : 'ghost'}
+                                className="h-7 px-2.5 text-[11px] gap-1"
+                                onClick={() => setViewMode('vehicle')}
+                            >
+                                <Truck className="h-3 w-3" />
+                                Vehicle-wise
+                            </Button>
+                        </div>
+                    </div>
                     <div className="relative w-full sm:w-64">
                         <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
                         <Input
@@ -468,118 +604,171 @@ export default function BookingRegisterPage() {
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="vgt-register-table w-full min-w-[1200px] border-collapse text-xs">
-                        <thead>
-                            <tr>
-                                <th className="cursor-pointer" onClick={() => toggleSort('bkg_date')}>
-                                    Bkg Date <SortHint field="bkg_date" />
-                                </th>
-                                <th className="cursor-pointer" onClick={() => toggleSort('booking_branch')}>
-                                    Br <SortHint field="booking_branch" />
-                                </th>
-                                <th className="cursor-pointer" onClick={() => toggleSort('cn_no')}>
-                                    CN No <SortHint field="cn_no" />
-                                </th>
-                                <th className="cursor-pointer" onClick={() => toggleSort('bkg_basis')}>
-                                    Basis <SortHint field="bkg_basis" />
-                                </th>
-                                <th className="cursor-pointer" onClick={() => toggleSort('billing_party')}>
-                                    Billing Party <SortHint field="billing_party" />
-                                </th>
-                                <th>Consignor</th>
-                                <th>Consignee</th>
-                                <th>Dest</th>
-                                <th className="text-right">Pkgs</th>
-                                <th className="text-right">Wt</th>
-                                <th className="text-right cursor-pointer" onClick={() => toggleSort('total_freight')}>
-                                    Freight <SortHint field="total_freight" />
-                                </th>
-                                <th>Del Type</th>
-                                <th>Vehicle</th>
-                                <th>Bill</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading ? (
+                    {viewMode === 'vehicle' ? (
+                        <table className="vgt-register-table w-full min-w-[900px] border-collapse text-xs">
+                            <thead>
                                 <tr>
-                                    <td colSpan={14} className="text-center py-10 text-muted-foreground">
-                                        <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-                                        Loading register…
-                                    </td>
+                                    <th>Bkg Date</th>
+                                    <th>Vehicle</th>
+                                    <th>Br</th>
+                                    <th className="text-right">LRs</th>
+                                    <th className="text-right">Freight</th>
+                                    <th>CN Nos</th>
                                 </tr>
-                            ) : sortedRows.length === 0 ? (
-                                <tr>
-                                    <td colSpan={14} className="text-center py-10 text-muted-foreground">
-                                        {hasLoaded ? 'No bookings match these filters.' : 'Set filters and click Search.'}
-                                    </td>
-                                </tr>
-                            ) : (
-                                sortedRows.map((row) => (
-                                    <tr key={row.id} className={row.cancel_cn ? 'opacity-60' : undefined}>
-                                        <td className="whitespace-nowrap">{fmtDate(row.bkg_date)}</td>
-                                        <td className="font-mono font-semibold">{row.booking_branch || '—'}</td>
-                                        <td className="font-mono font-bold text-primary">{row.cn_no}</td>
-                                        <td>
-                                            {String(row.bkg_basis || '').toUpperCase() === 'TO BE BILLED' ? (
-                                                <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-amber-200 bg-amber-50 text-amber-800">
-                                                    TBB
-                                                </Badge>
-                                            ) : (
-                                                row.bkg_basis || '—'
-                                            )}
-                                        </td>
-                                        <td className="max-w-[180px]">
-                                            <div className="truncate font-medium" title={row.billing_party || undefined}>
-                                                {row.billing_party || '—'}
-                                            </div>
-                                            {row.billing_party_code && (
-                                                <div className="font-mono text-[10px] text-muted-foreground">{row.billing_party_code}</div>
-                                            )}
-                                        </td>
-                                        <td className="max-w-[140px] truncate" title={row.consignor_name || undefined}>
-                                            {row.consignor_name || '—'}
-                                        </td>
-                                        <td className="max-w-[140px] truncate" title={row.consignee_name || undefined}>
-                                            {row.consignee_name || '—'}
-                                        </td>
-                                        <td className="font-mono">{row.dest_branch || row.delivery_point || '—'}</td>
-                                        <td className="text-right tabular-nums">{row.total_qty ?? row.no_of_pkg ?? '—'}</td>
-                                        <td className="text-right tabular-nums">
-                                            {row.actual_weight != null
-                                                ? `${fmtMoney(Number(row.actual_weight))}${row.load_unit ? ` ${row.load_unit}` : ''}`
-                                                : '—'}
-                                        </td>
-                                        <td className="text-right font-mono font-semibold tabular-nums">
-                                            ₹{fmtMoney(row.total_freight)}
-                                        </td>
-                                        <td className="text-[11px]">{row.delivery_type || '—'}</td>
-                                        <td className="font-mono text-[11px]">{row.vehicle_no || '—'}</td>
-                                        <td>
-                                            {row.bill_status === 'BILLED' ? (
-                                                <div>
-                                                    <Badge className="h-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                                                        Billed
-                                                    </Badge>
-                                                    {row.bill_ref_no && (
-                                                        <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
-                                                            {row.bill_ref_no}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-amber-200 text-amber-800">
-                                                    Unbilled
-                                                </Badge>
-                                            )}
-                                            {row.cancel_cn && (
-                                                <div className="text-[10px] text-red-600 font-semibold mt-0.5">Cancelled</div>
-                                            )}
+                            </thead>
+                            <tbody>
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={6} className="text-center py-10 text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                                            Loading register…
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                ) : vehicleDayRows.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="text-center py-10 text-muted-foreground">
+                                            {hasLoaded
+                                                ? 'No vehicles with LRs match these filters.'
+                                                : 'Set filters and click Search.'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    vehicleDayRows.map((trip) => (
+                                        <tr key={`${trip.vehicle_no}|${trip.bkg_date}`}>
+                                            <td className="whitespace-nowrap">{fmtDate(trip.bkg_date)}</td>
+                                            <td className="font-mono font-bold text-primary">{trip.vehicle_no}</td>
+                                            <td className="font-mono font-semibold">{trip.booking_branch || '—'}</td>
+                                            <td className="text-right tabular-nums font-semibold">{trip.lr_count}</td>
+                                            <td className="text-right font-mono font-semibold tabular-nums">
+                                                ₹{fmtMoney(trip.freight_total)}
+                                            </td>
+                                            <td className="max-w-[420px]">
+                                                <div
+                                                    className="truncate font-mono text-[11px] text-muted-foreground"
+                                                    title={trip.cn_nos.join(', ')}
+                                                >
+                                                    {trip.cn_nos.join(', ') || '—'}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <table className="vgt-register-table w-full min-w-[1200px] border-collapse text-xs">
+                            <thead>
+                                <tr>
+                                    <th className="cursor-pointer" onClick={() => toggleSort('bkg_date')}>
+                                        Bkg Date <SortHint field="bkg_date" />
+                                    </th>
+                                    <th className="cursor-pointer" onClick={() => toggleSort('booking_branch')}>
+                                        Br <SortHint field="booking_branch" />
+                                    </th>
+                                    <th className="cursor-pointer" onClick={() => toggleSort('cn_no')}>
+                                        CN No <SortHint field="cn_no" />
+                                    </th>
+                                    <th className="cursor-pointer" onClick={() => toggleSort('bkg_basis')}>
+                                        Basis <SortHint field="bkg_basis" />
+                                    </th>
+                                    <th className="cursor-pointer" onClick={() => toggleSort('billing_party')}>
+                                        Billing Party <SortHint field="billing_party" />
+                                    </th>
+                                    <th>Consignor</th>
+                                    <th>Consignee</th>
+                                    <th>Dest</th>
+                                    <th className="text-right">Pkgs</th>
+                                    <th className="text-right">Wt</th>
+                                    <th className="text-right cursor-pointer" onClick={() => toggleSort('total_freight')}>
+                                        Freight <SortHint field="total_freight" />
+                                    </th>
+                                    <th>Del Type</th>
+                                    <th>Vehicle</th>
+                                    <th>Bill</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={14} className="text-center py-10 text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                                            Loading register…
+                                        </td>
+                                    </tr>
+                                ) : sortedRows.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={14} className="text-center py-10 text-muted-foreground">
+                                            {hasLoaded ? 'No bookings match these filters.' : 'Set filters and click Search.'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    sortedRows.map((row) => (
+                                        <tr key={row.id} className={row.cancel_cn ? 'opacity-60' : undefined}>
+                                            <td className="whitespace-nowrap">{fmtDate(row.bkg_date)}</td>
+                                            <td className="font-mono font-semibold">{row.booking_branch || '—'}</td>
+                                            <td className="font-mono font-bold text-primary">{row.cn_no}</td>
+                                            <td>
+                                                {String(row.bkg_basis || '').toUpperCase() === 'TO BE BILLED' ? (
+                                                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-amber-200 bg-amber-50 text-amber-800">
+                                                        TBB
+                                                    </Badge>
+                                                ) : (
+                                                    row.bkg_basis || '—'
+                                                )}
+                                            </td>
+                                            <td className="max-w-[180px]">
+                                                <div className="truncate font-medium" title={row.billing_party || undefined}>
+                                                    {row.billing_party || '—'}
+                                                </div>
+                                                {row.billing_party_code && (
+                                                    <div className="font-mono text-[10px] text-muted-foreground">{row.billing_party_code}</div>
+                                                )}
+                                            </td>
+                                            <td className="max-w-[140px] truncate" title={row.consignor_name || undefined}>
+                                                {row.consignor_name || '—'}
+                                            </td>
+                                            <td className="max-w-[140px] truncate" title={row.consignee_name || undefined}>
+                                                {row.consignee_name || '—'}
+                                            </td>
+                                            <td className="font-mono">{row.dest_branch || row.delivery_point || '—'}</td>
+                                            <td className="text-right tabular-nums">{row.total_qty ?? row.no_of_pkg ?? '—'}</td>
+                                            <td className="text-right tabular-nums">
+                                                {row.actual_weight != null
+                                                    ? `${fmtMoney(Number(row.actual_weight))}${row.load_unit ? ` ${row.load_unit}` : ''}`
+                                                    : '—'}
+                                            </td>
+                                            <td className="text-right font-mono font-semibold tabular-nums">
+                                                ₹{fmtMoney(row.total_freight)}
+                                            </td>
+                                            <td className="text-[11px]">{row.delivery_type || '—'}</td>
+                                            <td className="font-mono text-[11px]">{row.vehicle_no || '—'}</td>
+                                            <td>
+                                                {row.bill_status === 'BILLED' ? (
+                                                    <div>
+                                                        <Badge className="h-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                                                            Billed
+                                                        </Badge>
+                                                        {row.bill_ref_no && (
+                                                            <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
+                                                                {row.bill_ref_no}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-amber-200 text-amber-800">
+                                                        Unbilled
+                                                    </Badge>
+                                                )}
+                                                {row.cancel_cn && (
+                                                    <div className="text-[10px] text-red-600 font-semibold mt-0.5">Cancelled</div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
 

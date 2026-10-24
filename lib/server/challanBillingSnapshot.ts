@@ -1,4 +1,5 @@
 import type { createClient } from '@/utils/supabase/server';
+import { parseMoney, roundMoney } from '@/lib/money';
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
@@ -55,14 +56,6 @@ export interface PreparedChallanBillingSnapshot {
     addedOtherChargesAmount: number;
     finalBillAmount: number;
 }
-
-const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const getChallanFullHireAmount = (
     challan: Pick<BillingSnapshotChallan, 'total_hire_amount' | 'extra_hire_amount'>

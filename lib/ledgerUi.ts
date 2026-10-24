@@ -1,5 +1,8 @@
 import type { BillingExtraChargeDraftItem } from '@/components/features/ledger/BillingExtraChargesEditor';
 import type { BillingVehicleCancelItem } from '@/lib/billingVehicleCancel';
+import { parseMoney, roundMoney } from '@/lib/money';
+
+export { parseMoney, roundMoney };
 
 export interface LedgerParty {
     id: string;
@@ -110,15 +113,7 @@ export interface PaymentReceipt {
 }
 
 export const fmtMoney = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
-
-export const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-export const roundMoney = (value: number) => Number(value.toFixed(2));
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 /** Trailing serial from refs like VZM/26-27/2152 → 2152 */
 export const billSerialNumber = (billRefNo: string | null | undefined): number => {
@@ -146,7 +141,7 @@ export const normalizeExtraChargeDraftItems = (items: BillingExtraChargeDraftIte
     items
         .map((item) => ({
             label: item.label.trim(),
-            amount: Number(parseMoney(item.amount).toFixed(2)),
+            amount: roundMoney(parseMoney(item.amount)),
         }))
         .filter((item) => item.label && item.amount > 0);
 

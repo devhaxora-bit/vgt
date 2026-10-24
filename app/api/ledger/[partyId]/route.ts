@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { roundMoney } from '@/lib/money';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
 
@@ -15,8 +16,6 @@ type SummaryPaymentReceipt = {
     amount: number | string | null;
     status: string;
 };
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 // GET /api/ledger/[partyId]
 // Returns full party ledger detail: party info, summary, CNS list, billing records, payment receipts

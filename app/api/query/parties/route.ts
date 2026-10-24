@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { roundMoney } from '@/lib/money';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const CN_SELECT_FIELDS =
@@ -8,8 +9,6 @@ const toNumber = (value: unknown) => {
     const parsed = Number(value);
     return Number.isNaN(parsed) ? 0 : parsed;
 };
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 type PaymentLike = {
     status?: string | null;

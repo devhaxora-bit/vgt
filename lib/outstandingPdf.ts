@@ -19,7 +19,7 @@ export type OutstandingPdfPayload = {
     statementMode?: boolean;
 };
 
-const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 
 const safe = (value: string | number | null | undefined) =>

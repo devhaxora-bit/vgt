@@ -33,6 +33,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 
+import { roundMoney } from '@/lib/money';
 import { downloadOutstandingPdf } from '@/lib/outstandingPdf';
 import type { OutstandingPartyRow, OutstandingBill } from '@/app/api/outstanding/route';
 
@@ -47,9 +48,7 @@ const PAY_STATUS_LABELS: Record<PayStatusFilter, string> = {
 };
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 const fmtDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
