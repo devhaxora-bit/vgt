@@ -4,6 +4,13 @@ import { z } from 'zod';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 import type { BookingRegisterRow } from '@/lib/types/bookingRegister.types';
 
+/** Normalize plate for matching / unique vehicle-day keys. */
+const normalizeVehicleNo = (value: unknown): string =>
+    String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '');
+
 const querySchema = z.object({
     branch: z.string().trim().optional(),
     date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -12,6 +19,7 @@ const querySchema = z.object({
     bkg_basis: z.string().trim().optional(),
     party_q: z.string().trim().optional(),
     cn_no: z.string().trim().optional(),
+    vehicle_q: z.string().trim().optional(),
     dest_branch: z.string().trim().optional(),
     bill_status: z.enum(['all', 'billed', 'unbilled']).optional().default('all'),
     include_cancelled: z.enum(['true', 'false']).optional().default('false'),
@@ -38,6 +46,7 @@ export async function GET(request: NextRequest) {
         bkg_basis,
         party_q,
         cn_no,
+        vehicle_q,
         dest_branch,
         bill_status,
         include_cancelled,
@@ -50,6 +59,7 @@ export async function GET(request: NextRequest) {
     const basis = bkg_basis && bkg_basis !== 'all' ? bkg_basis.trim().toUpperCase() : null;
     const partyQ = party_q?.trim() || '';
     const cnFilter = cn_no?.trim() || '';
+    const vehicleFilter = normalizeVehicleNo(vehicle_q);
     const dest = dest_branch && dest_branch !== 'all' ? dest_branch.trim().toUpperCase() : null;
 
     let query = auth.supabase
@@ -68,6 +78,7 @@ export async function GET(request: NextRequest) {
     if (basis) query = query.eq('bkg_basis', basis);
     if (dest) query = query.or(`dest_branch.eq.${dest},delivery_point.ilike.%${dest}%`);
     if (cnFilter) query = query.ilike('cn_no', `%${cnFilter}%`);
+    if (vehicleFilter) query = query.ilike('vehicle_no', `%${vehicleFilter}%`);
     if (include_cancelled !== 'true') query = query.eq('cancel_cn', false);
     if (partyQ) {
         query = query.or(
@@ -149,6 +160,15 @@ export async function GET(request: NextRequest) {
                   bill_status === 'billed' ? row.bill_status === 'BILLED' : row.bill_status === 'UNBILLED',
               );
 
+    // Unique vehicle-days: same plate + same bkg_date with many LRs still counts as 1.
+    const vehicleDayKeys = new Set<string>();
+    for (const row of filtered) {
+        const vehicle = normalizeVehicleNo(row.vehicle_no);
+        const day = String(row.bkg_date || '').slice(0, 10);
+        if (!vehicle || !day) continue;
+        vehicleDayKeys.add(`${vehicle}|${day}`);
+    }
+
     const summary = {
         count: filtered.length,
         freight_total: Number(
@@ -158,6 +178,7 @@ export async function GET(request: NextRequest) {
         billed_count: filtered.filter((row) => row.bill_status === 'BILLED').length,
         unbilled_count: filtered.filter((row) => row.bill_status === 'UNBILLED').length,
         cancelled_count: filtered.filter((row) => row.cancel_cn).length,
+        vehicle_count: vehicleDayKeys.size,
     };
 
     return NextResponse.json({

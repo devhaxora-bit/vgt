@@ -40,7 +40,7 @@ interface GlobalStats {
 }
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 const hasLedgerActivity = (broker: LedgerBroker) =>
     Number(broker.total_challan_amount || 0) !== 0 ||

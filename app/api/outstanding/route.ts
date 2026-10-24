@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
+import { roundMoney } from '@/lib/money';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 import { buildSettledBillAmountMap } from '@/lib/server/partyPaymentReceipts';
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 const toMoney = (value: number | string | null | undefined) => Number(value || 0) || 0;
 
 type BillingRecord = {

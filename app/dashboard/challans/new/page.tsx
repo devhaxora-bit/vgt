@@ -21,6 +21,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { LinkedConsignmentsTable, type LinkedConsignmentRow } from '@/components/features/challans/LinkedConsignmentsTable';
 import { mergeSortedLinkedConsignments, sortLinkedConsignments, type LinkedCnSortField } from '@/lib/sortLinkedConsignments';
 import { useCurrentUserScope } from '@/lib/hooks/useCurrentUserScope';
+import { roundMoney } from '@/lib/money';
 
 // Branch interface
 interface Branch {
@@ -190,11 +191,11 @@ function NewChallanPageContent() {
 
             next.totalExtra = (next.extraOverWeight || 0) + (next.overLength || 0) + (next.overWidth || 0) + (next.overHeight || 0) + (next.extraKmCharges || 0) + (next.unloadingCharges || 0);
             if (next.rateType === 'mt') {
-                next.hire = Math.round((next.chargeWeight || 0) * (next.rate || 0));
+                next.hire = roundMoney((next.chargeWeight || 0) * (next.rate || 0));
             }
-            next.totalHire = (next.hire || 0) + (next.totalExtra || 0) + (next.detentCharges || 0);
-            next.lessTds = Math.round(next.totalHire * ((next.tdsPercent || 0) / 100));
-            next.balAmount = next.totalHire - (next.advPayment || 0) - next.lessTds;
+            next.totalHire = roundMoney((next.hire || 0) + (next.totalExtra || 0) + (next.detentCharges || 0));
+            next.lessTds = roundMoney(next.totalHire * ((next.tdsPercent || 0) / 100));
+            next.balAmount = roundMoney(next.totalHire - (next.advPayment || 0) - next.lessTds);
             return next;
         });
     }, [linkedConsignments, isEditMode]);
@@ -544,18 +545,18 @@ function NewChallanPageContent() {
             
             // 1. If changing Rate Type, maintain current values but recalculate
             if (next.rateType === 'mt') {
-                next.hire = Math.round((Number(next.chargeWeight) || 0) * (Number(next.rate) || 0));
+                next.hire = roundMoney((Number(next.chargeWeight) || 0) * (Number(next.rate) || 0));
             }
 
             // 2. Recalculate derived fields: Extras
             next.totalExtra = (Number(next.extraOverWeight) || 0) + (Number(next.overLength) || 0) + (Number(next.overWidth) || 0) + (Number(next.overHeight) || 0) + (Number(next.extraKmCharges) || 0) + (Number(next.unloadingCharges) || 0);
             
             // 3. Recalculate Total Hire
-            next.totalHire = (Number(next.hire) || 0) + (next.totalExtra || 0) + (Number(next.detentCharges) || 0);
+            next.totalHire = roundMoney((Number(next.hire) || 0) + (next.totalExtra || 0) + (Number(next.detentCharges) || 0));
             
             // 4. Recalculate Final Balance and TDS
-            next.lessTds = Math.round(next.totalHire * ((Number(next.tdsPercent) || 0) / 100));
-            next.balAmount = next.totalHire - (Number(next.advPayment) || 0) - next.lessTds;
+            next.lessTds = roundMoney(next.totalHire * ((Number(next.tdsPercent) || 0) / 100));
+            next.balAmount = roundMoney(next.totalHire - (Number(next.advPayment) || 0) - next.lessTds);
             
             return next;
         });

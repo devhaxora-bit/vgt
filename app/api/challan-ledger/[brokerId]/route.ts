@@ -7,14 +7,8 @@ import {
     getChallanNetPayable,
     getChallanPaymentStatus,
 } from '@/lib/server/challanBillingSnapshot';
+import { parseMoney, roundMoney } from '@/lib/money';
 import { requireAuthz } from '@/lib/server/requireAuthz';
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
-const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
 
 const getChallanFullHire = (record: {
     total_hire_amount?: number | string | null;

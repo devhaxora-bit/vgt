@@ -31,6 +31,11 @@ const fmtDate = (d?: string | null) => {
     try { return format(new Date(d), 'dd/MM/yyyy'); } catch { return d; }
 };
 
+const moneyInput = (value: number) => {
+    const rounded = roundMoney(value);
+    return Math.abs(rounded) > 0 ? String(rounded) : '';
+};
+
 // ─── AddPaymentDialog ─────────────────────────────────────────────────────────
 
 export function AddPaymentDialog({
@@ -104,18 +109,18 @@ export function AddPaymentDialog({
         const allocationDrafts = (record.bill_allocations || []).length > 0
             ? (record.bill_allocations || []).map((allocation) => ({
                 billing_record_id: allocation.billing_record_id,
-                settled_amount: parseMoney(allocation.settled_amount) > 0 ? parseMoney(allocation.settled_amount).toFixed(2) : '',
+                settled_amount: moneyInput(parseMoney(allocation.settled_amount)),
                 deduction_items: (allocation.deduction_items || []).map((item) => ({
                     id: Math.random().toString(36).slice(2, 10),
                     label: item.label,
-                    amount: parseMoney(item.amount) > 0 ? parseMoney(item.amount).toFixed(2) : '',
+                    amount: moneyInput(parseMoney(item.amount)),
                 })),
                 adjustment_remark: '',
             }))
             : relatedIds.map((billId) => ({
                 billing_record_id: billId,
-                settled_amount: relatedIds.length === 1 && parseMoney(record.amount) > 0
-                    ? parseMoney(record.amount).toFixed(2)
+                settled_amount: relatedIds.length === 1
+                    ? moneyInput(parseMoney(record.amount))
                     : '',
                 deduction_items: [] as BillingExtraChargeDraftItem[],
                 adjustment_remark: '',
@@ -123,7 +128,7 @@ export function AddPaymentDialog({
 
         setForm({
             receipt_date: String(record.receipt_date || '').slice(0, 10) || emptyForm.receipt_date,
-            amount: Math.abs(parseMoney(record.amount)) > 0 ? parseMoney(record.amount).toFixed(2) : '',
+            amount: moneyInput(parseMoney(record.amount)),
             payment_mode: record.payment_mode || 'NEFT',
             reference_no: record.reference_no || '',
             bank_name: record.bank_name || '',
@@ -215,7 +220,7 @@ export function AddPaymentDialog({
 
             return {
                 billing_record_id: billId,
-                settled_amount: defaultSettledAmount > 0 ? defaultSettledAmount.toFixed(2) : '',
+                settled_amount: moneyInput(defaultSettledAmount),
                 deduction_items: [],
                 adjustment_remark: '',
             };
@@ -244,7 +249,7 @@ export function AddPaymentDialog({
         setAmountEdit({
             billing_record_id: draft.billing_record_id,
             bill_label: bill.bill_ref_no || bill.id.slice(0, 8).toUpperCase(),
-            amount: previousAmount > 0 ? previousAmount.toFixed(2) : (remainingBeforeReceipt > 0 ? remainingBeforeReceipt.toFixed(2) : ''),
+            amount: previousAmount > 0 ? moneyInput(previousAmount) : moneyInput(remainingBeforeReceipt),
             remark: draft.adjustment_remark || '',
             previous_amount: previousAmount,
             max_amount: remainingBeforeReceipt,
@@ -290,7 +295,7 @@ export function AddPaymentDialog({
                     allocation.billing_record_id === amountEdit.billing_record_id
                         ? {
                             ...allocation,
-                            settled_amount: newAmount.toFixed(2),
+                            settled_amount: moneyInput(newAmount),
                             adjustment_remark: remark,
                         }
                         : allocation
@@ -352,7 +357,7 @@ export function AddPaymentDialog({
                 const defaultSettled = Math.max(parseMoney(bill.remaining_amount ?? bill.amount), 0);
                 draft = {
                     billing_record_id: billId,
-                    settled_amount: defaultSettled > 0 ? defaultSettled.toFixed(2) : '',
+                    settled_amount: moneyInput(defaultSettled),
                     deduction_items: [],
                     adjustment_remark: '',
                 };

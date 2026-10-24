@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ChallanBillingChallanPicker, type ChallanBillingChallanOption } from './ChallanBillingChallanPicker';
+import { parseMoney, roundMoney } from '@/lib/money';
 import {
     ChallanBillingExtraChargesEditor,
     type ChallanBillingExtraChargeDraftItem,
@@ -25,7 +26,7 @@ import {
 } from './ChallanBillingExtraChargesEditor';
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 const fmtDate = (value?: string | null) => {
     if (!value) return '—';
@@ -40,14 +41,6 @@ const fmtDate = (value?: string | null) => {
         return value;
     }
 };
-
-const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const getFullHire = (ch: ChallanBillingChallanOption) =>
     Number(ch.full_hire_amount) || parseMoney(ch.total_hire_amount) + parseMoney(ch.extra_hire_amount);

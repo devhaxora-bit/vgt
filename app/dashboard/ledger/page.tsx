@@ -61,7 +61,7 @@ interface LedgerParty {
 }
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 const hasLedgerActivity = (party: LedgerParty) =>
     Number(party.opening_balance || 0) !== 0 ||

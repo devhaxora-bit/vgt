@@ -1,4 +1,4 @@
-const roundMoney = (value: number) => Number(value.toFixed(2));
+import { roundMoney } from '@/lib/money';
 
 export type PaymentDeductionItem = {
     label: string;

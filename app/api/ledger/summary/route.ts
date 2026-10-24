@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 
+import { roundMoney } from '@/lib/money';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
 const hasLedgerActivity = (row: {
@@ -55,7 +56,6 @@ const emptyPeriodMetrics = (): PeriodLedgerMetrics => ({
     total_paid: 0,
 });
 
-const roundMoney = (value: number) => Number(value.toFixed(2));
 const toMoney = (value: number | string | null | undefined) => Number(value || 0) || 0;
 
 // GET /api/ledger/summary

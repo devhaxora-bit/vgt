@@ -27,7 +27,7 @@ export type ChallanLedgerSummaryPdfPayload = {
 };
 
 const PAGE_ROWS = 18;
-const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 const safe = (value: string | number | null | undefined) => String(value ?? '')
     .replace(/&/g, '&amp;')

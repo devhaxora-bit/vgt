@@ -54,7 +54,7 @@ const BILL_TABLE_COLUMNS = 15;
 const PAGE_LAYOUT_BUFFER_PX = 16;
 /** Fixed gap (px) left between the TOTAL row and the "Rupees In Words" footer. */
 const BILL_FOOTER_GAP_PX = 20;
-const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 
 const safe = (value: string | number | null | undefined) => String(value ?? '')

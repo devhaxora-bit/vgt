@@ -1,4 +1,5 @@
 import { formatBranchLabel as formatBranch } from '@/lib/formatBranchLabel';
+import { roundMoney } from '@/lib/money';
 import {
     loadPdfLogo,
     PDF_HEADER_LOGO_IMG_CSS,
@@ -98,8 +99,6 @@ export type PartyLedgerReportPayload = {
     sections?: unknown;
 };
 
-const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
 const sumCnsAmount = (rows: CnsRow[]) =>
     roundMoney(rows.reduce((sum, row) => sum + Number(row.totalAmount || 0), 0));
 
@@ -193,7 +192,7 @@ const PAGE_LAYOUT_BUFFER_PX = 22;
 /** Max blank rows before the TOTAL row on the last ledger PDF page. */
 const MAX_LAST_PAGE_BLANK_ROWS = 5;
 
-const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const fmtNum = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const fmt = (value: number) => fmtNum.format(value || 0);
 const safe = (value: string | number | null | undefined) => String(value ?? '')
     .replace(/&/g, '&amp;')

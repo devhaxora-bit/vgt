@@ -1,3 +1,7 @@
+import { parseMoney, roundMoney } from '@/lib/money';
+
+export { parseMoney, roundMoney };
+
 export interface BillingVehicleCancelItem {
     vehicle_no: string;
     from_station: string;
@@ -14,14 +18,6 @@ export interface BillingVehicleCancelDraftItem {
     cancellation_date: string;
     charges: string;
 }
-
-const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-export const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export const createEmptyVehicleCancelDraft = (): BillingVehicleCancelDraftItem => ({
     id: Math.random().toString(36).slice(2, 10),
@@ -80,7 +76,7 @@ export const vehicleCancelItemsToDrafts = (items: BillingVehicleCancelItem[]): B
         from_station: item.from_station,
         to_station: item.to_station,
         cancellation_date: item.cancellation_date,
-        charges: item.charges > 0 ? item.charges.toFixed(2) : '',
+        charges: item.charges > 0 ? String(roundMoney(item.charges)) : '',
     }));
 
 export const validateVehicleCancelDrafts = (drafts: BillingVehicleCancelDraftItem[]): string | null => {

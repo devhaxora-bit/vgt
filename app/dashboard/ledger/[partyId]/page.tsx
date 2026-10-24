@@ -40,6 +40,7 @@ import {
     type BillingVehicleCancelItem,
 } from '@/lib/billingVehicleCancel';
 import { compareBillsBySerialDesc } from '@/lib/ledgerUi';
+import { parseMoney, roundMoney } from '@/lib/money';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -131,7 +132,7 @@ interface PaymentReceipt {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
 
 const fmtDate = (d?: string | null) => {
     if (!d) return '—';
@@ -152,15 +153,6 @@ const MODE_BADGE: Record<string, string> = {
     UPI:        'bg-violet-50 text-violet-700',
     ADJUSTMENT: 'bg-slate-100 text-slate-700',
 };
-
-const parseMoney = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-const roundMoney = (value: number) => Number(value.toFixed(2));
-
 
 const getConsignmentExtraCharges = (
     consignment: Pick<Consignment, 'unload_charges' | 'extra_km_charges' | 'mhc_charges' | 'door_coll_charges' | 'door_del_charges' | 'traffic_challan_charges' | 'other_charges'>
