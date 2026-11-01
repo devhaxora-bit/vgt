@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { downloadChallanLedgerSummaryPdf } from '@/lib/challanLedgerSummaryPdf';
 import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
+import { roundMoney } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -40,7 +41,7 @@ interface GlobalStats {
 }
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(roundMoney(n || 0));
 
 const hasLedgerActivity = (broker: LedgerBroker) =>
     Number(broker.total_challan_amount || 0) !== 0 ||

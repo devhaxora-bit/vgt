@@ -37,9 +37,10 @@ import {
     type ChallanLedgerFilter,
     type ChallanLedgerReportPayload,
 } from '@/lib/challanLedgerReportPdf';
+import { roundMoney } from '@/lib/money';
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(roundMoney(n || 0));
 
 const fmtDate = (d?: string | null) => {
     if (!d) return '—';

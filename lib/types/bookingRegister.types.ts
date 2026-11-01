@@ -40,6 +40,13 @@ export type BookingRegisterSummary = {
     vehicle_count: number;
 };
 
+/** One LR (CN) on a vehicle-day trip. */
+export type BookingRegisterVehicleDayLr = {
+    id: string;
+    cn_no: string;
+    total_freight: number;
+};
+
 /** One vehicle on one booking date (may cover multiple LRs). */
 export type BookingRegisterVehicleDay = {
     vehicle_no: string;
@@ -47,5 +54,6 @@ export type BookingRegisterVehicleDay = {
     lr_count: number;
     freight_total: number;
     cn_nos: string[];
+    lrs: BookingRegisterVehicleDayLr[];
     booking_branch: string | null;
 };

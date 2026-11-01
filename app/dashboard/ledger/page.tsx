@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { downloadLedgerSummaryPdf } from '@/lib/ledgerSummaryPdf';
 import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCurrentUserScope';
+import { roundMoney } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,6 +54,7 @@ interface LedgerParty {
     credit_days: number;
     total_cns_amount: number;
     total_cns_count: number;
+    total_extra_amount?: number;
     total_billed: number;
     total_paid: number;
     unbilled_amount: number;
@@ -61,11 +63,12 @@ interface LedgerParty {
 }
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(roundMoney(n || 0));
 
 const hasLedgerActivity = (party: LedgerParty) =>
     Number(party.opening_balance || 0) !== 0 ||
     Number(party.total_cns_amount || 0) !== 0 ||
+    Number(party.total_extra_amount || 0) !== 0 ||
     Number(party.total_billed || 0) !== 0 ||
     Number(party.total_paid || 0) !== 0 ||
     Number(party.unbilled_amount || 0) !== 0 ||
@@ -88,7 +91,7 @@ export default function LedgerPage() {
     const [billingFilter, setBillingFilter] = useState<BillingFilter>('all');
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
     const [isPdfExporting, setIsPdfExporting] = useState(false);
-    const [sortField, setSortField] = useState<'party_code' | 'party_name' | 'branch_code' | 'outstanding' | 'unbilled_amount' | 'total_cns_amount' | 'total_billed' | 'total_paid'>('party_code');
+    const [sortField, setSortField] = useState<'party_code' | 'party_name' | 'branch_code' | 'outstanding' | 'unbilled_amount' | 'total_cns_amount' | 'total_extra_amount' | 'total_billed' | 'total_paid'>('party_code');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
     const [branchOptions, setBranchOptions] = useState<{ value: string; label: string }[]>([]);
     const [kpiFilter, setKpiFilter] = useState<KpiFilter>('none');
@@ -174,6 +177,7 @@ export default function LedgerPage() {
 
     const totals = useMemo(() => ({
         cns: filtered.reduce((s, p) => s + (p.total_cns_amount || 0), 0),
+        extra: filtered.reduce((s, p) => s + (p.total_extra_amount || 0), 0),
         billed: filtered.reduce((s, p) => s + (p.total_billed || 0), 0),
         unbilled: filtered.reduce((s, p) => s + (p.unbilled_amount || 0), 0),
         overbilled: filtered.reduce((s, p) => s + (p.overbilled_amount || 0), 0),
@@ -256,6 +260,7 @@ export default function LedgerPage() {
                     branch_name: p.branch_code ? branchNameByCode.get(p.branch_code) ?? null : null,
                     total_cns_count: p.total_cns_count,
                     total_cns_amount: p.total_cns_amount,
+                    total_extra_amount: p.total_extra_amount ?? 0,
                     total_billed: p.total_billed,
                     unbilled_amount: p.unbilled_amount,
                     overbilled_amount: p.overbilled_amount ?? 0,
@@ -506,6 +511,7 @@ export default function LedgerPage() {
                                     <TableHead className="font-bold cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('party_name')}>Party <SortIcon field="party_name" /></TableHead>
                                     <TableHead className="font-bold w-28 cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('branch_code')}>Branch <SortIcon field="branch_code" /></TableHead>
                                     <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_cns_amount')}>CNS Amount <SortIcon field="total_cns_amount" /></TableHead>
+                                    <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_extra_amount')}>Extra <SortIcon field="total_extra_amount" /></TableHead>
                                     <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_billed')}>Billed <SortIcon field="total_billed" /></TableHead>
                                     <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('unbilled_amount')}>Unbilled <SortIcon field="unbilled_amount" /></TableHead>
                                     <TableHead className="font-bold text-right cursor-pointer select-none hover:bg-muted/60 transition-colors" onClick={() => toggleSort('total_paid')}>Paid <SortIcon field="total_paid" /></TableHead>
@@ -515,10 +521,10 @@ export default function LedgerPage() {
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
-                                    <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">Loading ledger data...</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={10} className="h-32 text-center text-muted-foreground">Loading ledger data...</TableCell></TableRow>
                                 ) : filtered.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={9} className="h-32 text-center">
+                                        <TableCell colSpan={10} className="h-32 text-center">
                                             <div className="flex flex-col items-center gap-2 opacity-40">
                                                 <BookOpen className="h-10 w-10 text-muted-foreground" />
                                                 <p className="text-sm font-medium">No parties found</p>
@@ -549,6 +555,13 @@ export default function LedgerPage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <span className="font-mono font-bold text-sm">₹{fmt(p.total_cns_amount)}</span>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            {(p.total_extra_amount || 0) > 0 ? (
+                                                <span className="font-mono font-bold text-sm text-violet-700 bg-violet-50 px-2 py-0.5 rounded">₹{fmt(p.total_extra_amount || 0)}</span>
+                                            ) : (
+                                                <span className="text-muted-foreground/40 text-xs">-</span>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {Number(p.total_billed || 0) > 0 ? (
@@ -595,10 +608,11 @@ export default function LedgerPage() {
 
                     {/* Footer totals row */}
                     {filtered.length > 0 && (
-                        <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-9 gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                        <div className="px-6 py-4 border-t bg-muted/20 grid grid-cols-10 gap-4 text-xs font-bold text-muted-foreground uppercase tracking-wider">
                             <div className="col-span-2">Total ({filtered.length} parties)</div>
                             <div></div>
                             <div className="text-right font-mono text-foreground">₹{fmt(totals.cns)}</div>
+                            <div className="text-right font-mono text-violet-700">₹{fmt(totals.extra)}</div>
                             <div className="text-right font-mono text-emerald-700">₹{fmt(totals.billed)}</div>
                             <div className="text-right font-mono text-amber-700">₹{fmt(totals.unbilled)}</div>
                             <div className="text-right font-mono text-indigo-700">₹{fmt(filtered.reduce((s, p) => s + (p.total_paid || 0), 0))}</div>

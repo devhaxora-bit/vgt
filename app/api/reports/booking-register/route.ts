@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     const rows = data || [];
     const cnNos = [...new Set(rows.map((row) => String(row.cn_no || '').trim()).filter(Boolean))];
 
-    const billedByCn = new Map<string, { billRef: string; billId: string }>();
+    const billedByCn = new Map<string, { billRef: string; billId: string; partyId: string | null }>();
     if (cnNos.length > 0) {
         // Chunk IN queries — PostgREST URL length limits.
         const chunkSize = 200;
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
             const chunk = cnNos.slice(i, i + chunkSize);
             const { data: bills, error: billError } = await auth.supabase
                 .from('party_billing_records')
-                .select('id, bill_ref_no, covered_cn_nos, status')
+                .select('id, bill_ref_no, covered_cn_nos, status, party_id')
                 .eq('status', 'ACTIVE')
                 .overlaps('covered_cn_nos', chunk);
 
@@ -112,11 +112,12 @@ export async function GET(request: NextRequest) {
 
             for (const bill of bills || []) {
                 const billRef = String(bill.bill_ref_no || bill.id).trim();
+                const partyId = bill.party_id ? String(bill.party_id) : null;
                 for (const cn of bill.covered_cn_nos || []) {
                     const key = String(cn || '').trim();
                     if (!key || billedByCn.has(key)) continue;
                     if (!cnNos.includes(key)) continue;
-                    billedByCn.set(key, { billRef, billId: bill.id });
+                    billedByCn.set(key, { billRef, billId: bill.id, partyId });
                 }
             }
         }
@@ -150,6 +151,8 @@ export async function GET(request: NextRequest) {
             bill_status: billed ? 'BILLED' : 'UNBILLED',
             bill_ref_no: billed?.billRef || null,
             bill_id: billed?.billId || null,
+            // Prefer bill's party for ledger deep-link when CN billing_party_id is missing.
+            billing_party_id: row.billing_party_id || billed?.partyId || null,
         };
     });
 

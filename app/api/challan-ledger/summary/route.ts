@@ -27,18 +27,20 @@ const hasLedgerActivity = (row: {
     );
 };
 
-const normalizeLedgerSummaryRow = <T extends {
-    unbilled_amount?: number | string | null;
-    overbilled_amount?: number | string | null;
-}>(row: T) => {
+const normalizeLedgerSummaryRow = <T extends Record<string, unknown>>(row: T) => {
     const rawUnbilledAmount = Number(row.unbilled_amount || 0);
     const derivedOverbilledAmount = rawUnbilledAmount < 0 ? Math.abs(rawUnbilledAmount) : 0;
-    const overbilledAmount = Number(row.overbilled_amount || derivedOverbilledAmount || 0);
+    const overbilledAmount = Number(row.overbilled_amount ?? derivedOverbilledAmount ?? 0);
 
     return {
         ...row,
-        unbilled_amount: Math.max(rawUnbilledAmount, 0),
-        overbilled_amount: overbilledAmount,
+        opening_balance: roundMoney(Number(row.opening_balance || 0)),
+        total_challan_amount: roundMoney(Number(row.total_challan_amount || 0)),
+        total_billed: roundMoney(Number(row.total_billed || 0)),
+        total_paid: roundMoney(Number(row.total_paid || 0)),
+        unbilled_amount: roundMoney(Math.max(rawUnbilledAmount, 0)),
+        overbilled_amount: roundMoney(overbilledAmount),
+        outstanding: roundMoney(Number(row.outstanding || 0)),
     };
 };
 

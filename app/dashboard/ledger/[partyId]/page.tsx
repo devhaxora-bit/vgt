@@ -60,6 +60,7 @@ interface LedgerAccount {
 interface Summary {
     total_cns_amount: number;
     total_cns_count: number;
+    total_extra_amount?: number;
     total_billed: number;
     total_paid: number;
     unbilled_amount: number;
@@ -132,7 +133,7 @@ interface PaymentReceipt {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(roundMoney(n || 0));
 
 const fmtDate = (d?: string | null) => {
     if (!d) return '—';
@@ -500,7 +501,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
         all_payment_receipts: PaymentReceipt[];
     }>({
         party: null, account: null,
-        summary: { total_cns_amount: 0, total_cns_count: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0, total_bills_count: 0 },
+        summary: { total_cns_amount: 0, total_cns_count: 0, total_extra_amount: 0, total_billed: 0, total_paid: 0, unbilled_amount: 0, overbilled_amount: 0, outstanding: 0, opening_balance: 0, total_bills_count: 0 },
         consignments: [], all_consignments: [], billable_consignments: [], ghost_consignments: [], billing_records: [], payment_receipts: [], all_billing_records: [], all_payment_receipts: [],
     });
     const [isLoading, setIsLoading] = useState(true);
@@ -819,7 +820,17 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
 
         const totalBilled = distinctBillTotals.billed;
         const totalPaid = distinctBillTotals.paid;
-        const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
+        const totalExtraAmount = roundMoney(
+            reportBillingRecords.reduce((sum, record) => {
+                const explicit =
+                    parseMoney(record.added_other_charges_amount)
+                    + parseMoney(record.vehicle_cancel_charges_total);
+                if (explicit > 0) return sum + explicit;
+                const inferred = parseMoney(record.amount) - parseMoney(record.cn_total_amount);
+                return sum + (inferred > 0 ? inferred : 0);
+            }, 0),
+        );
+        const gap = roundMoney(totalCnsAmount + totalExtraAmount - totalBilled);
 
         const billRows = reportBillingRecords.map((record) => {
             const billedAmount = roundMoney(parseMoney(record.amount));
@@ -871,7 +882,7 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                 totalBilledAmount: totalBilled,
                 totalPaid,
                 outstanding: roundMoney(openingBalance + totalBilled - totalPaid),
-                overbilledAmount: Math.max(-rawUnbilledAmount, 0),
+                overbilledAmount: Math.max(-gap, 0),
             },
             cnsRows,
             billRows,
@@ -1252,7 +1263,13 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
                     <KpiCard
                         label="Unbilled Amount"
                         value={`₹${fmt(summary.unbilled_amount)}`}
-                        sub={(summary.overbilled_amount ?? 0) > 0 ? `Overbilled ₹${fmt(summary.overbilled_amount ?? 0)}` : undefined}
+                        sub={
+                            (summary.overbilled_amount ?? 0) > 0
+                                ? `Overbilled ₹${fmt(summary.overbilled_amount ?? 0)}`
+                                : (summary.total_extra_amount ?? 0) > 0
+                                    ? `Extra on bills ₹${fmt(summary.total_extra_amount ?? 0)}`
+                                    : undefined
+                        }
                         icon={AlertCircle}
                         iconBg="bg-amber-50"
                         iconActiveBg="bg-amber-500"
