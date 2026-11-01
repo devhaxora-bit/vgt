@@ -48,7 +48,7 @@ const PAY_STATUS_LABELS: Record<PayStatusFilter, string> = {
 };
 
 const fmt = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(roundMoney(n || 0));
 
 const fmtDate = (dateStr: string | null) => {
     if (!dateStr) return '-';

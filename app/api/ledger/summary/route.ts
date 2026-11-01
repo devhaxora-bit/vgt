@@ -4,10 +4,13 @@ import { NextResponse } from 'next/server';
 import { roundMoney } from '@/lib/money';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
+const toMoney = (value: number | string | null | undefined) => Number(value || 0) || 0;
+
 const hasLedgerActivity = (row: {
     opening_balance?: number | string | null;
     total_cns_amount?: number | string | null;
     total_cns_count?: number | string | null;
+    total_extra_amount?: number | string | null;
     total_billed?: number | string | null;
     total_paid?: number | string | null;
     unbilled_amount?: number | string | null;
@@ -19,6 +22,7 @@ const hasLedgerActivity = (row: {
     return (
         toNumber(row.opening_balance) !== 0 ||
         toNumber(row.total_cns_amount) !== 0 ||
+        toNumber(row.total_extra_amount) !== 0 ||
         toNumber(row.total_billed) !== 0 ||
         toNumber(row.total_paid) !== 0 ||
         toNumber(row.unbilled_amount) !== 0 ||
@@ -27,24 +31,46 @@ const hasLedgerActivity = (row: {
     );
 };
 
-const normalizeLedgerSummaryRow = <T extends {
-    unbilled_amount?: number | string | null;
-    overbilled_amount?: number | string | null;
-}>(row: T) => {
-    const rawUnbilledAmount = Number(row.unbilled_amount || 0);
+/** Bill extras = other charges + vehicle cancel (not CN freight). */
+const billExtraAmount = (record: {
+    added_other_charges_amount?: number | string | null;
+    vehicle_cancel_charges_total?: number | string | null;
+    amount?: number | string | null;
+    cn_total_amount?: number | string | null;
+}) => {
+    const explicit =
+        toMoney(record.added_other_charges_amount) + toMoney(record.vehicle_cancel_charges_total);
+    if (explicit > 0) return explicit;
+
+    // Fallback for older rows missing split columns: amount − CN portion
+    const inferred = toMoney(record.amount) - toMoney(record.cn_total_amount);
+    return inferred > 0 ? inferred : 0;
+};
+
+const normalizeLedgerSummaryRow = <T extends Record<string, unknown>>(row: T) => {
+    const rawUnbilledAmount = toMoney(row.unbilled_amount as number | string | null | undefined);
     const derivedOverbilledAmount = rawUnbilledAmount < 0 ? Math.abs(rawUnbilledAmount) : 0;
-    const overbilledAmount = Number(row.overbilled_amount || derivedOverbilledAmount || 0);
+    const overbilledAmount = toMoney(
+        (row.overbilled_amount as number | string | null | undefined) ?? derivedOverbilledAmount,
+    );
 
     return {
         ...row,
-        unbilled_amount: Math.max(rawUnbilledAmount, 0),
-        overbilled_amount: overbilledAmount,
+        opening_balance: roundMoney(toMoney(row.opening_balance as number | string | null | undefined)),
+        total_cns_amount: roundMoney(toMoney(row.total_cns_amount as number | string | null | undefined)),
+        total_extra_amount: roundMoney(toMoney(row.total_extra_amount as number | string | null | undefined)),
+        total_billed: roundMoney(toMoney(row.total_billed as number | string | null | undefined)),
+        total_paid: roundMoney(toMoney(row.total_paid as number | string | null | undefined)),
+        unbilled_amount: roundMoney(Math.max(rawUnbilledAmount, 0)),
+        overbilled_amount: roundMoney(overbilledAmount),
+        outstanding: roundMoney(toMoney(row.outstanding as number | string | null | undefined)),
     };
 };
 
 type PeriodLedgerMetrics = {
     total_cns_amount: number;
     total_cns_count: number;
+    total_extra_amount: number;
     total_billed: number;
     total_paid: number;
 };
@@ -52,11 +78,10 @@ type PeriodLedgerMetrics = {
 const emptyPeriodMetrics = (): PeriodLedgerMetrics => ({
     total_cns_amount: 0,
     total_cns_count: 0,
+    total_extra_amount: 0,
     total_billed: 0,
     total_paid: 0,
 });
-
-const toMoney = (value: number | string | null | undefined) => Number(value || 0) || 0;
 
 // GET /api/ledger/summary
 // Returns vw_party_ledger_summary with optional filters
@@ -94,7 +119,7 @@ export async function GET(request: Request) {
         // Parties with billing records in range
         let billQuery = supabase
             .from('party_billing_records')
-            .select('party_id, amount')
+            .select('party_id, amount, cn_total_amount, added_other_charges_amount, vehicle_cancel_charges_total')
             .eq('status', 'ACTIVE')
             .limit(10000);
         if (dateFrom) billQuery = billQuery.gte('billing_date', dateFrom);
@@ -137,6 +162,9 @@ export async function GET(request: Request) {
         (billRes.data || []).forEach((record) => {
             const metrics = getMetrics(record.party_id);
             metrics.total_billed = roundMoney(metrics.total_billed + toMoney(record.amount));
+            metrics.total_extra_amount = roundMoney(
+                metrics.total_extra_amount + billExtraAmount(record),
+            );
         });
         (payRes.data || []).forEach((record) => {
             const metrics = getMetrics(record.party_id);
@@ -183,18 +211,20 @@ export async function GET(request: Request) {
             if (!periodMetricsByPartyId) return normalizeLedgerSummaryRow(row);
 
             const metrics = periodMetricsByPartyId.get(row.party_id) || emptyPeriodMetrics();
-            // Use total_billed (invoice amount) as the basis for unbilled — consistent with the view
-            const rawUnbilledAmount = roundMoney(metrics.total_cns_amount - metrics.total_billed);
+            // CNS + Extra vs Billed — extras on bills are not overbilling
+            const expected = roundMoney(metrics.total_cns_amount + metrics.total_extra_amount);
+            const gap = roundMoney(expected - metrics.total_billed);
 
             return normalizeLedgerSummaryRow({
                 ...row,
                 opening_balance: 0,
                 total_cns_amount: metrics.total_cns_amount,
                 total_cns_count: metrics.total_cns_count,
+                total_extra_amount: metrics.total_extra_amount,
                 total_billed: metrics.total_billed,
                 total_paid: metrics.total_paid,
-                unbilled_amount: Math.max(rawUnbilledAmount, 0),
-                overbilled_amount: Math.max(-rawUnbilledAmount, 0),
+                unbilled_amount: Math.max(gap, 0),
+                overbilled_amount: Math.max(-gap, 0),
                 outstanding: roundMoney(metrics.total_billed - metrics.total_paid),
             });
         })

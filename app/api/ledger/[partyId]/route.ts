@@ -10,6 +10,9 @@ type SummaryConsignment = {
 type SummaryBillingRecord = {
     amount: number | string | null;
     status: string;
+    cn_total_amount?: number | string | null;
+    added_other_charges_amount?: number | string | null;
+    vehicle_cancel_charges_total?: number | string | null;
 };
 
 type SummaryPaymentReceipt = {
@@ -250,23 +253,40 @@ export async function GET(
     const allBills = (billingRecords || []) as SummaryBillingRecord[];
     const allPayments = (paymentReceipts || []) as SummaryPaymentReceipt[];
 
-    const totalCnsAmount = allCns.reduce((sum, c) => sum + (parseFloat(String(c.total_freight || 0)) || 0), 0);
-    const totalBilled = allBills.reduce((sum, b) => sum + (parseFloat(String(b.amount || 0)) || 0), 0);
-    const totalPaid = allPayments.reduce((sum, p) => sum + (parseFloat(String(p.amount || 0)) || 0), 0);
-    const openingBalance = parseFloat(account?.opening_balance || '0') || 0;
-    // Use total invoice amount (not CN-portion) so that unbilled + billed = total CNS amount
-    const rawUnbilledAmount = roundMoney(totalCnsAmount - totalBilled);
-    const unbilledAmount = Math.max(rawUnbilledAmount, 0);
-    const overbilledAmount = Math.max(-rawUnbilledAmount, 0);
+    const totalCnsAmount = roundMoney(
+        allCns.reduce((sum, c) => sum + (parseFloat(String(c.total_freight || 0)) || 0), 0),
+    );
+    const totalBilled = roundMoney(
+        allBills.reduce((sum, b) => sum + (parseFloat(String(b.amount || 0)) || 0), 0),
+    );
+    const totalExtraAmount = roundMoney(allBills.reduce((sum, b) => {
+        const explicit =
+            (parseFloat(String(b.added_other_charges_amount || 0)) || 0)
+            + (parseFloat(String(b.vehicle_cancel_charges_total || 0)) || 0);
+        if (explicit > 0) return sum + explicit;
+        const inferred =
+            (parseFloat(String(b.amount || 0)) || 0)
+            - (parseFloat(String(b.cn_total_amount || 0)) || 0);
+        return sum + (inferred > 0 ? inferred : 0);
+    }, 0));
+    const totalPaid = roundMoney(
+        allPayments.reduce((sum, p) => sum + (parseFloat(String(p.amount || 0)) || 0), 0),
+    );
+    const openingBalance = roundMoney(parseFloat(account?.opening_balance || '0') || 0);
+    // CNS + Extra vs Billed — bill extras are expected, not overbilling
+    const gap = roundMoney(totalCnsAmount + totalExtraAmount - totalBilled);
+    const unbilledAmount = Math.max(gap, 0);
+    const overbilledAmount = Math.max(-gap, 0);
 
     const summary = {
         total_cns_amount: totalCnsAmount,
         total_cns_count: allCns.length,
+        total_extra_amount: totalExtraAmount,
         total_billed: totalBilled,
         total_paid: totalPaid,
         unbilled_amount: unbilledAmount,
         overbilled_amount: overbilledAmount,
-        outstanding: openingBalance + totalBilled - totalPaid,
+        outstanding: roundMoney(openingBalance + totalBilled - totalPaid),
         opening_balance: openingBalance,
         total_bills_count: allBills.length,
     };

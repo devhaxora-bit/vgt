@@ -112,7 +112,7 @@ export async function GET(request: Request) {
                 .maybeSingle(),
             supabase
                 .from('party_billing_records')
-                .select('id, bill_ref_no, billing_date, amount, status, covered_cn_nos, created_at')
+                .select('id, bill_ref_no, billing_date, amount, status, covered_cn_nos, created_at, cn_total_amount, added_other_charges_amount, vehicle_cancel_charges_total')
                 .eq('party_id', id)
                 .order('billing_date', { ascending: false })
                 .order('created_at', { ascending: false }),
@@ -140,9 +140,19 @@ export async function GET(request: Request) {
             (consignments || []).reduce((sum, cn) => sum + toNumber(cn.total_freight), 0),
         );
         const totalBilled = roundMoney(activeBills.reduce((sum, bill) => sum + toNumber(bill.amount), 0));
+        const totalExtraAmount = roundMoney(
+            activeBills.reduce((sum, bill) => {
+                const explicit =
+                    toNumber(bill.added_other_charges_amount)
+                    + toNumber(bill.vehicle_cancel_charges_total);
+                if (explicit > 0) return sum + explicit;
+                const inferred = toNumber(bill.amount) - toNumber(bill.cn_total_amount);
+                return sum + (inferred > 0 ? inferred : 0);
+            }, 0),
+        );
         const totalPaid = roundMoney(activePayments.reduce((sum, payment) => sum + toNumber(payment.amount), 0));
         const openingBalance = roundMoney(toNumber(account?.opening_balance));
-        const rawUnbilled = roundMoney(totalCnsAmount - totalBilled);
+        const gap = roundMoney(totalCnsAmount + totalExtraAmount - totalBilled);
 
         const bills = (billingRecords || []).slice(0, 50).map((bill) => {
             const amount = roundMoney(toNumber(bill.amount));
@@ -238,9 +248,10 @@ export async function GET(request: Request) {
                 total_billed: totalBilled,
                 total_paid: totalPaid,
                 outstanding: roundMoney(openingBalance + totalBilled - totalPaid),
-                unbilled_amount: Math.max(rawUnbilled, 0),
-                overbilled_amount: Math.max(-rawUnbilled, 0),
+                unbilled_amount: Math.max(gap, 0),
+                overbilled_amount: Math.max(-gap, 0),
                 total_cns_amount: totalCnsAmount,
+                total_extra_amount: totalExtraAmount,
                 total_cns_count: (consignments || []).length,
                 total_bills_count: activeBills.length,
             },

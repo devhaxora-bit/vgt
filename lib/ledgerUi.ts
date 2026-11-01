@@ -113,7 +113,7 @@ export interface PaymentReceipt {
 }
 
 export const fmtMoney = (n: number) =>
-    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n || 0);
+    new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(roundMoney(n || 0));
 
 /** Trailing serial from refs like VZM/26-27/2152 → 2152 */
 export const billSerialNumber = (billRefNo: string | null | undefined): number => {

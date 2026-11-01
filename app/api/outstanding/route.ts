@@ -265,11 +265,11 @@ export async function GET(request: Request) {
         const party = bill.parties;
         if (!party) return;
 
-        const billAmount = toMoney(bill.amount);
-        const paidAmount = Math.min(paidByBillId.get(bill.id) || 0, billAmount);
+        const billAmount = roundMoney(toMoney(bill.amount));
+        const paidAmount = roundMoney(Math.min(paidByBillId.get(bill.id) || 0, billAmount));
         const outstanding = roundMoney(Math.max(billAmount - paidAmount, 0));
         const payStatus: OutstandingBill['pay_status'] =
-            outstanding <= 0.005 ? 'paid' : paidAmount > 0.005 ? 'partial' : 'due';
+            outstanding <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'due';
 
         const partyBranchCode = party.branch_code;
         const partyBranchName = partyBranchCode ? (branchNameMap.get(partyBranchCode) || null) : null;

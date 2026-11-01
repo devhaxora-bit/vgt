@@ -9,6 +9,7 @@ export type LedgerSummaryPartyRow = {
     branch_name?: string | null;
     total_cns_count: number;
     total_cns_amount: number;
+    total_extra_amount?: number;
     total_billed: number;
     unbilled_amount: number;
     overbilled_amount: number;
@@ -63,6 +64,7 @@ const describeFilters = (filters: LedgerSummaryPdfPayload['filters']) => {
 const totalsFor = (rows: LedgerSummaryPartyRow[]) => ({
     cnsCount: rows.reduce((sum, row) => sum + Number(row.total_cns_count || 0), 0),
     cnsAmount: rows.reduce((sum, row) => sum + Number(row.total_cns_amount || 0), 0),
+    extra: rows.reduce((sum, row) => sum + Number(row.total_extra_amount || 0), 0),
     billed: rows.reduce((sum, row) => sum + Number(row.total_billed || 0), 0),
     unbilled: rows.reduce((sum, row) => sum + Number(row.unbilled_amount || 0), 0),
     paid: rows.reduce((sum, row) => sum + Number(row.total_paid || 0), 0),
@@ -76,6 +78,7 @@ const buildRow = (row: LedgerSummaryPartyRow) => `
         <td class="center branch-cell">${safe(formatBranchLabel(row.branch_code, row.branch_name))}</td>
         <td class="amount">${fmt(row.total_cns_count)}</td>
         <td class="amount">${fmt(row.total_cns_amount)}</td>
+        <td class="amount">${fmt(row.total_extra_amount || 0)}</td>
         <td class="amount">${fmt(row.total_billed)}</td>
         <td class="amount unbilled">${fmt(row.unbilled_amount)}</td>
         <td class="amount">${fmt(row.total_paid)}</td>
@@ -88,7 +91,7 @@ const buildTable = (rows: LedgerSummaryPartyRow[], allRows: LedgerSummaryPartyRo
     const blankRows = Array.from({ length: Math.max(0, PAGE_ROWS - rows.length) }, () => `
         <tr class="blank-row">
             <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
-            <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+            <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
         </tr>
     `).join('');
 
@@ -96,13 +99,14 @@ const buildTable = (rows: LedgerSummaryPartyRow[], allRows: LedgerSummaryPartyRo
         <table class="items-table">
             <thead>
                 <tr>
-                    <th style="width:7%;">Code</th>
-                    <th style="width:21%;">Party Name</th>
-                    <th style="width:11%;">Branch</th>
+                    <th style="width:6%;">Code</th>
+                    <th style="width:18%;">Party Name</th>
+                    <th style="width:9%;">Branch</th>
                     <th style="width:5%;">CNS</th>
-                    <th style="width:12%;">CNS<br/>Amount</th>
-                    <th style="width:11%;">Billed</th>
-                    <th style="width:11%;">Unbilled</th>
+                    <th style="width:11%;">CNS<br/>Amount</th>
+                    <th style="width:9%;">Extra</th>
+                    <th style="width:10%;">Billed</th>
+                    <th style="width:10%;">Unbilled</th>
                     <th style="width:10%;">Paid</th>
                     <th style="width:12%;">Outstanding</th>
                 </tr>
@@ -117,6 +121,7 @@ const buildTable = (rows: LedgerSummaryPartyRow[], allRows: LedgerSummaryPartyRo
                         <td></td>
                         <td class="amount">${fmt(totals.cnsCount)}</td>
                         <td class="amount">${fmt(totals.cnsAmount)}</td>
+                        <td class="amount">${fmt(totals.extra)}</td>
                         <td class="amount">${fmt(totals.billed)}</td>
                         <td class="amount">${fmt(totals.unbilled)}</td>
                         <td class="amount">${fmt(totals.paid)}</td>

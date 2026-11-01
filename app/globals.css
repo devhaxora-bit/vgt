@@ -151,10 +151,12 @@
     background: var(--table-head-bg);
     color: var(--table-head-fg);
     border: 1px solid var(--table-cell-border);
+    padding: 0 10px;
   }
 
   table.vgt-register-table td {
     border: 1px solid var(--table-cell-border);
+    padding: 0 10px;
   }
 
   table.vgt-register-table tbody tr:nth-child(even) {

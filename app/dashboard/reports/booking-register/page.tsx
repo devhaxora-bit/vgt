@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
     CalendarDays,
     Download,
@@ -30,6 +31,7 @@ import { useCurrentUserScope, defaultBranchFilterValue } from '@/lib/hooks/useCu
 import type {
     BookingRegisterRow,
     BookingRegisterVehicleDay,
+    BookingRegisterVehicleDayLr,
 } from '@/lib/types/bookingRegister.types';
 
 type BillStatusFilter = 'all' | 'billed' | 'unbilled';
@@ -252,12 +254,23 @@ export default function BookingRegisterPage() {
             const day = String(row.bkg_date || '').slice(0, 10);
             if (!vehicle || !day) continue;
 
+            const lr: BookingRegisterVehicleDayLr | null = row.cn_no
+                ? {
+                      id: row.id,
+                      cn_no: row.cn_no,
+                      total_freight: Number(row.total_freight || 0),
+                  }
+                : null;
+
             const key = `${vehicle}|${day}`;
             const existing = map.get(key);
             if (existing) {
                 existing.lr_count += 1;
                 existing.freight_total += Number(row.total_freight || 0);
-                if (row.cn_no) existing.cn_nos.push(row.cn_no);
+                if (lr) {
+                    existing.cn_nos.push(lr.cn_no);
+                    existing.lrs.push(lr);
+                }
                 continue;
             }
 
@@ -266,7 +279,8 @@ export default function BookingRegisterPage() {
                 bkg_date: day,
                 lr_count: 1,
                 freight_total: Number(row.total_freight || 0),
-                cn_nos: row.cn_no ? [row.cn_no] : [],
+                cn_nos: lr ? [lr.cn_no] : [],
+                lrs: lr ? [lr] : [],
                 booking_branch: row.booking_branch,
             });
         }
@@ -277,6 +291,13 @@ export default function BookingRegisterPage() {
             return a.vehicle_no.localeCompare(b.vehicle_no, undefined, { numeric: true });
         });
     }, [sortedRows]);
+
+    const displayFreightTotal = useMemo(() => {
+        if (tableSearch.trim()) {
+            return Number(sortedRows.reduce((sum, row) => sum + Number(row.total_freight || 0), 0).toFixed(2));
+        }
+        return summary.freight_total;
+    }, [sortedRows, summary.freight_total, tableSearch]);
 
     const displayVehicleCount = useMemo(() => {
         if (tableSearch.trim() || viewMode === 'vehicle') {
@@ -300,7 +321,7 @@ export default function BookingRegisterPage() {
                 toast.error('Nothing to export');
                 return;
             }
-            const headers = ['Bkg Date', 'Vehicle', 'Branch', 'LR Count', 'Freight', 'CN Nos'];
+            const headers = ['Bkg Date', 'Vehicle', 'Branch', 'LR Count', 'Total Hire', 'CN Nos'];
             const lines = [headers.join(',')];
             for (const trip of vehicleDayRows) {
                 lines.push(
@@ -538,19 +559,18 @@ export default function BookingRegisterPage() {
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 {[
                     { label: 'Bookings', value: String(summary.count) },
+                    { label: 'TBB', value: String(summary.tbb_count) },
+                    { label: 'Billed', value: String(summary.billed_count) },
+                    { label: 'Unbilled', value: String(summary.unbilled_count) },
                     {
                         label: 'Vehicles',
                         value: String(displayVehicleCount),
                         hint: 'Unique vehicle × day (same truck, same day = 1)',
                     },
-                    { label: 'Freight', value: `₹${fmtMoney(summary.freight_total)}` },
-                    { label: 'TBB', value: String(summary.tbb_count) },
-                    { label: 'Billed', value: String(summary.billed_count) },
-                    { label: 'Unbilled', value: String(summary.unbilled_count) },
-                    { label: 'Cancelled', value: String(summary.cancelled_count) },
+                    { label: 'Total Hire', value: `₹${fmtMoney(displayFreightTotal)}` },
                 ].map((kpi) => (
                     <div key={kpi.label} className="rounded-lg border bg-white px-3 py-2.5 shadow-sm">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{kpi.label}</p>
@@ -605,14 +625,14 @@ export default function BookingRegisterPage() {
 
                 <div className="overflow-x-auto">
                     {viewMode === 'vehicle' ? (
-                        <table className="vgt-register-table w-full min-w-[900px] border-collapse text-xs">
+                        <table className="vgt-register-table w-full min-w-[980px] border-collapse text-xs">
                             <thead>
                                 <tr>
                                     <th>Bkg Date</th>
                                     <th>Vehicle</th>
                                     <th>Br</th>
                                     <th className="text-right">LRs</th>
-                                    <th className="text-right">Freight</th>
+                                    <th className="text-right">Total Hire</th>
                                     <th>CN Nos</th>
                                 </tr>
                             </thead>
@@ -643,12 +663,26 @@ export default function BookingRegisterPage() {
                                                 ₹{fmtMoney(trip.freight_total)}
                                             </td>
                                             <td className="max-w-[420px]">
-                                                <div
-                                                    className="truncate font-mono text-[11px] text-muted-foreground"
-                                                    title={trip.cn_nos.join(', ')}
-                                                >
-                                                    {trip.cn_nos.join(', ') || '—'}
-                                                </div>
+                                                {trip.lrs.length === 0 ? (
+                                                    <span className="text-muted-foreground">—</span>
+                                                ) : (
+                                                    <div
+                                                        className="truncate font-mono text-[11px]"
+                                                        title={trip.cn_nos.join(', ')}
+                                                    >
+                                                        {trip.lrs.map((lr, index) => (
+                                                            <span key={lr.id}>
+                                                                <Link
+                                                                    href={`/dashboard/consignments/new?edit=${lr.id}`}
+                                                                    className="font-bold text-primary hover:underline"
+                                                                >
+                                                                    {lr.cn_no}
+                                                                </Link>
+                                                                {index < trip.lrs.length - 1 ? ', ' : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </td>
                                         </tr>
                                     ))
@@ -706,7 +740,14 @@ export default function BookingRegisterPage() {
                                         <tr key={row.id} className={row.cancel_cn ? 'opacity-60' : undefined}>
                                             <td className="whitespace-nowrap">{fmtDate(row.bkg_date)}</td>
                                             <td className="font-mono font-semibold">{row.booking_branch || '—'}</td>
-                                            <td className="font-mono font-bold text-primary">{row.cn_no}</td>
+                                            <td className="font-mono font-bold">
+                                                <Link
+                                                    href={`/dashboard/consignments/new?edit=${row.id}`}
+                                                    className="text-primary hover:underline"
+                                                >
+                                                    {row.cn_no}
+                                                </Link>
+                                            </td>
                                             <td>
                                                 {String(row.bkg_basis || '').toUpperCase() === 'TO BE BILLED' ? (
                                                     <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-amber-200 bg-amber-50 text-amber-800">
@@ -716,13 +757,15 @@ export default function BookingRegisterPage() {
                                                     row.bkg_basis || '—'
                                                 )}
                                             </td>
-                                            <td className="max-w-[180px]">
-                                                <div className="truncate font-medium" title={row.billing_party || undefined}>
-                                                    {row.billing_party || '—'}
-                                                </div>
-                                                {row.billing_party_code && (
-                                                    <div className="font-mono text-[10px] text-muted-foreground">{row.billing_party_code}</div>
-                                                )}
+                                            <td
+                                                className="max-w-[180px] truncate font-medium"
+                                                title={
+                                                    row.billing_party_code
+                                                        ? `${row.billing_party || ''} (${row.billing_party_code})`
+                                                        : row.billing_party || undefined
+                                                }
+                                            >
+                                                {row.billing_party || '—'}
                                             </td>
                                             <td className="max-w-[140px] truncate" title={row.consignor_name || undefined}>
                                                 {row.consignor_name || '—'}
@@ -743,21 +786,19 @@ export default function BookingRegisterPage() {
                                             <td className="text-[11px]">{row.delivery_type || '—'}</td>
                                             <td className="font-mono text-[11px]">{row.vehicle_no || '—'}</td>
                                             <td>
-                                                {row.bill_status === 'BILLED' ? (
-                                                    <div>
-                                                        <Badge className="h-5 px-1.5 text-[10px] bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                                                            Billed
-                                                        </Badge>
-                                                        {row.bill_ref_no && (
-                                                            <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
-                                                                {row.bill_ref_no}
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                {row.bill_status === 'BILLED' && row.bill_ref_no ? (
+                                                    row.billing_party_id ? (
+                                                        <Link
+                                                            href={`/dashboard/ledger/${row.billing_party_id}`}
+                                                            className="font-mono font-bold text-primary hover:underline"
+                                                        >
+                                                            {row.bill_ref_no}
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="font-mono font-bold text-primary">{row.bill_ref_no}</span>
+                                                    )
                                                 ) : (
-                                                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-amber-200 text-amber-800">
-                                                        Unbilled
-                                                    </Badge>
+                                                    <span className="text-muted-foreground">Unbilled</span>
                                                 )}
                                                 {row.cancel_cn && (
                                                     <div className="text-[10px] text-red-600 font-semibold mt-0.5">Cancelled</div>
