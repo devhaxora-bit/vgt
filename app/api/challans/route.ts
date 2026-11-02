@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { fetchAllRows } from '@/lib/server/fetchAllRows';
 import { resolveBrokerId } from '@/lib/server/resolveBrokerId';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
@@ -33,48 +34,50 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
 
-    let query = auth.supabase
-        .from('challans')
-        .select(`
-            *,
-            origin_branch:branches!origin_branch_code(name, city),
-            destination_branch:branches!destination_branch_code(name, city)
-        `)
-        .order('challan_no', { ascending: true });
+    const { data, error } = await fetchAllRows(() => {
+        let query = auth.supabase
+            .from('challans')
+            .select(`
+                *,
+                origin_branch:branches!origin_branch_code(name, city),
+                destination_branch:branches!destination_branch_code(name, city)
+            `)
+            .order('challan_no', { ascending: true });
 
-    if (search) {
-        query = query.or(`challan_no.ilike.%${search}%,vehicle_no.ilike.%${search}%`);
-    }
-
-    if (branch) {
-        // Branch-scoped users are locked to origin branch only
-        if (auth.isBranchScoped) {
-            query = query.eq('origin_branch_code', branch);
-        } else {
-            query = query.or(`origin_branch_code.eq.${branch},destination_branch_code.eq.${branch}`);
+        if (search) {
+            query = query.or(`challan_no.ilike.%${search}%,vehicle_no.ilike.%${search}%`);
         }
-    }
 
-    if (type && type !== 'ALL') {
-        query = query.eq('engagement_type', type);
-    }
+        if (branch) {
+            // Branch-scoped users are locked to origin branch only
+            if (auth.isBranchScoped) {
+                query = query.eq('origin_branch_code', branch);
+            } else {
+                query = query.or(`origin_branch_code.eq.${branch},destination_branch_code.eq.${branch}`);
+            }
+        }
 
-    if (status) {
-        query = query.eq('status', status);
-    }
+        if (type && type !== 'ALL') {
+            query = query.eq('engagement_type', type);
+        }
 
-    if (dateFrom) {
-        query = query.gte('date_from', dateFrom);
-    }
+        if (status) {
+            query = query.eq('status', status);
+        }
 
-    if (dateTo) {
-        query = query.lte('date_from', dateTo);
-    }
+        if (dateFrom) {
+            query = query.gte('date_from', dateFrom);
+        }
 
-    const { data, error } = await query;
+        if (dateTo) {
+            query = query.lte('date_from', dateTo);
+        }
+
+        return query;
+    });
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error }, { status: 500 });
     }
 
     return NextResponse.json(data);

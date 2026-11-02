@@ -15,6 +15,7 @@ schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
+# App list APIs page through this cap via lib/server/fetchAllRows.ts.
 max_rows = 1000
 
 [api.tls]

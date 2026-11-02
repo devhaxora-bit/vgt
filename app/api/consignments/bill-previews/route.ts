@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { fetchAllRows } from '@/lib/server/fetchAllRows';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
 // GET /api/consignments/bill-previews
@@ -8,13 +9,15 @@ export async function GET() {
     const auth = await requireAuthz();
     if (!auth.ok) return auth.response;
 
-    const { data: records, error } = await auth.supabase
-        .from('party_billing_records')
-        .select('*')
-        .eq('status', 'ACTIVE');
+    const { data: records, error } = await fetchAllRows(() =>
+        auth.supabase
+            .from('party_billing_records')
+            .select('*')
+            .eq('status', 'ACTIVE'),
+    );
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error }, { status: 500 });
     }
 
     const partyIds = Array.from(

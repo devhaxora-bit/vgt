@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from "next/server";
+import { fetchAllRows } from '@/lib/server/fetchAllRows';
 import { resolveBillingPartyId } from '@/lib/server/resolveBillingParty';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 
@@ -101,34 +102,36 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo");
     const listBranch = auth.resolveListBranch(searchParams.get('branch'));
 
-    let query = auth.supabase
-        .from("consignments")
-        .select("*")
-        .is("deleted_at", null)
-        .order("cn_no", { ascending: false });
+    const { data, error } = await fetchAllRows(() => {
+        let query = auth.supabase
+            .from("consignments")
+            .select("*")
+            .is("deleted_at", null)
+            .order("cn_no", { ascending: false });
 
-    if (listBranch) {
-        query = query.eq('booking_branch', listBranch);
-    }
+        if (listBranch) {
+            query = query.eq('booking_branch', listBranch);
+        }
 
-    if (search) {
-        query = query.or(`cn_no.ilike.%${search}%,dest_branch.ilike.%${search}%`);
-    }
-    if (dateFrom) {
-        query = query.gte("bkg_date", dateFrom);
-    }
-    if (dateTo) {
-        query = query.lte("bkg_date", dateTo);
-    }
+        if (search) {
+            query = query.or(`cn_no.ilike.%${search}%,dest_branch.ilike.%${search}%`);
+        }
+        if (dateFrom) {
+            query = query.gte("bkg_date", dateFrom);
+        }
+        if (dateTo) {
+            query = query.lte("bkg_date", dateTo);
+        }
 
-    const { data, error } = await query;
+        return query;
+    });
 
     if (error) {
         console.error("Failed to fetch consignments:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error }, { status: 500 });
     }
 
-    return NextResponse.json(data || []);
+    return NextResponse.json(data);
 }
 
 export async function POST(request: Request) {
