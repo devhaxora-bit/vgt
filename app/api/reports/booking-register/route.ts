@@ -139,7 +139,8 @@ export async function GET(request: NextRequest) {
             consignee_name: row.consignee_name,
             billing_party: row.billing_party,
             billing_party_code: row.billing_party_code,
-            billing_party_id: row.billing_party_id,
+            // Prefer bill's party for ledger deep-link when CN billing_party_id is missing.
+            billing_party_id: row.billing_party_id || billed?.partyId || null,
             no_of_pkg: row.no_of_pkg,
             total_qty: row.total_qty,
             actual_weight: row.actual_weight,
@@ -151,8 +152,6 @@ export async function GET(request: NextRequest) {
             bill_status: billed ? 'BILLED' : 'UNBILLED',
             bill_ref_no: billed?.billRef || null,
             bill_id: billed?.billId || null,
-            // Prefer bill's party for ledger deep-link when CN billing_party_id is missing.
-            billing_party_id: row.billing_party_id || billed?.partyId || null,
         };
     });
 
