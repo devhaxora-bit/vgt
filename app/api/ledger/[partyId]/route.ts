@@ -228,8 +228,25 @@ export async function GET(
             if (foundKeys.has(normalizeCnKey(cnNo))) return;
             ghostConsignments.push({
                 ...makeInvalidCoveredCnStub(cnNo),
+                total_qty: 0,
+                is_loose: false,
+                basic_freight: 0,
+                freight_rate: 0,
+                unload_charges: 0,
+                retention_charges: 0,
+                extra_km_charges: 0,
+                mhc_charges: 0,
+                door_coll_charges: 0,
+                door_del_charges: 0,
+                traffic_challan_charges: 0,
+                other_charges: 0,
+                vehicle_no: null,
+                goods_desc: null,
+                delivery_type: null,
+                freight_included: false,
+                parent_cn_id: null,
                 parent_cn_no: null,
-            });
+            } as (typeof ghostConsignments)[number]);
         });
     }
 
