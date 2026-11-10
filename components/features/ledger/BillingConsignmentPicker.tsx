@@ -31,6 +31,8 @@ export interface BillingConsignmentOption {
     vehicle_no?: string;
     /** Ghost CNs are cancelled/deleted/reassigned but still referenced by this bill */
     _ghost?: boolean;
+    /** Placeholder text saved as a CN (e.g. "LR 8084 TO 5158") */
+    _invalid?: boolean;
     cancel_cn?: boolean;
 }
 
@@ -163,11 +165,14 @@ export function BillingConsignmentPicker({
                                 </div>
                             ) : filteredConsignments.map((consignment) => {
                                 const checked = value.includes(consignment.cn_no);
+                                const isInvalid = Boolean(consignment._invalid);
                                 const isCancelled = Boolean(consignment.cancel_cn);
-                                const isReassigned = Boolean(consignment._ghost) && !isCancelled;
-                                const isGhost = isCancelled || isReassigned;
-                                const ghostLabel = isCancelled ? 'Cancelled' : 'Billing Party Changed';
-                                const ghostHint = isCancelled
+                                const isReassigned = Boolean(consignment._ghost) && !isCancelled && !isInvalid;
+                                const isGhost = isCancelled || isReassigned || isInvalid;
+                                const ghostLabel = isInvalid ? 'Invalid CN' : isCancelled ? 'Cancelled' : 'Billing Party Changed';
+                                const ghostHint = isInvalid
+                                    ? 'This is not a real CN number (range/text). Uncheck it, or it will be dropped on save.'
+                                    : isCancelled
                                     ? 'This CN is cancelled — uncheck to remove from bill'
                                     : 'This CN was moved to a different billing party — uncheck to remove from bill';
                                 return (
@@ -244,10 +249,11 @@ export function BillingConsignmentPicker({
                     <div className="divide-y">
                         {selectedConsignments.map((consignment) => {
                             const extraCharges = getConsignmentExtraCharges(consignment);
+                            const isInvalid = Boolean(consignment._invalid);
                             const isCancelled = Boolean(consignment.cancel_cn);
-                            const isReassigned = Boolean(consignment._ghost) && !isCancelled;
-                            const isGhost = isCancelled || isReassigned;
-                            const ghostLabel = isCancelled ? 'Cancelled' : 'Billing Party Changed';
+                            const isReassigned = Boolean(consignment._ghost) && !isCancelled && !isInvalid;
+                            const isGhost = isCancelled || isReassigned || isInvalid;
+                            const ghostLabel = isInvalid ? 'Invalid CN' : isCancelled ? 'Cancelled' : 'Billing Party Changed';
 
                             return (
                                 <div key={consignment.id} className={`px-3 py-2 flex items-center justify-between gap-3 ${isGhost ? 'bg-red-50/50' : ''}`}>

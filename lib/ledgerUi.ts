@@ -47,6 +47,9 @@ export interface LedgerConsignment {
     bkg_basis: string;
     goods_desc?: string;
     delivery_type?: string;
+    cancel_cn?: boolean;
+    _ghost?: boolean;
+    _invalid?: boolean;
 }
 
 export interface BillingExtraChargeItem {
