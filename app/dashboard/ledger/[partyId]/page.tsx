@@ -42,6 +42,7 @@ import {
 import { compareBillsBySerialDesc } from '@/lib/ledgerUi';
 import { parseMoney, roundMoney } from '@/lib/money';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
+import { makeInvalidCoveredCnStub } from '@/lib/utils/invalidCoveredCn';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ interface Consignment {
     /** True when this CN is cancelled/deleted/reassigned but still referenced by a bill */
     cancel_cn?: boolean;
     _ghost?: boolean;
+    _invalid?: boolean;
 }
 
 interface BillingExtraChargeItem {
@@ -980,8 +982,16 @@ export default function PartyLedgerPage({ params }: { params: Promise<{ partyId:
             (c) => editingCoveredCnNos.has(normalizeCnKey(c.cn_no))
                 && !liveCnNoSet.has(normalizeCnKey(c.cn_no)),
         );
+        const ghostKeys = new Set(relevantGhosts.map((c) => normalizeCnKey(c.cn_no)));
+        const orphanRows = (editingBillingRecord.covered_cn_nos || [])
+            .filter((cnNo) => {
+                const key = normalizeCnKey(cnNo);
+                return Boolean(key) && !liveCnNoSet.has(key) && !ghostKeys.has(key);
+            })
+            .map((cnNo) => makeInvalidCoveredCnStub(cnNo) as Consignment);
 
-        return relevantGhosts.length > 0 ? [...liveCns, ...relevantGhosts] : liveCns;
+        const extraRows = [...orphanRows, ...relevantGhosts];
+        return extraRows.length > 0 ? [...extraRows, ...liveCns] : liveCns;
     }, [data.all_billing_records, data.all_consignments, data.ghost_consignments, data.global_cn_coverage_counts, editingBillingRecord]);
 
     const consignmentBillingMap = useMemo(() => {

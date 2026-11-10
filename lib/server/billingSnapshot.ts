@@ -10,6 +10,7 @@ import {
 } from '@/lib/billingVehicleCancel';
 import { parseMoney, roundMoney } from '@/lib/money';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
+import { isPlaceholderCoveredCn } from '@/lib/utils/invalidCoveredCn';
 
 type SupabaseLike = Awaited<ReturnType<typeof createClient>>;
 
@@ -152,7 +153,7 @@ const normalizeCoveredCnNos = (coveredCnNos: unknown) => {
 
     const normalized = coveredCnNos
         .map((value) => String(value).trim())
-        .filter(Boolean);
+        .filter((cnNo) => cnNo && !isPlaceholderCoveredCn(cnNo));
 
     const seenKeys = new Set<string>();
     return normalized.filter((cnNo) => {

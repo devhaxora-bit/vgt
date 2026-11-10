@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { roundMoney } from '@/lib/money';
 import { requireAuthz } from '@/lib/server/requireAuthz';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
+import { makeInvalidCoveredCnStub } from '@/lib/utils/invalidCoveredCn';
 
 type SummaryConsignment = {
     total_freight: number | string | null;
@@ -219,6 +220,17 @@ export async function GET(
             ...record,
             parent_cn_no: null,
         }));
+
+        const foundKeys = new Set(
+            ghostConsignments.map((record) => normalizeCnKey(record.cn_no)).filter(Boolean),
+        );
+        ghostCnNos.forEach((cnNo) => {
+            if (foundKeys.has(normalizeCnKey(cnNo))) return;
+            ghostConsignments.push({
+                ...makeInvalidCoveredCnStub(cnNo),
+                parent_cn_no: null,
+            });
+        });
     }
 
     // 6. When date filters are applied, expand the consignment set to include

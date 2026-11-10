@@ -743,6 +743,14 @@ export function EditBillingDialog({
             return;
         }
 
+        const selectableCnNos = new Set(
+            consignments
+                .filter((consignment) => !consignment._invalid)
+                .map((consignment) => consignment.cn_no),
+        );
+        const droppedInvalidCnNos = form.covered_cn_nos.filter((cnNo) => !selectableCnNos.has(cnNo));
+        const nextCoveredCnNos = form.covered_cn_nos.filter((cnNo) => selectableCnNos.has(cnNo));
+
         if (finalBillAmount <= 0) {
             toast.error('Bill amount must be greater than zero');
             return;
@@ -758,7 +766,7 @@ export function EditBillingDialog({
                     vehicle_cancel_items: vehicleCancelDraftToItems(form.vehicle_cancel_items),
                     bill_ref_no: composeBillRefNo(form.billing_date, form.bill_ref_no) || null,
                     narration: form.narration.trim(),
-                    covered_cn_nos: form.covered_cn_nos.length > 0 ? form.covered_cn_nos : null,
+                    covered_cn_nos: nextCoveredCnNos.length > 0 ? nextCoveredCnNos : null,
                 }),
             });
 
@@ -767,7 +775,11 @@ export function EditBillingDialog({
                 throw new Error(err.error || 'Failed to update billing record');
             }
 
-            toast.success('Billing record updated');
+            if (droppedInvalidCnNos.length > 0) {
+                toast.success(`Billing record updated. Removed invalid CN: ${droppedInvalidCnNos.join(', ')}`);
+            } else {
+                toast.success('Billing record updated');
+            }
             onSuccess();
             onClose();
         } catch (error: unknown) {

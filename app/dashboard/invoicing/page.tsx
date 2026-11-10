@@ -26,6 +26,7 @@ import {
 } from '@/lib/ledgerUi';
 import { compareBillsBySerialDesc } from '@/lib/ledgerUi';
 import { normalizeCnKey } from '@/lib/utils/cnKey';
+import { makeInvalidCoveredCnStub } from '@/lib/utils/invalidCoveredCn';
 
 type BillListRow = BillingRecord & {
     party_id: string;
@@ -158,7 +159,14 @@ export default function BillEntryPage() {
                 (cn: LedgerConsignment) => editingCoveredCnKeys.has(normalizeCnKey(cn.cn_no))
                     && !availableCnKeys.has(normalizeCnKey(cn.cn_no)),
             ).map((cn: LedgerConsignment) => ({ ...cn, _ghost: true }));
-            setEditConsignments([...availableCns, ...relevantGhosts]);
+            const ghostKeys = new Set(relevantGhosts.map((cn) => normalizeCnKey(cn.cn_no)));
+            const orphanRows = ((fresh || bill).covered_cn_nos || [])
+                .filter((cnNo) => {
+                    const key = normalizeCnKey(cnNo);
+                    return Boolean(key) && !availableCnKeys.has(key) && !ghostKeys.has(key);
+                })
+                .map((cnNo) => makeInvalidCoveredCnStub(cnNo) as LedgerConsignment);
+            setEditConsignments([...orphanRows, ...relevantGhosts, ...availableCns]);
             if (fresh) {
                 setEditing({
                     ...bill,
