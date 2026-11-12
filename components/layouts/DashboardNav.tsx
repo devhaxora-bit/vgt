@@ -158,6 +158,12 @@ export default function DashboardNav() {
                     ]
                 },
                 {
+                    title: 'CBS',
+                    items: [
+                        { title: 'Lorry Hire CBS', href: '/dashboard/lorry-hire' },
+                    ]
+                },
+                {
                     title: 'Expenses',
                     items: [
                         { title: 'Petty Cash', href: '#' },
